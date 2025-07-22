@@ -1,5 +1,7 @@
 let countdown;
 let fotoHochgeladen = false;
+let timerListenerRegistered = false;
+
 
 // Ansicht wechseln
 function switchView(view) {
@@ -8,15 +10,14 @@ function switchView(view) {
 
   if (view === "misterx") {
     document.getElementById("misterxView").style.display = "block";
-    listenToTimer()
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
-    listenToTimer()
   } else if (view === "settings") {
     document.getElementById("settingsView").style.display = "block";
   }
 
   localStorage.setItem("activeView", view);
+  listenToTimer()
 }
 
 // Zurück zur Startauswahl
@@ -40,19 +41,27 @@ function startTimer() {
 
 // Timer aus Firebase lesen
 function listenToTimer() {
+  if (timerListenerRegistered) return; // Verhindert doppelte Registrierung
+  timerListenerRegistered = true;
+
   firebase.database().ref("timer").on("value", (snapshot) => {
     const data = snapshot.val();
-    if (!data) return;
+
+    if (!data) {
+      updateStartButtonState(false);
+      return;
+    }
 
     const { startTime, duration } = data;
     updateCountdown(startTime, duration);
+    updateStartButtonState(true);
   });
 }
+
 
 // Countdown anzeigen
 function updateCountdown(startTime, duration) {
   clearInterval(countdown);
-
   countdown = setInterval(() => {
     const now = Date.now();
     const elapsed = Math.floor((now - startTime) / 1000);
@@ -61,6 +70,10 @@ function updateCountdown(startTime, duration) {
     const minutes = Math.floor(remaining / 60);
     const seconds = remaining % 60;
     const timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    const settingsTimer = document.getElementById("settingsTimer");
+    if (settingsTimer) {
+      settingsTimer.innerText = `⏳ Aktueller Timer: ${timeString}`;
+    }
 
     // Beide Timer-Elemente aktualisieren, wenn vorhanden
     const misterxTimer = document.getElementById("timer");
@@ -75,6 +88,7 @@ function updateCountdown(startTime, duration) {
 
     if (remaining <= 0) {
       clearInterval(countdown);
+      updateStartButtonState(false); // Timer ist abgelaufen
       console.log("⏰ Zeit abgelaufen!");
       if (!fotoHochgeladen) {
         getLocation();
@@ -105,6 +119,15 @@ function showError(error) {
   document.getElementById("status").innerText = "❌ Fehler beim Abrufen des Standorts.";
 }
 
+function updateStartButtonState(isRunning) {
+  const startButton = document.querySelector("#misterxView button[onclick='startTimer()']");
+  if (startButton) {
+    startButton.disabled = isRunning;
+    startButton.style.opacity = isRunning ? "0.5" : "1";
+  }
+}
+
+
 // Foto-Upload
 document.getElementById("photoInput").addEventListener("change", function () {
   const file = this.files[0];
@@ -125,3 +148,19 @@ window.onload = () => {
 
   listenToTimer();
 };
+
+function resetTimer() {
+  firebase.database().ref("timer").remove();
+  clearInterval(countdown);
+  updateStartButtonState(false);
+
+  // Timer-Anzeigen zurücksetzen
+  const misterxTimer = document.getElementById("timer");
+  const agentTimer = document.getElementById("agentTimer");
+  const settingsTimer = document.getElementById("settingsTimer");
+
+  if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
+  if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
+  if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
+}
+

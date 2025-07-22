@@ -20,7 +20,7 @@
   <!-- Mister X Ansicht -->
   <div id="misterxView" class="view" style="display:none;">
     <h2>Mister X</h2>
-    <h3 id="timer">⏳ Zeit bis zum nächsten Posten: 25:00</h3>
+    <h3 id="timer">⏳ Zeit bis zum nächsten Posten: --:--</h3>
     <button onclick="getLocation()">📍 Standort manuell senden</button>
     <br><br>
     <input type="file" accept="image/*" capture="environment" id="photoInput" />
@@ -41,6 +41,10 @@
   <div id="settingsView" class="view" style="display:none;">
     <h2>Einstellungen</h2>
     <p>Hier kannst du später z.B. Farben, Zeit oder Spielregeln anpassen.</p>
+    <h3 id="settingsTimer">⏳ Aktueller Timer: --:--</h3>
+    <button onclick="startTimer()">▶️ Timer starten</button>
+    <button onclick="resetTimer()">⏹️ Timer stoppen & zurücksetzen</button>
+
     <button onclick="goBack()">🔙 Zurück</button>
   </div>
 
