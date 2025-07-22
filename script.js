@@ -1,10 +1,10 @@
 let fotoHochgeladen = false;
-let countdown; // für das Intervall
+let countdown;
 let remainingTime = 25 * 60; // 25 Minuten in Sekunden
 
 // Timer starten
 function startTimer() {
-  clearInterval(countdown); // alten Timer stoppen
+  clearInterval(countdown);
   remainingTime = 25 * 60;
   updateTimerDisplay();
 
@@ -34,6 +34,26 @@ function updateTimerDisplay() {
     `⏳ Zeit bis zum nächsten Posten: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+// Standort abrufen
+function getLocation() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(showPosition, showError);
+  } else {
+    document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
+  }
+}
+
+function showPosition(position) {
+  const lat = position.coords.latitude;
+  const lon = position.coords.longitude;
+  document.getElementById("status").innerText = `📍 Standort: ${lat}, ${lon}`;
+  // Hier kannst du später den Standort speichern oder senden
+}
+
+function showError(error) {
+  document.getElementById("status").innerText = "❌ Fehler beim Abrufen des Standorts.";
+}
+
 // Foto-Upload
 document.getElementById("photoInput").addEventListener("change", function () {
   const file = this.files[0];
@@ -46,33 +66,3 @@ document.getElementById("photoInput").addEventListener("change", function () {
 
 // Seite lädt → Timer starten
 window.onload = startTimer;
-
-
-
-
-function getLocation() {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(showPosition, showError);
-  } else {
-    document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
-  }
-}
-
-function showPosition(position) {
-  const lat = position.coords.latitude;
-  const lon = position.coords.longitude;
-  document.getElementById("status").innerText = `Standort: ${lat}, ${lon}`;
-  // Hier kannst du später den Standort speichern oder senden
-}
-
-function showError(error) {
-  document.getElementById("status").innerText = "Fehler beim Abrufen des Standorts.";
-}
-
-document.getElementById("photoInput").addEventListener("change", function () {
-  const file = this.files[0];
-  if (file) {
-    document.getElementById("status").innerText = "Foto ausgewählt!";
-    // Hier kannst du später das Foto speichern oder anzeigen
-  }
-});

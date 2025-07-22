@@ -9,6 +9,12 @@ h1 {
   color: #333;
 }
 
+h2 {
+  font-size: 1.5em;
+  margin-top: 1em;
+  color: #007bff;
+}
+
 button {
   padding: 1em;
   font-size: 1.2em;
@@ -16,6 +22,10 @@ button {
   background-color: #007bff;
   color: white;
   border: none;
--top: 2em;
-  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+input[type="file"] {
+  margin-top: 1em;
 }
