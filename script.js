@@ -123,15 +123,6 @@ window.onload = () => {
 
   listenToTimer();
 };
-
-window.onload = () => {
-  const savedView = localStorage.getItem("activeView");
-  if (savedView) {
-    switchView(savedView);
-  } else {
-    document.getElementById("startView").style.display = "block";
-  }
-
   // Timer immer beobachten – auch wenn man nicht Mister X ist
   listenToTimer();
 };
