@@ -44,6 +44,30 @@
     <button onclick="goBack()">🔙 Zurück</button>
   </div>
 
+  <!-- Firebase SDKs -->
+  https://www.gstatic.com/firebasejs/10.3.1/firebase-app.js
+  https://www.gstatic.com/firebasejs/10.3.1/firebase-database.js
+
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
+    authDomain: "mister-x-d6b59.firebaseapp.com",
+    databaseURL: "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "mister-x-d6b59",
+    storageBucket: "mister-x-d6b59.firebasestorage.app",
+    messagingSenderId: "616391598963",
+    appId: "1:616391598963:web:da07882b0f481d3000db06",
+    measurementId: "G-W66SK677NG"
+  };
+
+  // Firebase initialisieren
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+</script>
+</script>
+
+
   <script src="script.js"></script>
 </body>
 </html>
