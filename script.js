@@ -130,7 +130,8 @@ function showError(error) {
 }
 
 function updateStartButtonState(isRunning) {
-  const startButton = document.querySelector("#misterxView button[onclick='startTimer()']");
+  console.log("Button-Status:", isRunning);
+  const startButton = document.getElementById("startTimerButton");
   if (startButton) {
     startButton.disabled = isRunning;
     startButton.style.opacity = isRunning ? "0.5" : "1";
@@ -138,6 +139,8 @@ function updateStartButtonState(isRunning) {
     startButton.style.cursor = isRunning ? "default" : "pointer";
   }
 }
+
+
 
 
 
