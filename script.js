@@ -8,12 +8,20 @@ function switchView(view) {
     startTimer();
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
+    updateAgentTimer();
+    setInterval(updateAgentTimer, 1000);
   } else if (view === "settings") {
     document.getElementById("settingsView").style.display = "block";
   }
 
   localStorage.setItem("activeView", view);
 }
+
+function updateAgentTimer() {
+  const time = localStorage.getItem("misterxTimer") || "--:--";
+  document.getElementById("agentTimer").innerText = `⏳ Mister X Timer: ${time}`;
+}
+
 
 // Zurück zur Startauswahl
 function goBack() {
@@ -54,9 +62,11 @@ function startTimer() {
 function updateTimerDisplay() {
   const minutes = Math.floor(remainingTime / 60);
   const seconds = remainingTime % 60;
-  document.getElementById("timer").innerText =
-    `⏳ Zeit bis zum nächsten Posten: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  const timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  document.getElementById("timer").innerText = `⏳ Zeit bis zum nächsten Posten: ${timeString}`;
+  localStorage.setItem("misterxTimer", timeString);
 }
+
 
 function getLocation() {
   if (navigator.geolocation) {

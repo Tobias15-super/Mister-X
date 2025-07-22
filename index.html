@@ -25,6 +25,7 @@
     <br><br>
     <input type="file" accept="image/*" capture="environment" id="photoInput" />
     <p id="status"></p>
+    <button onclick="startTimer()">▶️ Timer starten</button>
     <button onclick="goBack()">🔙 Zurück</button>
   </div>
 
@@ -32,6 +33,7 @@
   <div id="agentView" class="view" style="display:none;">
     <h2>Agenten-Ansicht</h2>
     <p>Hier könnten Standortdaten und Fotos von Mister X angezeigt werden.</p>
+    <h3 id="agentTimer">⏳ Mister X Timer: --:--</h3>
     <button onclick="goBack()">🔙 Zurück</button>
   </div>
 
