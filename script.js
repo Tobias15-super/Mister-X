@@ -5,7 +5,6 @@ function switchView(view) {
 
   if (view === "misterx") {
     document.getElementById("misterxView").style.display = "block";
-    startTimer();
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
     updateAgentTimer();
