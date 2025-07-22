@@ -51,14 +51,25 @@ function startTimer() {
 
 // Timer aus Firebase lesen
 function listenToTimer() {
-  if (timerListenerRegistered) return; // Verhindert doppelte Registrierung
+  if (timerListenerRegistered) return;
   timerListenerRegistered = true;
 
   firebase.database().ref("timer").on("value", (snapshot) => {
     const data = snapshot.val();
 
     if (!data) {
+      clearInterval(countdown);
       updateStartButtonState(false);
+
+      // Timer-Anzeigen zurücksetzen
+      const misterxTimer = document.getElementById("timer");
+      const agentTimer = document.getElementById("agentTimer");
+      const settingsTimer = document.getElementById("settingsTimer");
+
+      if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
+      if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
+      if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
+
       return;
     }
 
@@ -67,6 +78,7 @@ function listenToTimer() {
     updateStartButtonState(true);
   });
 }
+
 
 
 // Countdown anzeigen
@@ -130,7 +142,6 @@ function showError(error) {
 }
 
 function updateStartButtonState(isRunning) {
-  console.log("Button-Status:", isRunning);
   const startButton = document.getElementById("startTimerButton");
   if (startButton) {
     startButton.disabled = isRunning;
