@@ -123,6 +123,3 @@ window.onload = () => {
 
   listenToTimer();
 };
-  // Timer immer beobachten – auch wenn man nicht Mister X ist
-  listenToTimer();
-};
