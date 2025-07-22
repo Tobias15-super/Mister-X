@@ -40,10 +40,10 @@ function startTimer() {
     if (remainingTime <= 0) {
       clearInterval(countdown);
       if (!fotoHochgeladen) {
-        console.log("⏰ Zeit abgelaufen – Standort wird gesendet.");
+        console.log("⏰ Zeit abgelaufen - Standort wird gesendet.");
         getLocation();
       } else {
-        console.log("✅ Foto wurde hochgeladen – Standort nicht gesendet.");
+        console.log("✅ Foto wurde hochgeladen - Standort nicht gesendet.");
         fotoHochgeladen = false;
       }
       startTimer();
