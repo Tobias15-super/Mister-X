@@ -11,6 +11,8 @@ function switchView(view) {
   } else if (view === "settings") {
     document.getElementById("settingsView").style.display = "block";
   }
+
+  localStorage.setItem("activeView", view);
 }
 
 // Zurück zur Startauswahl
@@ -18,6 +20,7 @@ function goBack() {
   document.querySelectorAll(".view").forEach(v => v.style.display = "none");
   document.getElementById("startView").style.display = "block";
   clearInterval(countdown);
+  localStorage.removeItem("activeView");
 }
 
 // Mister X Timer & Standort
@@ -81,3 +84,13 @@ document.getElementById("photoInput").addEventListener("change", function () {
     startTimer();
   }
 });
+
+// Beim Laden prüfen, ob eine Ansicht gespeichert ist
+window.onload = () => {
+  const savedView = localStorage.getItem("activeView");
+  if (savedView) {
+    switchView(savedView);
+  } else {
+    document.getElementById("startView").style.display = "block";
+  }
+};
