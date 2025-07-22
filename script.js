@@ -1,6 +1,28 @@
 let countdown;
 let fotoHochgeladen = false;
 let timerListenerRegistered = false;
+let map;
+let marker;
+
+function showPosition(position) {
+  const lat = position.coords.latitude;
+  const lon = position.coords.longitude;
+  document.getElementById("status").innerText = `📍 Standort: ${lat}, ${lon}`;
+
+  if (!map) {
+    map = L.map('map').setView([lat, lon], 15);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+    }).addTo(map);
+
+    marker = L.marker([lat, lon]).addTo(map).bindPopup("📍 Mister X").openPopup();
+  } else {
+    map.setView([lat, lon], 15);
+    marker.setLatLng([lat, lon]);
+  }
+}
+
 
 
 // Ansicht wechseln
