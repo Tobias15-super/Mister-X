@@ -8,8 +8,10 @@ function switchView(view) {
 
   if (view === "misterx") {
     document.getElementById("misterxView").style.display = "block";
+    listenToTimer()
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
+    listenToTimer()
   } else if (view === "settings") {
     document.getElementById("settingsView").style.display = "block";
   }
