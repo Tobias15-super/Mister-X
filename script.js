@@ -153,12 +153,6 @@ function getLocation() {
   }
 }
 
-function showPosition(position) {
-  const lat = position.coords.latitude;
-  const lon = position.coords.longitude;
-  document.getElementById("status").innerText = `📍 Standort: ${lat}, ${lon}`;
-}
-
 function showError(error) {
   document.getElementById("status").innerText = "❌ Fehler beim Abrufen des Standorts.";
 }
