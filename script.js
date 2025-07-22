@@ -17,7 +17,17 @@ function switchView(view) {
   }
 
   localStorage.setItem("activeView", view);
-  listenToTimer()
+
+  firebase.database().ref("timer").once("value").then(snapshot => {
+    const data = snapshot.val();
+    if (data) {
+      const { startTime, duration } = data;
+      updateCountdown(startTime, duration);
+      updateStartButtonState(true);
+    } else {
+      updateStartButtonState(false);
+    }
+  });
 }
 
 // Zurück zur Startauswahl
