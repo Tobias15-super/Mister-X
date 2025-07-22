@@ -1,8 +1,30 @@
+// Ansicht wechseln
+function switchView(view) {
+  document.getElementById("startView").style.display = "none";
+  document.querySelectorAll(".view").forEach(v => v.style.display = "none");
+
+  if (view === "misterx") {
+    document.getElementById("misterxView").style.display = "block";
+    startTimer();
+  } else if (view === "agent") {
+    document.getElementById("agentView").style.display = "block";
+  } else if (view === "settings") {
+    document.getElementById("settingsView").style.display = "block";
+  }
+}
+
+// Zurück zur Startauswahl
+function goBack() {
+  document.querySelectorAll(".view").forEach(v => v.style.display = "none");
+  document.getElementById("startView").style.display = "block";
+  clearInterval(countdown);
+}
+
+// Mister X Timer & Standort
 let fotoHochgeladen = false;
 let countdown;
-let remainingTime = 25 * 60; // 25 Minuten in Sekunden
+let remainingTime = 25 * 60;
 
-// Timer starten
 function startTimer() {
   clearInterval(countdown);
   remainingTime = 25 * 60;
@@ -21,12 +43,11 @@ function startTimer() {
         console.log("✅ Foto wurde hochgeladen – Standort nicht gesendet.");
         fotoHochgeladen = false;
       }
-      startTimer(); // Timer neu starten
+      startTimer();
     }
   }, 1000);
 }
 
-// Anzeige aktualisieren
 function updateTimerDisplay() {
   const minutes = Math.floor(remainingTime / 60);
   const seconds = remainingTime % 60;
@@ -34,7 +55,6 @@ function updateTimerDisplay() {
     `⏳ Zeit bis zum nächsten Posten: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-// Standort abrufen
 function getLocation() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(showPosition, showError);
@@ -47,22 +67,17 @@ function showPosition(position) {
   const lat = position.coords.latitude;
   const lon = position.coords.longitude;
   document.getElementById("status").innerText = `📍 Standort: ${lat}, ${lon}`;
-  // Hier kannst du später den Standort speichern oder senden
 }
 
 function showError(error) {
   document.getElementById("status").innerText = "❌ Fehler beim Abrufen des Standorts.";
 }
 
-// Foto-Upload
 document.getElementById("photoInput").addEventListener("change", function () {
   const file = this.files[0];
   if (file) {
     fotoHochgeladen = true;
     document.getElementById("status").innerText = "📸 Foto ausgewählt!";
-    startTimer(); // Timer neu starten
+    startTimer();
   }
 });
-
-// Seite lädt → Timer starten
-window.onload = startTimer;

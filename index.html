@@ -3,16 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Mister X Tracker</title>
+  <title>Mister X Spiel</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>Mister X</h1>
-  <h2 id="timer">⏳ Zeit bis zum nächsten Posten: 25:00</h2>
-  <button onclick="getLocation()">📍 Standort manuell senden</button>
-  <br><br>
-  <input type="file" accept="image/*" capture="environment" id="photoInput" />
-  <p id="status"></p>
+  <h1>Mister X Spiel</h1>
+
+  <!-- Startauswahl -->
+  <div id="startView">
+    <p>Wer bist du?</p>
+    <button onclick="switchView('misterx')">🕵️ Mister X</button>
+    <button onclick="switchView('agent')">🧭 Agent</button>
+    < -->
+  <div id="misterxView" class="view" style="display:none;">
+    <h2>Mister X</h2>
+    <h3 id="timer">⏳ Zeit bis zum nächsten Posten: 25:00</h3>
+    <button onclick="getLocation()">📍 Standort manuell senden</button>
+    <br><br>
+    <input type="file" accept="image/*" capture="environment" id="photoInput" />
+    <p id="status"></p>
+    <button onclick="goBack()">🔙 Zurück</button>
+  </div>
+
+  <!-- Agenten-Ansicht -->
+  <div id="agentView" class="view" style="display:none;">
+    <h2>Agenten-Ansicht</h2>
+    <p>Hier könnten Standortdaten und Fotos von Mister X angezeigt werden.</p>
+    <button onclick="goBack()">🔙 Zurück</button>
+  </div>
+
+  <!-- Einstellungen -->
+  <div id="settingsView" class="view" style="display:none;">
+    <h2>Einstellungen</h2>
+    <p>Hier kannst du später z. B. Farben, Zeit oder Spielregeln anpassen.</p>
+    <button onclick="goBack()">🔙 Zurück</button>
+  </div>
 
   <script src="script.js"></script>
 </body>
