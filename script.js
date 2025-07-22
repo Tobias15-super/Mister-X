@@ -134,8 +134,11 @@ function updateStartButtonState(isRunning) {
   if (startButton) {
     startButton.disabled = isRunning;
     startButton.style.opacity = isRunning ? "0.5" : "1";
+    startButton.style.pointerEvents = isRunning ? "none" : "auto";
+    startButton.style.cursor = isRunning ? "default" : "pointer";
   }
 }
+
 
 
 // Foto-Upload
