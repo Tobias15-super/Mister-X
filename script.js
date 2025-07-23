@@ -399,17 +399,25 @@ window.onload = () => {
 };
 
 function deleteAllLocations() {
-  if (confirm("Möchtest du wirklich alle gespeicherten Standorte und Fotos löschen?")) {
-    const deleteFn = firebase.functions().httpsCallable("deleteAllPhotos");
-    deleteFn().then(() => {
-      alert("Alle Standorte und Fotos wurden gelöscht.");
-      location.reload();
-    }).catch(error => {
-      console.error("Fehler beim Löschen:", error);
-      alert("Fehler beim Löschen.");
+  if (confirm("Möchtest du wirklich alle gespeicherten Standorte löschen?")) {
+    firebase.database().ref("locations").remove().then(() => {
+      alert("Alle Standorte wurden gelöscht.");
+
+      // Karte und Feed lokal ausblenden
+      if (map) {
+        map.remove();
+        map = null;
+      }
+      document.getElementById("map").style.display = "none";
+      document.getElementById("locationFeed").innerHTML = "";
+      historyMarkers = [];
+
+      // Optional: Status zurücksetzen
+      document.getElementById("status").innerText = "";
     });
   }
 }
+
 
 
 function resetTimer() {
