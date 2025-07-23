@@ -6,6 +6,33 @@ let marker;
 let historyMarkers = [];
 
 
+function uploadToCloudinary(file, callback) {
+  const cloudName = "ddvf141hb";
+  const uploadPreset = "Misterx-upload";
+
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", uploadPreset);
+
+  fetch(`https://api.cloudinary.com/v1_1/ddvf141hb/image/upload`, {
+    method: "POST",
+    body: formData
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.secure_url) {
+        callback(data.secure_url); // Bild-URL zurückgeben
+      } else {
+        alert("Fehler beim Hochladen zu Cloudinary.");
+      }
+    })
+    .catch(error => {
+      console.error("Upload-Fehler:", error);
+      alert("Fehler beim Hochladen zu Cloudinary.");
+    });
+}
+
+
 function sendLocationWithPhoto() {
   const title = document.getElementById("locationTitle").value;
   const file = document.getElementById("photoInput").files[0];
@@ -57,30 +84,30 @@ function sendLocationWithPhoto() {
   }
 }
 
+
 function uploadAndSaveLocation({ lat, lon, title, file, description }) {
   const timestamp = Date.now();
-  const storageRef = firebase.storage().ref(`photos/${timestamp}_${file.name}`);
 
-  storageRef.put(file).then(snapshot => {
-    snapshot.ref.getDownloadURL().then(photoURL => {
-      firebase.database().ref("locations").push({
-        lat,
-        lon,
-        title,
-        photoURL,
-        description,
-        timestamp
-      });
-
-      // Reset UI
-      document.getElementById("locationTitle").value = "";
-      document.getElementById("photoInput").value = "";
-      document.getElementById("manualLocationDescription").value = "";
-      document.getElementById("manualLocationContainer").style.display = "none";
-      document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
+  uploadToCloudinary(file, (photoURL) => {
+    firebase.database().ref("locations").push({
+      lat,
+      lon,
+      title,
+      photoURL,
+      description,
+      timestamp
     });
+
+    // Reset UI
+    document.getElementById("locationTitle").value = "";
+    document.getElementById("photoInput").value = "";
+    document.getElementById("manualLocationDescription").value = "";
+    document.getElementById("manualLocationContainer").style.display = "none";
+    document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
   });
 }
+
+
 
 function showLocationHistory() {
   const dbRef = firebase.database().ref("locations");
