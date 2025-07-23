@@ -30,10 +30,6 @@ function showPosition(position) {
 };
 
 function showLocationHistory() {
-  // Alte Marker entfernen
-  historyMarkers.forEach(marker => map.removeLayer(marker));
-  historyMarkers = [];
-
   // Erst den letzten Standort holen, um Karte zu initialisieren
   firebase.database().ref("locations").limitToLast(1).once("value").then(snapshot => {
     const data_letzte = snapshot.val();
@@ -56,6 +52,9 @@ function showLocationHistory() {
     // Jetzt alle Standorte laden und Marker setzen
     firebase.database().ref("locations").on("value", snapshot => {
       const data = snapshot.val();
+        // Alte Marker entfernen
+      historyMarkers.forEach(marker => map.removeLayer(marker));
+      historyMarkers = [];
       if (!data) return;
 
       Object.values(data).forEach(loc => {
