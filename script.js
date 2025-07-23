@@ -9,6 +9,7 @@ let historyMarkers = [];
 function sendLocationWithPhoto() {
   const title = document.getElementById("locationTitle").value;
   const file = document.getElementById("photoInput").files[0];
+  const manualDescription = document.getElementById("manualLocationDescription").value;
 
   if (!title || !file) {
     alert("Bitte Titel und Foto angeben.");
@@ -16,55 +17,103 @@ function sendLocationWithPhoto() {
   }
 
   if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(position => {
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
-      const timestamp = Date.now();
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const accuracy = position.coords.accuracy;
+        if (accuracy > 100) {
+          document.getElementById("status").innerText =
+            `⚠️ Standort ungenau (±${Math.round(accuracy)} m). Bitte erneut versuchen oder Standortbeschreibung eingeben.`;
+          document.getElementById("manualLocationContainer").style.display = "block";
+          return;
+        }
 
-      const storageRef = firebase.storage().ref(`photos/${timestamp}_${file.name}`);
-      storageRef.put(file).then(snapshot => {
-        snapshot.ref.getDownloadURL().then(photoURL => {
-          firebase.database().ref("locations").push({
-            lat,
-            lon,
-            timestamp,
-            title,
-            photoURL
-          });
-          document.getElementById("locationTitle").value = "";
-          document.getElementById("photoInput").value = "";
+        uploadAndSaveLocation({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+          title,
+          file,
+          description: null
         });
-      });
-    }, showError);
+      },
+      error => {
+        showError(error);
+        document.getElementById("manualLocationContainer").style.display = "block";
+      }
+    );
   } else {
-    alert("Geolocation wird nicht unterstützt.");
+    document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
+    document.getElementById("manualLocationContainer").style.display = "block";
+  }
+
+  // Falls Standort nicht verfügbar, aber Beschreibung vorhanden
+  if (!navigator.geolocation || manualDescription.trim() !== "") {
+    uploadAndSaveLocation({
+      lat: null,
+      lon: null,
+      title,
+      file,
+      description: manualDescription.trim()
+    });
   }
 }
+
+function uploadAndSaveLocation({ lat, lon, title, file, description }) {
+  const timestamp = Date.now();
+  const storageRef = firebase.storage().ref(`photos/${timestamp}_${file.name}`);
+
+  storageRef.put(file).then(snapshot => {
+    snapshot.ref.getDownloadURL().then(photoURL => {
+      firebase.database().ref("locations").push({
+        lat,
+        lon,
+        title,
+        photoURL,
+        description,
+        timestamp
+      });
+
+      // Reset UI
+      document.getElementById("locationTitle").value = "";
+      document.getElementById("photoInput").value = "";
+      document.getElementById("manualLocationDescription").value = "";
+      document.getElementById("manualLocationContainer").style.display = "none";
+      document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
+    });
+  });
+}
+
 
 
 function showPosition(position) {
   const lat = position.coords.latitude;
   const lon = position.coords.longitude;
+  const accuracy = position.coords.accuracy;
   const timestamp = Date.now();
-  
-  firebase.database().ref("locations").push({
-      lat,
-      lon,
-      timestamp
-    });
 
+  if (accuracy > 100) {
+    document.getElementById("status").innerText =
+      "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
+    return;
+  }
+
+  firebase.database().ref("locations").push({
+    lat,
+    lon,
+    timestamp
+  });
 
   if (!map) {
     map = L.map('map').setView([lat, lon], 15);
-
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
     }).addTo(map);
   } else {
     map.setView([lat, lon], 15);
-  };
+  }
+
   showLocationHistory();
-};
+}
+
 
 function showLocationHistory() {
   const dbRef = firebase.database().ref("locations");
@@ -108,14 +157,16 @@ function showLocationHistory() {
       historyMarkers.push(m);
 
       if (loc.title && loc.photoURL) {
-        const entryDiv = document.createElement("div");
-        entryDiv.style.marginBottom = "1em";
-        entryDiv.innerHTML = `
-          <strong>${loc.title}</strong><br>
-          <img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">
-        `;
-        feed.appendChild(entryDiv);
-      }
+      const entryDiv = document.createElement("div");
+      entryDiv.style.marginBottom = "1em";
+      entryDiv.innerHTML = `
+        <strong>${loc.title}</strong><br>
+        ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
+        <img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">
+      `;
+      feed.appendChild(entryDiv);
+    }
+
     });
   });
 }
@@ -260,8 +311,24 @@ function getLocation() {
 };
 
 function showError(error) {
-  document.getElementById("status").innerText = "❌ Fehler beim Abrufen des Standorts.";
-};
+  let message = "❌ Fehler beim Abrufen des Standorts.";
+
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      message += " Zugriff verweigert.";
+      break;
+    case error.POSITION_UNAVAILABLE:
+      message += " Standortinformationen nicht verfügbar.";
+      break;
+    case error.TIMEOUT:
+      message += " Zeitüberschreitung bei der Standortabfrage.";
+      break;
+  }
+
+  message += " Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
+  document.getElementById("status").innerText = message;
+}
+
 
 function updateStartButtonState(isRunning) {
   const startButton = document.getElementById("startTimerButton");
