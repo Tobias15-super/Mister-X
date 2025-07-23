@@ -105,7 +105,7 @@ function uploadAndSaveLocation({ lat, lon, title, file, description }) {
     document.getElementById("manualLocationContainer").style.display = "none";
     document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
   });
-}
+};
 
 
 
@@ -114,55 +114,76 @@ function showLocationHistory() {
 
   dbRef.on("value", snapshot => {
     if (!snapshot.exists()) {
+      if (map) {
+        map.remove();
+        map = null;
+      }
       document.getElementById("map").style.display = "none";
-      historyMarkers = [];
       document.getElementById("locationFeed").innerHTML = "";
+      historyMarkers = [];
       return;
     }
 
     const data = snapshot.val();
-    const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp); // Neueste zuerst
+    const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
 
-    document.getElementById("map").style.display = "block";
-    const lastEntry = entries[0];
-    const lat = lastEntry.lat;
-    const lon = lastEntry.lon;
+    // Karte vorbereiten – nur wenn gültige Koordinaten vorhanden sind
+    const validEntries = entries.filter(e => e.lat != null && e.lon != null);
 
-    if (!map) {
+    if (validEntries.length > 0) {
+      const { lat, lon } = validEntries[0];
+
+      if (map) {
+        map.remove(); // Leaflet-Karte korrekt entfernen
+        map = null;
+      }
+
       map = L.map('map').setView([lat, lon], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap',
       }).addTo(map);
+
+      historyMarkers.forEach(marker => map.removeLayer(marker));
+      historyMarkers = [];
+
+      validEntries.forEach(loc => {
+        const m = L.circleMarker([loc.lat, loc.lon], {
+          radius: 5,
+          color: "blue"
+        }).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
+        historyMarkers.push(m);
+      });
+
+      document.getElementById("map").style.display = "block";
     } else {
-      map.setView([lat, lon], 15);
+      // Keine gültigen Koordinaten → Karte ausblenden
+      if (map) {
+        map.remove();
+        map = null;
+      }
+      document.getElementById("map").style.display = "none";
     }
 
-    historyMarkers.forEach(marker => map.removeLayer(marker));
-    historyMarkers = [];
-
+    // Feed unter der Karte aktualisieren
     const feed = document.getElementById("locationFeed");
     feed.innerHTML = "";
 
     entries.forEach(loc => {
-      const m = L.circleMarker([loc.lat, loc.lon], {
-        radius: 5,
-        color: "blue"
-      }).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
-      historyMarkers.push(m);
-
-      if (loc.title && loc.photoURL) {
-        const entryDiv = document.createElement("div");
-        entryDiv.style.marginBottom = "1em";
-        entryDiv.innerHTML = `
-          <strong>${loc.title}</strong><br>
-          ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
-          <img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">
-        `;
-        feed.appendChild(entryDiv);
-      }
+      const entryDiv = document.createElement("div");
+      entryDiv.style.marginBottom = "1em";
+      entryDiv.innerHTML = `
+        <strong>${loc.title}</strong><br>
+        ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
+        <img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">
+      `;
+      feed.appendChild(entryDiv);
     });
   });
 }
+
+
+
+
 
 // Ansicht wechseln
 function switchView(view) {
