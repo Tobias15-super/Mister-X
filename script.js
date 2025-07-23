@@ -23,7 +23,7 @@ function uploadToCloudinary(file, callback) {
     .then(response => response.json())
     .then(data => {
       if (data.secure_url && data.public_id) {
-        callback({url: data.secure_urlm, publicId: data.public_id}); // Bild-URL zurückgeben
+        callback({url: data.secure_url, publicId: data.public_id}); // Bild-URL zurückgeben
       } else {
         alert("Fehler beim Hochladen zu Cloudinary.");
       }
@@ -90,7 +90,7 @@ function sendLocationWithPhoto() {
 function uploadAndSaveLocation({ lat, lon, title, file, description }) {
   const timestamp = Date.now();
 
-  uploadToCloudinary(file, (photoURL) => {
+  uploadToCloudinary(file, (url, publicId) => {
     firebase.database().ref("locations").push({
       lat,
       lon,
