@@ -54,7 +54,7 @@ function showLocationHistory() {
     }
 
     // Jetzt alle Standorte laden und Marker setzen
-    firebase.database().ref("locations").once("value").then(snapshot => {
+    firebase.database().ref("locations").on("value", snapshot => {
       const data = snapshot.val();
       if (!data) return;
 
