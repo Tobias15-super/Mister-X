@@ -138,16 +138,21 @@ function sendLocationWithPhoto() {
 function uploadAndSaveLocation({ lat, lon, title, file, description }) {
   const timestamp = Date.now();
 
-  uploadToCloudinary(file, (url, publicId) => {
-    firebase.database().ref("locations").push({
+  uploadToCloudinary(file, ({ url, publicId }) => {
+    // Objekt dynamisch bauen, undefined Felder vermeiden
+    const locationData = {
       lat,
       lon,
       title,
       photoURL: url,
-      publicId: publicId,
       description,
       timestamp
-    });
+    };
+    if (publicId !== undefined) {
+      locationData.publicId = publicId;
+    }
+
+    firebase.database().ref("locations").push(locationData);
 
     // Reset UI
     document.getElementById("locationTitle").value = "";
@@ -156,7 +161,7 @@ function uploadAndSaveLocation({ lat, lon, title, file, description }) {
     document.getElementById("manualLocationContainer").style.display = "none";
     document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
   });
-};
+}
 
 
 
