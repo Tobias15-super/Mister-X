@@ -27,7 +27,7 @@ function showPosition(position) {
     map.setView([lat, lon], 15);
     marker.setLatLng([lat, lon]);
   }
-}
+};
 
 function showLocationHistory() {
   historyMarkers.forEach(marker => map.removeLayer(marker));
@@ -44,7 +44,7 @@ function showLocationHistory() {
       historyMarkers.push(m);
     });
   });
-}
+};
 
 
 
@@ -76,7 +76,7 @@ function switchView(view) {
       updateStartButtonState(false);
     }
   });
-}
+};
 
 // Zurück zur Startauswahl
 function goBack() {
@@ -84,7 +84,7 @@ function goBack() {
   document.getElementById("startView").style.display = "block";
   clearInterval(countdown);
   localStorage.removeItem("activeView");
-}
+};
 
 // Timer starten (nur Mister X)
 function startTimer() {
@@ -95,7 +95,7 @@ function startTimer() {
     startTime,
     duration
   });
-}
+};
 
 // Timer aus Firebase lesen
 function listenToTimer() {
@@ -125,7 +125,7 @@ function listenToTimer() {
     updateCountdown(startTime, duration);
     updateStartButtonState(true);
   });
-}
+};
 
 
 
@@ -167,7 +167,7 @@ function updateCountdown(startTime, duration) {
       }
     }
   }, 1000);
-}
+};
 
 
 // Standort abrufen
@@ -177,11 +177,11 @@ function getLocation() {
   } else {
     document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
   }
-}
+};
 
 function showError(error) {
   document.getElementById("status").innerText = "❌ Fehler beim Abrufen des Standorts.";
-}
+};
 
 function updateStartButtonState(isRunning) {
   const startButton = document.getElementById("startTimerButton");
@@ -191,7 +191,7 @@ function updateStartButtonState(isRunning) {
     startButton.style.pointerEvents = isRunning ? "none" : "auto";
     startButton.style.cursor = isRunning ? "default" : "pointer";
   }
-}
+};
 
 
 
@@ -225,7 +225,7 @@ function deleteAllLocations() {
       location.reload(); // Karte neu laden
     });
   }
-}
+};
 
 
 function resetTimer() {
