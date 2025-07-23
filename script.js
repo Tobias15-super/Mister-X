@@ -5,16 +5,6 @@ let map;
 let marker;
 let historyMarkers = [];
 
-messaging.getToken({
-  vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
-}).then((currentToken) => {
-  if (currentToken) {
-    console.log("Token erhalten:", currentToken);
-    // Hier kannst du das Token an deinen Server oder in Firestore senden
-  } else {
-    console.warn("Kein Token erhalten. Benutzer muss Benachrichtigungen erlauben.");
-  }
-});
 
 
 
