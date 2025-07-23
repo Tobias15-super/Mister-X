@@ -33,19 +33,18 @@ function showLocationHistory() {
   const dbRef = firebase.database().ref("locations");
 
   dbRef.on("value", snapshot => {
-    const data = snapshot.val();
-
-    // Wenn keine Daten vorhanden sind → Karte ausblenden
-    if (!data) {
+    if (!snapshot.exists()) {
+      // Wenn der gesamte Pfad gelöscht wurde
       if (map) {
         map.remove(); // Leaflet-Karte entfernen
         map = null;
       }
-      document.getElementById("map").style.display = "none"; // Karte im DOM ausblenden
+      document.getElementById("map").style.display = "none";
+      historyMarkers = [];
       return;
     }
 
-    // Karte wieder einblenden, falls sie versteckt war
+    const data = snapshot.val();
     document.getElementById("map").style.display = "block";
 
     const lastEntry = Object.values(data).slice(-1)[0];
@@ -73,6 +72,7 @@ function showLocationHistory() {
     });
   });
 }
+
 
 
 
