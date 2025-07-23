@@ -26,7 +26,10 @@
   <div id="misterxView" class="view" style="display:none;">
     <h2>Mister X</h2>
     <h3 id="timer">⏳ Zeit bis zum nächsten Posten: --:--</h3>
-    <button onclick="getLocation()">📍 Standort manuell senden</button>
+    <input type="text" id="locationTitle" placeholder="Titel eingeben" />
+    <input type="file" id="photoInput" accept="image/*" />
+    <button onclick="sendLocationWithPhoto()">📍 Neuen Posten mit Foto senden</button>
+
     <br><br>
     <input type="file" accept="image/*" capture="environment" id="photoInput" />
     <p id="status"></p>
@@ -55,6 +58,7 @@
     <button onclick="goBack()">🔙 Zurück</button>
   </div>
   <div id="map" style="width: 100%; height: 600px; margin-top: 1em;"></div>
+  <div id="locationFeed"></div>
 
 
 

@@ -5,6 +5,43 @@ let map;
 let marker;
 let historyMarkers = [];
 
+
+function sendLocationWithPhoto() {
+  const title = document.getElementById("locationTitle").value;
+  const file = document.getElementById("photoInput").files[0];
+
+  if (!title || !file) {
+    alert("Bitte Titel und Foto angeben.");
+    return;
+  }
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(position => {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      const timestamp = Date.now();
+
+      const storageRef = firebase.storage().ref(`photos/${timestamp}_${file.name}`);
+      storageRef.put(file).then(snapshot => {
+        snapshot.ref.getDownloadURL().then(photoURL => {
+          firebase.database().ref("locations").push({
+            lat,
+            lon,
+            timestamp,
+            title,
+            photoURL
+          });
+          document.getElementById("locationTitle").value = "";
+          document.getElementById("photoInput").value = "";
+        });
+      });
+    }, showError);
+  } else {
+    alert("Geolocation wird nicht unterstützt.");
+  }
+}
+
+
 function showPosition(position) {
   const lat = position.coords.latitude;
   const lon = position.coords.longitude;
@@ -34,20 +71,17 @@ function showLocationHistory() {
 
   dbRef.on("value", snapshot => {
     if (!snapshot.exists()) {
-      // Wenn der gesamte Pfad gelöscht wurde
-      if (map) {
-        map.remove(); // Leaflet-Karte entfernen
-        map = null;
-      }
       document.getElementById("map").style.display = "none";
       historyMarkers = [];
+      document.getElementById("locationFeed").innerHTML = "";
       return;
     }
 
     const data = snapshot.val();
-    document.getElementById("map").style.display = "block";
+    const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp); // Neueste zuerst
 
-    const lastEntry = Object.values(data).slice(-1)[0];
+    document.getElementById("map").style.display = "block";
+    const lastEntry = entries[0];
     const lat = lastEntry.lat;
     const lon = lastEntry.lon;
 
@@ -63,15 +97,29 @@ function showLocationHistory() {
     historyMarkers.forEach(marker => map.removeLayer(marker));
     historyMarkers = [];
 
-    Object.values(data).forEach(loc => {
+    const feed = document.getElementById("locationFeed");
+    feed.innerHTML = "";
+
+    entries.forEach(loc => {
       const m = L.circleMarker([loc.lat, loc.lon], {
         radius: 5,
         color: "blue"
       }).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
       historyMarkers.push(m);
+
+      if (loc.title && loc.photoURL) {
+        const entryDiv = document.createElement("div");
+        entryDiv.style.marginBottom = "1em";
+        entryDiv.innerHTML = `
+          <strong>${loc.title}</strong><br>
+          <img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">
+        `;
+        feed.appendChild(entryDiv);
+      }
     });
   });
 }
+
 
 
 
