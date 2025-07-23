@@ -5,6 +5,27 @@ let map;
 let marker;
 let historyMarkers = [];
 
+// Supabase initialisieren
+const supabase = supabase.createClient(
+  'https://DEINE_PROJECT_URL.supabase.co',
+  'DEIN_ANON_KEY'
+);
+
+// Token speichern
+function saveTokenToSupabase(token) {
+  supabase
+    .from('fcm_tokens')
+    .upsert({ token }) // Optional: weitere Felder wie user_id oder device_id
+    .then(({ error }) => {
+      if (error) {
+        console.error("Fehler beim Speichern des Tokens:", error);
+      } else {
+        console.log("Token erfolgreich gespeichert.");
+      }
+    });
+}
+
+
 
 // Service Worker registrieren
 navigator.serviceWorker.register('firebase-messaging-sw.js')
@@ -21,7 +42,7 @@ function requestPermission() {
       }).then((currentToken) => {
         if (currentToken) {
           console.log("Token:", currentToken);
-          alert("Token in der Konsole!");
+          saveTokenToSupabase(currentToken);
         } else {
           console.warn("Kein Token erhalten.");
         }
