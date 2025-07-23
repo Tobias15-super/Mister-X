@@ -30,13 +30,18 @@ function showPosition(position) {
 };
 
 function showLocationHistory() {
-  if (map){
   historyMarkers.forEach(marker => map.removeLayer(marker));
   historyMarkers = []
   firebase.database().ref("locations").once("value").then(snapshot => {
     const data = snapshot.val();
     if (!data) return;
+    if (!map){
+          map = L.map('map').setView([lat, lon], 15);
 
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+    }).addTo(map);
+    }
     Object.values(data).forEach(loc => {
       const m= L.circleMarker([loc.lat, loc.lon], {
         radius: 5,
@@ -45,7 +50,6 @@ function showLocationHistory() {
       historyMarkers.push(m);
     });
   });
-}
 };
 
 
