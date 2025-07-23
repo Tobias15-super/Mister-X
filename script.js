@@ -3,11 +3,19 @@ let fotoHochgeladen = false;
 let timerListenerRegistered = false;
 let map;
 let marker;
+let historyMarkers = [];
 
 function showPosition(position) {
   const lat = position.coords.latitude;
   const lon = position.coords.longitude;
-  document.getElementById("status").innerText = `📍 Standort: ${lat}, ${lon}`;
+  const timestamp = Date.now();
+  
+  firebase.database().ref("locations").push({
+      lat,
+      lon,
+      timestamp
+    });
+
 
   if (!map) {
     map = L.map('map').setView([lat, lon], 15);
@@ -15,13 +23,29 @@ function showPosition(position) {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
     }).addTo(map);
-
-    marker = L.marker([lat, lon]).addTo(map).bindPopup("📍 Mister X").openPopup();
   } else {
     map.setView([lat, lon], 15);
     marker.setLatLng([lat, lon]);
   }
 }
+
+function showLocationHistory() {
+  historyMarkers.forEach(marker => map.removeLayer(marker));
+  historyMarkers = []
+  firebase.database().ref("locations").once("value").then(snapshot => {
+    const data = snapshot.val();
+    if (!data) return;
+
+    Object.values(data).forEach(loc => {
+      const m= L.circleMarker([loc.lat, loc.lon], {
+        radius: 5,
+        color: "blue"
+      }).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
+      historyMarkers.push(m);
+    });
+  });
+}
+
 
 
 
@@ -32,8 +56,10 @@ function switchView(view) {
 
   if (view === "misterx") {
     document.getElementById("misterxView").style.display = "block";
+    showLocationHistory();
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
+    showLocationHistory();
   } else if (view === "settings") {
     document.getElementById("settingsView").style.display = "block";
   }
@@ -191,6 +217,16 @@ window.onload = () => {
 
   listenToTimer();
 };
+
+function deleteAllLocations() {
+  if (confirm("Möchtest du wirklich alle gespeicherten Standorte löschen?")) {
+    firebase.database().ref("locations").remove().then(() => {
+      alert("Alle Standorte wurden gelöscht.");
+      location.reload(); // Karte neu laden
+    });
+  }
+}
+
 
 function resetTimer() {
   firebase.database().ref("timer").remove();
