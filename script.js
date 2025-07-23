@@ -277,26 +277,49 @@ function updateCountdown(startTime, duration) {
     const minutes = Math.floor(remaining / 60);
     const seconds = remaining % 60;
     const timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    const settingsTimer = document.getElementById("settingsTimer");
-    if (settingsTimer) {
-      settingsTimer.innerText = `⏳ Aktueller Timer: ${timeString}`;
-    }
 
-    // Beide Timer-Elemente aktualisieren, wenn vorhanden
+    // Timer-Elemente holen
     const misterxTimer = document.getElementById("timer");
     const agentTimer = document.getElementById("agentTimer");
+    const settingsTimer = document.getElementById("settingsTimer");
 
+    // Funktion zum Timer-Style setzen
+    function setTimerStyle(timerElem) {
+      if (!timerElem) return;
+      if (remaining <= 300 && remaining > 0) {
+        timerElem.style.color = "red";
+        timerElem.style.animation = "blinker 1s linear infinite";
+      } else {
+        timerElem.style.color = "";
+        timerElem.style.animation = "";
+      }
+    }
+
+    // Timer-Text aktualisieren
+    if (settingsTimer) {
+      settingsTimer.innerText = `⏳ Aktueller Timer: ${timeString}`;
+      setTimerStyle(settingsTimer);
+    }
     if (misterxTimer) {
       misterxTimer.innerText = `⏳ Zeit bis zum nächsten Posten: ${timeString}`;
+      setTimerStyle(misterxTimer);
     }
     if (agentTimer) {
       agentTimer.innerText = `⏳ Mister X Timer: ${timeString}`;
+      setTimerStyle(agentTimer);
     }
 
     if (remaining <= 0) {
       clearInterval(countdown);
       updateStartButtonState(false); // Timer ist abgelaufen
-      console.log("⏰ Zeit abgelaufen!");
+      // Timer-Elemente zurücksetzen
+      [misterxTimer, agentTimer, settingsTimer].forEach(elem => {
+        if (elem) {
+          elem.style.color = "";
+          elem.style.animation = "";
+        }
+      });
+      alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
       if (!fotoHochgeladen) {
         getLocation();
       } else {
@@ -304,7 +327,16 @@ function updateCountdown(startTime, duration) {
       }
     }
   }, 1000);
-};
+}
+
+// Blinker-Animation per CSS hinzufügen
+const style = document.createElement('style');
+style.innerHTML = `
+@keyframes blinker {
+  50% { opacity: 0; }
+}
+`;
+document.head.appendChild(style);
 
 // Standort abrufen
 function getLocation() {
