@@ -30,6 +30,7 @@ function showPosition(position) {
 };
 
 function showLocationHistory() {
+  if (map){
   historyMarkers.forEach(marker => map.removeLayer(marker));
   historyMarkers = []
   firebase.database().ref("locations").once("value").then(snapshot => {
@@ -44,6 +45,7 @@ function showLocationHistory() {
       historyMarkers.push(m);
     });
   });
+}
 };
 
 
