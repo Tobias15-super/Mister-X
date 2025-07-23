@@ -5,6 +5,36 @@ let map;
 let marker;
 let historyMarkers = [];
 
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+const cloudinary = require("cloudinary").v2
+admin.initializeApp();
+
+cloudinary.config({
+  cloud_name: "ddvf141hb",
+  api_key: "627784367818346",
+  api_secret: "luIwzx9FLarg2DAPTbhklCWs3PU"
+});
+
+exports.deleteAllPhotos = functions.https.onCall(async (data, context) => {
+  const db = admin.database();
+  const snapshot = await db.ref("locations").once("value");
+  const deletions = [];
+
+  snapshot.forEach(child => {
+    const publicId = child.val().publicId;
+    if (publicId) {
+      deletions.push(cloudinary.uploader.destroy(publicId));
+    }
+  });
+
+  await Promise.all(deletions);
+  await db.ref("locations").remove();
+  return { success: true };
+});
+
+
+
 
 function uploadToCloudinary(file, callback) {
   const cloudName = "ddvf141hb";
@@ -20,8 +50,8 @@ function uploadToCloudinary(file, callback) {
   })
     .then(response => response.json())
     .then(data => {
-      if (data.secure_url) {
-        callback(data.secure_url); // Bild-URL zurückgeben
+      if (data.secure_url && data.public_id) {
+        callback({url: data.secure_urlm, publicId: data.public_id}); // Bild-URL zurückgeben
       } else {
         alert("Fehler beim Hochladen zu Cloudinary.");
       }
@@ -93,7 +123,8 @@ function uploadAndSaveLocation({ lat, lon, title, file, description }) {
       lat,
       lon,
       title,
-      photoURL,
+      photoURL: url,
+      publicId: publicId,
       description,
       timestamp
     });
@@ -396,13 +427,18 @@ window.onload = () => {
 };
 
 function deleteAllLocations() {
-  if (confirm("Möchtest du wirklich alle gespeicherten Standorte löschen?")) {
-    firebase.database().ref("locations").remove().then(() => {
-      alert("Alle Standorte wurden gelöscht.");
-      location.reload(); // Karte neu laden
+  if (confirm("Möchtest du wirklich alle gespeicherten Standorte und Fotos löschen?")) {
+    const deleteFn = firebase.functions().httpsCallable("deleteAllPhotos");
+    deleteFn().then(() => {
+      alert("Alle Standorte und Fotos wurden gelöscht.");
+      location.reload();
+    }).catch(error => {
+      console.error("Fehler beim Löschen:", error);
+      alert("Fehler beim Löschen.");
     });
   }
-};
+}
+
 
 function resetTimer() {
   firebase.database().ref("timer").remove();
