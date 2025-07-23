@@ -7,8 +7,8 @@ let historyMarkers = [];
 
 // Supabase initialisieren
 const supabase = supabase.createClient(
-  'https://DEINE_PROJECT_URL.supabase.co',
-  'DEIN_ANON_KEY'
+  'https://axirbthvnznvhfagduyj.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDI2MTcsImV4cCI6MjA2ODg3ODYxN30.wfJm9e10_iNuYm_r3es_FmKuXBePsxSjIJcVqmSuYjc'
 );
 
 // Token speichern
