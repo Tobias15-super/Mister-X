@@ -215,7 +215,7 @@ window.onload = () => {
     document.getElementById("startView").style.display = "block";
   }
 
-  listenToTimer();
+  listenToTimer(); 
 };
 
 function deleteAllLocations() {
