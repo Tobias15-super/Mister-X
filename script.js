@@ -82,39 +82,6 @@ function uploadAndSaveLocation({ lat, lon, title, file, description }) {
   });
 }
 
-
-
-function showPosition(position) {
-  const lat = position.coords.latitude;
-  const lon = position.coords.longitude;
-  const accuracy = position.coords.accuracy;
-  const timestamp = Date.now();
-
-  if (accuracy > 100) {
-    document.getElementById("status").innerText =
-      "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
-    return;
-  }
-
-  firebase.database().ref("locations").push({
-    lat,
-    lon,
-    timestamp
-  });
-
-  if (!map) {
-    map = L.map('map').setView([lat, lon], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap',
-    }).addTo(map);
-  } else {
-    map.setView([lat, lon], 15);
-  }
-
-  showLocationHistory();
-}
-
-
 function showLocationHistory() {
   const dbRef = firebase.database().ref("locations");
 
@@ -157,28 +124,18 @@ function showLocationHistory() {
       historyMarkers.push(m);
 
       if (loc.title && loc.photoURL) {
-      const entryDiv = document.createElement("div");
-      entryDiv.style.marginBottom = "1em";
-      entryDiv.innerHTML = `
-        <strong>${loc.title}</strong><br>
-        ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
-        <img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">
-      `;
-      feed.appendChild(entryDiv);
-    }
-
+        const entryDiv = document.createElement("div");
+        entryDiv.style.marginBottom = "1em";
+        entryDiv.innerHTML = `
+          <strong>${loc.title}</strong><br>
+          ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
+          <img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">
+        `;
+        feed.appendChild(entryDiv);
+      }
     });
   });
 }
-
-
-
-
-
-
-
-
-
 
 // Ansicht wechseln
 function switchView(view) {
@@ -258,8 +215,6 @@ function listenToTimer() {
   });
 };
 
-
-
 // Countdown anzeigen
 function updateCountdown(startTime, duration) {
   clearInterval(countdown);
@@ -300,11 +255,43 @@ function updateCountdown(startTime, duration) {
   }, 1000);
 };
 
-
 // Standort abrufen
 function getLocation() {
   if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(showPosition, showError);
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        // Diese Funktion wird nur für den Timer verwendet, speichert aber keinen Titel/Foto
+        // Daher wird hier kein Upload durchgeführt, sondern nur ein Dummy-Eintrag erstellt
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const accuracy = position.coords.accuracy;
+        const timestamp = Date.now();
+
+        if (accuracy > 100) {
+          document.getElementById("status").innerText =
+            "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
+          return;
+        }
+
+        firebase.database().ref("locations").push({
+          lat,
+          lon,
+          timestamp
+        });
+
+        if (!map) {
+          map = L.map('map').setView([lat, lon], 15);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+          }).addTo(map);
+        } else {
+          map.setView([lat, lon], 15);
+        }
+
+        showLocationHistory();
+      },
+      showError
+    );
   } else {
     document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
   }
@@ -329,7 +316,6 @@ function showError(error) {
   document.getElementById("status").innerText = message;
 }
 
-
 function updateStartButtonState(isRunning) {
   const startButton = document.getElementById("startTimerButton");
   if (startButton) {
@@ -339,10 +325,6 @@ function updateStartButtonState(isRunning) {
     startButton.style.cursor = isRunning ? "default" : "pointer";
   }
 };
-
-
-
-
 
 // Foto-Upload
 document.getElementById("photoInput").addEventListener("change", function () {
@@ -374,7 +356,6 @@ function deleteAllLocations() {
   }
 };
 
-
 function resetTimer() {
   firebase.database().ref("timer").remove();
   clearInterval(countdown);
@@ -389,4 +370,3 @@ function resetTimer() {
   if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
   if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
 }
-
