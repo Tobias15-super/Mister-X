@@ -227,8 +227,14 @@ function goBack() {
 
 // Timer starten (nur Mister X)
 function startTimer() {
+  // Hole die gewünschte Dauer aus dem Input, Standard 25 Minuten
+  let durationInput = document.getElementById("timerDurationInput");
+  let duration = 25 * 60; // fallback: 25 Minuten in Sekunden
+  if (durationInput && durationInput.value) {
+    duration = parseInt(durationInput.value, 10) * 60;
+    if (isNaN(duration) || duration < 1) duration = 60;
+  }
   const startTime = Date.now();
-  const duration = 25 * 60; // 25 Minuten in Sekunden
 
   firebase.database().ref("timer").set({
     startTime,

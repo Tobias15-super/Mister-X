@@ -49,16 +49,16 @@
 
   <!-- Einstellungen -->
   <div id="settingsView" class="view" style="display:none;">
-    <h2>Einstellungen</h2>
-    <p>Hier kannst du später z.B. Farben, Zeit oder Spielregeln anpassen.</p>
-    <h3 id="settingsTimer">⏳ Aktueller Timer: --:--</h3>
-    <button onclick="startTimer()">▶️ Timer starten</button>
-    <button onclick="resetTimer()">⏹️ Timer stoppen & zurücksetzen</button>
-    <button onclick="deleteAllLocations()">📍 Alle Standorte und Einträge löschen</button>
-
-
-    <button onclick="goBack()">🔙 Zurück</button>
-  </div>
+  <h2>Einstellungen</h2>
+  <p>Hier kannst du später z.B. Farben, Zeit oder Spielregeln anpassen.</p>
+  <h3 id="settingsTimer">⏳ Aktueller Timer: --:--</h3>
+  <label for="timerDurationInput">Timer-Dauer (Minuten):</label>
+  <input type="number" id="timerDurationInput" min="1" max="120" value="25" style="width:60px;" />
+  <button onclick="startTimer()">▶️ Timer starten</button>
+  <button onclick="resetTimer()">⏹️ Timer stoppen & zurücksetzen</button>
+  <button onclick="deleteAllLocations()">📍 Alle Standorte und Einträge löschen</button>
+  <button onclick="goBack()">🔙 Zurück</button>
+</div>
   <div id="map" style="width: 100%; height: 600px; margin-top: 1em;"></div>
   <div id="locationFeed"></div>
 
