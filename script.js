@@ -34,14 +34,24 @@ function showLocationHistory() {
 
   dbRef.on("value", snapshot => {
     const data = snapshot.val();
-    if (!data) return;
 
-    // Letzten Eintrag holen, um Karte zu initialisieren
+    // Wenn keine Daten vorhanden sind → Karte ausblenden
+    if (!data) {
+      if (map) {
+        map.remove(); // Leaflet-Karte entfernen
+        map = null;
+      }
+      document.getElementById("map").style.display = "none"; // Karte im DOM ausblenden
+      return;
+    }
+
+    // Karte wieder einblenden, falls sie versteckt war
+    document.getElementById("map").style.display = "block";
+
     const lastEntry = Object.values(data).slice(-1)[0];
     const lat = lastEntry.lat;
     const lon = lastEntry.lon;
 
-    // Karte initialisieren, falls noch nicht vorhanden
     if (!map) {
       map = L.map('map').setView([lat, lon], 15);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -51,11 +61,9 @@ function showLocationHistory() {
       map.setView([lat, lon], 15);
     }
 
-    // Alte Marker entfernen
     historyMarkers.forEach(marker => map.removeLayer(marker));
     historyMarkers = [];
 
-    // Neue Marker setzen
     Object.values(data).forEach(loc => {
       const m = L.circleMarker([loc.lat, loc.lon], {
         radius: 5,
@@ -65,6 +73,7 @@ function showLocationHistory() {
     });
   });
 }
+
 
 
 
