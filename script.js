@@ -27,6 +27,7 @@ function showPosition(position) {
     map.setView([lat, lon], 15);
     marker.setLatLng([lat, lon]);
   }
+  showLocationHistory
 };
 
 function showLocationHistory() {
