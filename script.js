@@ -49,16 +49,18 @@ function showLocationHistory() {
       map.setView([lat, lon], 15);
     }
 
-    // Jetzt alle Standorte laden und Marker setzen
+    // Jetzt auf Standortänderungen hören
     firebase.database().ref("locations").on("value", snapshot => {
       const data = snapshot.val();
-        // Alte Marker entfernen
+
+      // Alte Marker entfernen
       historyMarkers.forEach(marker => map.removeLayer(marker));
       historyMarkers = [];
-      if (!data) return;
 
-      Object.values(data).forEach(loc => {
-        const m = L.circleMarker([loc.lat, loc.lon], {
+      if (!data) {
+        // Wenn keine Standorte mehr vorhanden sind, Karte entfernen
+        if (map) {
+          map.remove(); const m = L.circleMarker([loc.lat, loc.lon], {
           radius: 5,
           color: "blue"
         }).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
@@ -67,6 +69,7 @@ function showLocationHistory() {
     });
   });
 }
+
 
 
 
