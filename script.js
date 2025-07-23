@@ -6,14 +6,14 @@ let marker;
 let historyMarkers = [];
 
 // Supabase initialisieren
-const supabase = supabase.createClient(
+const supabaseClient = supabase.createClient(
   'https://axirbthvnznvhfagduyj.supabase.co',
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDI2MTcsImV4cCI6MjA2ODg3ODYxN30.wfJm9e10_iNuYm_r3es_FmKuXBePsxSjIJcVqmSuYjc'
 );
 
 // Token speichern
 function saveTokenToSupabase(token) {
-  supabase
+  supabaseClient
     .from('fcm_tokens')
     .upsert({ token }) // Optional: weitere Felder wie user_id oder device_id
     .then(({ error }) => {
