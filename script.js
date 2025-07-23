@@ -26,8 +26,8 @@ function showPosition(position) {
   } else {
     map.setView([lat, lon], 15);
     marker.setLatLng([lat, lon]);
-  }
-  showLocationHistory
+  };
+  showLocationHistory();
 };
 
 function showLocationHistory() {
