@@ -30,12 +30,14 @@ function showPosition(position) {
 };
 
 function showLocationHistory() {
-  // Erst den letzten Standort holen, um Karte zu initialisieren
-  firebase.database().ref("locations").limitToLast(1).once("value").then(snapshot => {
-    const data_letzte = snapshot.val();
-    if (!data_letzte) return;
+  const dbRef = firebase.database().ref("locations");
 
-    const lastEntry = Object.values(data_letzte)[0];
+  dbRef.on("value", snapshot => {
+    const data = snapshot.val();
+    if (!data) return;
+
+    // Letzten Eintrag holen, um Karte zu initialisieren
+    const lastEntry = Object.values(data).slice(-1)[0];
     const lat = lastEntry.lat;
     const lon = lastEntry.lon;
 
@@ -49,26 +51,22 @@ function showLocationHistory() {
       map.setView([lat, lon], 15);
     }
 
-    // Jetzt auf Standortänderungen hören
-    firebase.database().ref("locations").on("value", snapshot => {
-      const data = snapshot.val();
+    // Alte Marker entfernen
+    historyMarkers.forEach(marker => map.removeLayer(marker));
+    historyMarkers = [];
 
-      // Alte Marker entfernen
-      historyMarkers.forEach(marker => map.removeLayer(marker));
-      historyMarkers = [];
-
-      if (!data) {
-        // Wenn keine Standorte mehr vorhanden sind, Karte entfernen
-        if (map) {
-          map.remove(); const m = L.circleMarker([loc.lat, loc.lon], {
-          radius: 5,
-          color: "blue"
-        }).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
-        historyMarkers.push(m);
-      });
+    // Neue Marker setzen
+    Object.values(data).forEach(loc => {
+      const m = L.circleMarker([loc.lat, loc.lon], {
+        radius: 5,
+        color: "blue"
+      }).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
+      historyMarkers.push(m);
     });
   });
 }
+
+
 
 
 
