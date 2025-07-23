@@ -215,7 +215,7 @@ window.onload = () => {
   } else {
     document.getElementById("startView").style.display = "block";
   }
-
+  showLocationHistory();
   listenToTimer(); 
 };
 
