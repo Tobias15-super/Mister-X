@@ -11,6 +11,21 @@ const supabaseClient = supabase.createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDI2MTcsImV4cCI6MjA2ODg3ODYxN30.wfJm9e10_iNuYm_r3es_FmKuXBePsxSjIJcVqmSuYjc'
 );
 
+serve(async (req) => {
+  console.log("📥 Anfrage empfangen");
+
+  let data;
+  try {
+    data = await req.json();
+    console.log("📦 JSON empfangen:", data);
+  } catch {
+    console.error("❌ Ungültiges JSON");
+    return new Response(JSON.stringify({ error: "Invalid or missing JSON body" }), { status: 400 });
+  }
+
+  // ... Rest deines Codes ...
+});
+
 // Token speichern
 function saveTokenToSupabase(token) {
   supabaseClient
