@@ -34,6 +34,7 @@ async function createJWT(): Promise<string> {
 // Access Token holen
 async function getAccessToken(): Promise<string> {
   const jwt = await createJWT();
+  console.log("🔐 JWT:", jwt); // JWT anzeigen
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -44,9 +45,13 @@ async function getAccessToken(): Promise<string> {
     }),
   });
 
-  const data = await res.json();
+  const text = await res.text();
+  console.log("🔍 Access Token Response:", text); // Antwort von Google anzeigen
+
+  const data = JSON.parse(text);
   return data.access_token;
 }
+
 
 // Hauptfunktion
 serve(async (req) => {
