@@ -116,9 +116,5 @@ const results = await Promise.all(tokenList.map(async (token: string) => {
   return { token, status: res.status, body: await res.text() };
 }));
 
-return new Response(JSON.stringify({ ok: true, results }), { status: 200 });
-
-  return new Response(JSON.stringify({ ok: true }), { status: 200 });
-});
-
+return new Response(JSON.stringify({ ok: true, results }), { status: 200 });})
 
