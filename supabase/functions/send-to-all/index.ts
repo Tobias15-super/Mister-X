@@ -18,7 +18,9 @@ async function createJWT(): Promise<string> {
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + 3600;
 
-  const key = await importPKCS8(SERVICE_ACCOUNT.private_key, "RS256");
+  const rawKey = SERVICE_ACCOUNT.private_key.replace(/\\n/g, "\n");
+  const key = await importPKCS8(rawKey, "RS256");
+
 
   return await new SignJWT({
     iss: SERVICE_ACCOUNT.client_email,
