@@ -30,7 +30,7 @@ function saveTokenToSupabase(token) {
 
 
 // Service Worker registrieren
-navigator.serviceWorker.register('Mister-X/firebase-messaging-sw.js')
+navigator.serviceWorker.register('firebase-messaging-sw.js')
   .then((registration) => {
     messaging.useServiceWorker(registration);
   });
