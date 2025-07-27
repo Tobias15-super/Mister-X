@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { SignJWT } from "https://deno.land/x/jose@v5.0.5/index.ts";
-import { importPKCS8 } from "https://deno.land/x/jose@v5.0.5/key/import.ts";
+import { SignJWT, importPKCS8 } from "https://deno.land/x/jose@v4.13.1/index.ts";
+
+
+console.log("🚀 send-to-all/index.ts wurde geladen");
 
 // 🔐 Service Account aus Umgebungsvariablen laden
 const SERVICE_ACCOUNT = {
@@ -22,16 +24,18 @@ async function createJWT(): Promise<string> {
   const key = await importPKCS8(rawKey, "RS256");
 
 
-  return await new SignJWT({
-    iss: SERVICE_ACCOUNT.client_email,
-    scope: "https://www.googleapis.com/auth/firebase.messaging",
-    aud: "https://oauth2.googleapis.com/token",
-    iat,
-    exp,
+return await new SignJWT({
+    scope: "https://www.googleapis.com/auth/firebase.messaging"
   })
-    .setProtectedHeader({ alg: "RS256" })
-    .sign(key);
+  .setProtectedHeader({ alg: "RS256" })
+  .setIssuedAt(iat)
+  .setExpirationTime(exp)
+  .setAudience("https://oauth2.googleapis.com/token")
+  .setIssuer(SERVICE_ACCOUNT.client_email)
+  .sign(key);
+
 }
+
 
 // Access Token holen
 async function getAccessToken(): Promise<string> {
@@ -65,6 +69,8 @@ serve(async (req) => {
   }
 
   const { title, body } = data;
+  console.log("📥 Neue Anfrage:", req.method, req.url);
+
 
   const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens`, {
     headers: {
@@ -79,6 +85,8 @@ serve(async (req) => {
     return new Response(JSON.stringify({ error: "No tokens found" }), { status: 200 });
   }
 
+  console.log("🔍 Header:", [...req.headers.entries()]);
+
   const accessToken = await getAccessToken();
 
   const results = await Promise.all(tokenList.map(async (token: string) => {
@@ -89,11 +97,17 @@ serve(async (req) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        message: {
-          notification: { title, body },
-          token
-        }
-      })
+  message: {
+    notification: { title, body },
+    token,
+    webpush: {
+      fcm_options: {
+        link: "https://tobias15-super.github.io/Mister-X/"
+      }
+    }
+  }
+})
+
     });
     return { token, status: res.status, body: await res.text() };
   }));
