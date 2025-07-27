@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.203.0/http/server.ts";
+import { serve } from "serve";
 
 
 
@@ -79,8 +79,8 @@ serve(async (req) => {
 
   const { title, body } = data;
 
-  const supabaseUrl = Deno.env.get("https://axirbthvnznvhfagduyj.supabase.co")!;
-  const supabaseKey = Deno.env.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MzMwMjYxNywiZXhwIjoyMDY4ODc4NjE3fQ.1N-VomgkBBX5Xkra92tw4ClvMiU7bDLodOxljsqNg-0")!;
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens`, {
     headers: {
@@ -99,21 +99,26 @@ serve(async (req) => {
   const accessToken = await getAccessToken();
 
   // Nachrichten an alle Tokens senden
-  await Promise.all(tokenList.map(async (token: string) => {
-    await fetch(`https://fcm.googleapis.com/v1/projects/${SERVICE_ACCOUNT.project_id}/messages:send`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        message: {
-          notification: { title, body },
-          token
-        }
-      })
-    });
-  }));
+const results = await Promise.all(tokenList.map(async (token: string) => {
+  const res = await fetch(`https://fcm.googleapis.com/v1/projects/${SERVICE_ACCOUNT.project_id}/messages:send`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: {
+        notification: { title, body },
+        token
+      }
+    })
+  });
+  return { token, status: res.status, body: await res.text() };
+}));
+
+return new Response(JSON.stringify({ ok: true, results }), { status: 200 });
 
   return new Response(JSON.stringify({ ok: true }), { status: 200 });
 });
+
+
