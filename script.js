@@ -28,9 +28,10 @@ serve(async (req) => {
 
 // Token speichern
 function saveTokenToSupabase(token) {
+  const deviceName = prompt("Wie soll dieses Gerät heißen?") || "Unbekannt";
   supabaseClient
     .from('fcm_tokens')
-    .upsert({ token }) // Optional: weitere Felder wie user_id oder device_id
+    .upsert({ token, device_name: deviceName })
     .then(({ error }) => {
       if (error) {
         console.error("Fehler beim Speichern des Tokens:", error);
