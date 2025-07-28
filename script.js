@@ -311,20 +311,26 @@ function resetAllMisterXRollen() {
 }
 
 async function canSwitchToMisterX() {
-  /*
-  if (localStorage.getItem("activeView")==="misterx"){
-    return true;
-  }
-    */
-  const snapshot = await firebase.database().ref("roles").once("value");
-  const roles = snapshot.val();
-  for (const id in roles){
-    if (roles[id].role === "misterx"){
-      return false;
+  // 1. max_Team_X auslesen
+  const maxSnapshot = await firebase.database().ref("settings/max_Team_X").once("value");
+  const maxMisterX = maxSnapshot.exists() ? maxSnapshot.val() : 1;
+
+  // 2. Rollen auslesen
+  const rolesSnapshot = await firebase.database().ref("roles").once("value");
+  const roles = rolesSnapshot.val();
+
+  // 3. Mister-X-Zähler
+  let misterXCount = 0;
+  for (const id in roles) {
+    if (roles[id].role === "misterx") {
+      misterXCount++;
     }
   }
-  return true;
+
+  // 4. Vergleich
+  return misterXCount < maxMisterX;
 }
+
 
 // Ansicht wechseln
 async function switchView(view) {
