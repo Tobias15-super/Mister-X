@@ -304,6 +304,11 @@ function resetAllMisterXRollen() {
 }
 
 async function canSwitchToMisterX() {
+  /*
+  if (localStorage.getItem("activeView")==="misterx"){
+    return true;
+  }
+    */
   const snapshot = await firebase.database().ref("roles").once("value");
   const roles = snapshot.val();
   for (const id in roles){
@@ -316,18 +321,20 @@ async function canSwitchToMisterX() {
 
 // Ansicht wechseln
 async function switchView(view) {
-  if (view==="misterx"){
-    const allowed = await canSwitchToMisterX();
-    if (!allowed){
-      alert("Es ist bereits ein Gerät als Mister X angemeldet!")
-      return;
+  if (view !== localStorage.getItem("activeView")){
+    if (view==="misterx"){
+      const allowed = await canSwitchToMisterX();
+      if (!allowed){
+        alert("Es ist bereits ein Gerät als Mister X angemeldet!")
+        return;
+      }
     }
+    const deviceId = getDeviceId();
+    firebase.database().ref("roles/" + deviceId).set({
+      role: view,
+      timestamp: Date.now(),
+    });
   }
-  const deviceId = getDeviceId();
-  firebase.database().ref("roles/" + deviceId).set({
-    role: view,
-    timestamp: Date.now(),
-  });
 
 
   document.getElementById("startView").style.display = "none";
