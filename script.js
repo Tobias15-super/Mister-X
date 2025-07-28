@@ -33,14 +33,18 @@ function saveTokenToSupabase(token) {
     });
 }
 
-function getDeviceId(){
+function getDeviceId() {
   let id = localStorage.getItem("deviceId");
-  if (!id){
+  while (!id || id.trim() === "") {
     id = prompt("Bitte gib deinen Namen ein");
-    localStorage.setItem("deviceId", id);
+    if (id === null) {
+      alert("Du musst einen Namen eingeben, um fortzufahren.");
+    }
   }
-  return id;
+  localStorage.setItem("deviceId", id.trim());
+  return id.trim();
 }
+
 
 // Service Worker registrieren
 navigator.serviceWorker.register('firebase-messaging-sw.js')
