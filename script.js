@@ -460,7 +460,11 @@ function getLocation() {
 
         if (accuracy > 100) {
           document.getElementById("status").innerText =
-            "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
+            "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
+            standortbeschreibung = prompt("Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben)") || "Unbekannt";
+            firebase.database().ref("locations").push({
+              description: standortbeschreibung.trim()
+            })
           return;
         }
 
