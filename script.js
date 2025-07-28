@@ -60,7 +60,8 @@ function requestPermission() {
 // Optional: Nachrichten empfangen, wenn Seite offen ist
 messaging.onMessage((payload) => {
   console.log("Nachricht empfangen:", payload);
-  alert("Nachricht: " + payload.notification.title);
+  const { title, body } = payload.notification;
+  alert(`${title}\n\n${body}`);
 });
 
 
