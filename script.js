@@ -326,6 +326,7 @@ async function switchView(view) {
       const allowed = await canSwitchToMisterX();
       if (!allowed){
         alert("Es ist bereits ein Gerät als Mister X angemeldet!")
+        goBack();
         return;
       }
     }
@@ -334,6 +335,13 @@ async function switchView(view) {
       role: view,
       timestamp: Date.now(),
     });
+
+    if (view==="settings"){
+      if (prompt("Passwort eingeben!")!=="1001"){
+        goBack();
+        return;
+      }
+    }
   }
 
 
