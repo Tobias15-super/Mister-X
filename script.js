@@ -58,7 +58,7 @@ function requestPermission() {
         if (currentToken) {
           const deviceId = getDeviceId();
           console.log("Token:", currentToken);
-          firebase.database().ref("tokens/" + deviceId).set(token);
+          firebase.database().ref("tokens/" + deviceId).set(currentToken);
           saveTokenToSupabase(currentToken);
           localStorage.setItem("nachrichtAktiv",true);
           document.getElementById("permissionButton").style.display="none";
