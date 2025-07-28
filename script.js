@@ -363,6 +363,7 @@ async function switchView(view) {
     showLocationHistory();
   } else if (view === "settings") {
     document.getElementById("settingsView").style.display = "block";
+    load_max_mister_x();
   }
 
   localStorage.setItem("activeView", view);
@@ -657,4 +658,40 @@ function resetTimer() {
   if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
   if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
   sendNotification("Timer zurückgesetzt","Der Timer wurde zurückgesetzt!");
+}
+
+function save_max_mister_x() {
+  const anzahl = document.getElementById("max_Team_X").value;
+
+  const settingsRef = firebase.database().ref("settings");
+
+  // Erst löschen
+  settingsRef.child("max_Team_X").remove()
+    .then(() => {
+      // Dann neuen Wert setzen
+      return settingsRef.child("max_Team_X").set(Number(anzahl));
+    })
+    .then(() => {
+      console.log("max_Team_X erfolgreich gespeichert:", anzahl);
+    })
+    .catch((error) => {
+      console.error("Fehler beim Speichern von max_Team_X:", error);
+    });
+}
+
+function load_max_mister_x() {
+  const input = document.getElementById("max_Team_X");
+
+  firebase.database().ref("settings/max_Team_X").once("value")
+    .then((snapshot) => {
+      if (snapshot.exists()) {
+        input.value = snapshot.val();
+        console.log("max_Team_X geladen:", snapshot.val());
+      } else {
+        console.warn("Kein max_Team_X-Wert gefunden.");
+      }
+    })
+    .catch((error) => {
+      console.error("Fehler beim Laden von max_Team_X:", error);
+    });
 }

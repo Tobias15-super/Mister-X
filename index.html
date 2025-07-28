@@ -55,6 +55,8 @@
   <h3 id="settingsTimer">⏳ Aktueller Timer: --:--</h3>
   <label for="timerDurationInput">Timer-Dauer (Minuten):</label>
   <input type="number" id="timerDurationInput" min="1" max="120" value="25" style="width:60px;" />
+  <label for="max_Team_X" onclick="save_max_mister_x()">Maximale Mister-X-Mitglieder:</label>
+  <input type="number" id="max_Team_X" min="1" max="10" value="1" style="width:60px;" />
   <button onclick="startTimer()">▶️ Timer starten</button>
   <button onclick="resetTimer()">⏹️ Timer stoppen & zurücksetzen</button>
   <button onclick="deleteAllLocations()">📍 Alle Standorte und Einträge löschen</button>
