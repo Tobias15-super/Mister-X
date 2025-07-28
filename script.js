@@ -23,7 +23,7 @@ function saveTokenToSupabase(token) {
 
   supabaseClient
     .from('fcm_tokens')
-    .upsert({ token, device_name: deviceName })
+    .upsert({ token, device_name: device_name })
     .then(({ error }) => {
       if (error) {
         console.error("Fehler beim Speichern des Tokens:", error);
