@@ -207,6 +207,7 @@ function uploadAndSaveLocation({ lat, lon, title, file, description }) {
     document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
 
     startTimer();
+    sendNotification("Mister X hat sich gezeigt!", title + description)
   });
 }
 
