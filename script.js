@@ -325,7 +325,7 @@ function startTimer() {
   firebase.database().ref("timer").set({
     startTime,
     duration,
-    duration,
+    durationInput: duration,
   });
 }
 
@@ -434,7 +434,7 @@ function setTimerInputFromFirebase(){
     } else {
       timerInputElem.value = 25;
     }
-  })
+  });
 }
 
 // Blinker-Animation per CSS hinzufügen
@@ -473,15 +473,6 @@ function getLocation() {
           lon,
           timestamp
         });
-
-        if (!map) {
-          map = L.map('map').setView([lat, lon], 15);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap',
-          }).addTo(map);
-        } else {
-          map.setView([lat, lon], 15);
-        }
 
         showLocationHistory();
       },
