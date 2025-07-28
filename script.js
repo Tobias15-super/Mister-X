@@ -214,6 +214,7 @@ function showLocationHistory() {
     }
 
     const data = snapshot.val();
+    // 1.) Chronologisch sortieren: Neueste zuerst
     const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
 
     // Karte vorbereiten – nur wenn gültige Koordinaten vorhanden sind
@@ -258,12 +259,19 @@ function showLocationHistory() {
     feed.innerHTML = "";
 
     entries.forEach(loc => {
+      // 2.) Titel setzen: "Automatischer Standort" wenn kein Titel vorhanden
+      const entryTitle = loc.title ? loc.title : "Automatischer Standort";
+      // 4.) Uhrzeit zum Titel
+      const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
+      // 3.) Foto nur anzeigen, wenn vorhanden
+      const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">` : "";
+
       const entryDiv = document.createElement("div");
       entryDiv.style.marginBottom = "1em";
       entryDiv.innerHTML = `
-        <strong>${loc.title}</strong><br>
+        <strong>${entryTitle} (${entryTime})</strong><br>
         ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
-        <img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">
+        ${photoHTML}
       `;
       feed.appendChild(entryDiv);
     });
