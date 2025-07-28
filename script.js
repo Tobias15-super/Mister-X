@@ -13,7 +13,7 @@ const supabaseClient = supabase.createClient(
 
 // Token speichern
 function saveTokenToSupabase(token) {
-  const device_name = ""
+  let device_name = ""
   if (localStorage.getItem("deviceId")){
     device_name = localStorage.getItem("deviceId")
   } else {
