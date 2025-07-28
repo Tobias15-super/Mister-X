@@ -64,6 +64,29 @@ messaging.onMessage((payload) => {
   alert(`${title}\n\n${body}`);
 });
 
+async function sendNotification(title, body, tokens = null, attempt = 1, maxAttempts = 30) {
+  const res = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ title, body, tokens })
+  });
+
+  const result = await res.json();
+  console.log(`📦 Versuch ${attempt}:`, result);
+
+  if (result.failedTokens && result.failedTokens.length > 0 && attempt < maxAttempts) {
+    console.log(`🔁 Wiederhole für ${result.failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
+    setTimeout(() => {
+      sendNotification(title, body, result.failedTokens, attempt + 1, maxAttempts);
+    }, 10000);
+  } else if (attempt >= maxAttempts) {
+    console.warn("⏱️ Max. Anzahl an Versuchen erreicht.");
+  } else {
+    console.log("✅ Alle Benachrichtigungen erfolgreich gesendet.");
+  }
+}
 
 
 function uploadToCloudinary(file, callback) {
