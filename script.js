@@ -294,7 +294,7 @@ function switchView(view) {
   firebase.database().ref("timer").once("value").then(snapshot => {
     const data = snapshot.val();
     if (data) {
-      const { startTime, duration } = data;
+      const { startTime, duration, durationInput } = data;
       updateCountdown(startTime, duration);
       updateStartButtonState(true);
     } else {
@@ -324,7 +324,8 @@ function startTimer() {
 
   firebase.database().ref("timer").set({
     startTime,
-    duration
+    duration,
+    duration,
   });
 }
 
@@ -352,7 +353,7 @@ function listenToTimer() {
       return;
     }
 
-    const { startTime, duration } = data;
+    const { startTime, duration, durationInput } = data;
     updateCountdown(startTime, duration);
     updateStartButtonState(true);
   });
@@ -420,6 +421,20 @@ function updateCountdown(startTime, duration) {
       }
     }
   , 1000);
+}
+
+function setTimerInputFromFirebase(){
+  firebase.database().ref("timer").once("value").then(snapshot => {
+    const data = snapshot.val();
+    const timerInputElem = document.getElementById("timerDurationInput");
+    if (!timerInputElem) return;
+
+    if (data && typeof data.durationInput === "number"){
+      timerInputElem.value = Math.floor(data.durationInput/60);
+    } else {
+      timerInputElem.value = 25;
+    }
+  })
 }
 
 // Blinker-Animation per CSS hinzufügen
@@ -521,6 +536,7 @@ window.onload = () => {
   }
   showLocationHistory();
   listenToTimer(); 
+  setTimerInputFromFirebase();
 };
 
 function deleteAllLocations() {
