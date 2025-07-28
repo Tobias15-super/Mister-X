@@ -327,22 +327,7 @@ function startTimer() {
     duration
   });
 
-  // Nachricht an alle schicken
-  fetch("https://<YOUR_PROJECT_REF>.functions.supabase.co/send-to-all", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      title: "Neuer Timer gestartet",
-      body: `Der Timer läuft jetzt für ${Math.floor(duration/60)} Minuten!`
-    })
-  })
-  .then(res => res.json())
-  .then(data => {
-    console.log("Push-Nachricht gesendet:", data);
-  })
-  .catch(err => {
-    console.error("Fehler beim Senden der Push-Nachricht:", err);
-  });
+  sendNotification("Timer gestartet","der Timer wurde gestartet!");
 }
 
 // Timer aus Firebase lesen
