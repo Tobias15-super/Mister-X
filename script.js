@@ -614,7 +614,7 @@ window.onload = () => {
 };
 
 function showPermissionButton() {
-  if (localStorage.getItem("nachrichtAktiv")){
+  if (!localStorage.getItem("nachrichtAktiv")){
     document.getElementById("permissionButton").style.display="block";
   }
 }
