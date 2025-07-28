@@ -61,7 +61,7 @@ function requestPermission() {
 messaging.onMessage((payload) => {
   console.log("Nachricht empfangen:", payload);
   const { title, body } = payload.notification;
-  alert(`${title}\n\n${body}`);
+  alert(`${title}\n${body}`);
 });
 
 async function sendNotification(title, body, tokens = null, attempt = 1, maxAttempts = 30) {
@@ -191,6 +191,8 @@ function uploadAndSaveLocation({ lat, lon, title, file, description }) {
     document.getElementById("manualLocationDescription").value = "";
     document.getElementById("manualLocationContainer").style.display = "none";
     document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
+
+    startTimer();
   });
 }
 
@@ -310,8 +312,6 @@ function goBack() {
 };
 
 // Timer starten (nur Mister X)
-// ...existing code...
-
 function startTimer() {
   // Hole die gewünschte Dauer aus dem Input, Standard 25 Minuten
   let durationInput = document.getElementById("timerDurationInput");
@@ -326,8 +326,6 @@ function startTimer() {
     startTime,
     duration
   });
-
-  sendNotification("Timer gestartet","der Timer wurde gestartet!");
 }
 
 // Timer aus Firebase lesen
@@ -368,10 +366,14 @@ function updateCountdown(startTime, duration) {
     const elapsed = Math.floor((now - startTime) / 1000);
     const remaining = duration - elapsed;
 
+    let timeString;
+    if (remaining < 0) {
+      timeString = "abgelaufen";
+    } else {
     const minutes = Math.floor(remaining / 60);
     const seconds = remaining % 60;
-    const timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
+    timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
     // Timer-Elemente holen
     const misterxTimer = document.getElementById("timer");
     const agentTimer = document.getElementById("agentTimer");
@@ -414,13 +416,10 @@ function updateCountdown(startTime, duration) {
         }
       });
       alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
-      if (!fotoHochgeladen) {
-        getLocation();
-      } else {
-        fotoHochgeladen = false;
+      getLocation();
       }
     }
-  }, 1000);
+  , 1000);
 }
 
 // Blinker-Animation per CSS hinzufügen
@@ -559,4 +558,5 @@ function resetTimer() {
   if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
   if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
   if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
+  sendNotification("Timer zurückgesetzt","Der Timer wurde zurückgesetzt!");
 }
