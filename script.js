@@ -369,10 +369,10 @@ function goBack() {
   document.querySelectorAll(".view").forEach(v => v.style.display = "none");
   document.getElementById("startView").style.display = "block";
   clearInterval(countdown);
-  localStorage.setItem("activeView","Start");
+  localStorage.setItem("activeView","start");
     const deviceId = getDeviceId();
   firebase.database().ref("roles/" + deviceId).set({
-    role: view,
+    role: "start",
     timestamp: Date.now(),
   });
 };
