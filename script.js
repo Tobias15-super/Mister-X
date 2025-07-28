@@ -602,7 +602,7 @@ document.getElementById("photoInput").addEventListener("change", function () {
 // Beim Laden prüfen
 window.onload = () => {
   const savedView = localStorage.getItem("activeView");
-  if (savedView) {
+  if (savedView && savedView!=="start") {
     switchView(savedView);
   } else {
     document.getElementById("startView").style.display = "block";
