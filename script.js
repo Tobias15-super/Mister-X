@@ -11,10 +11,16 @@ const supabaseClient = supabase.createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDI2MTcsImV4cCI6MjA2ODg3ODYxN30.wfJm9e10_iNuYm_r3es_FmKuXBePsxSjIJcVqmSuYjc'
 );
 
-
 // Token speichern
 function saveTokenToSupabase(token) {
-  const deviceName = prompt("Wie soll dieses Gerät heißen?") || "Unbekannt";
+  const device_name = ""
+  if (localStorage.getItem("deviceId")){
+    device_name = localStorage.getItem("deviceId")
+  } else {
+    device_name = prompt("Wie soll dieses Gerät heißen?") || "Unbekannt";
+    localStorage.setItem("deviceId", device_name);
+  }
+
   supabaseClient
     .from('fcm_tokens')
     .upsert({ token, device_name: deviceName })
@@ -27,7 +33,14 @@ function saveTokenToSupabase(token) {
     });
 }
 
-
+function getDeviceId(){
+  let id = localStorage.getItem("deviceId");
+  if (!id){
+    id = prompt("Bitte gib deinen Namen ein");
+    localStorage.setItem("deviceId", id);
+  }
+  return id;
+}
 
 // Service Worker registrieren
 navigator.serviceWorker.register('firebase-messaging-sw.js')
@@ -43,7 +56,9 @@ function requestPermission() {
         vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
       }).then((currentToken) => {
         if (currentToken) {
+          const deviceId = getDeviceId();
           console.log("Token:", currentToken);
+          firebase.database().ref("tokens/" + deviceId).set(token);
           saveTokenToSupabase(currentToken);
         } else {
           console.warn("Kein Token erhalten.");
@@ -88,7 +103,6 @@ async function sendNotification(title, body, tokens = null, attempt = 1, maxAtte
   }
 }
 
-
 function uploadToCloudinary(file, callback) {
   const cloudName = "ddvf141hb";
   const uploadPreset = "Misterx-upload";
@@ -114,7 +128,6 @@ function uploadToCloudinary(file, callback) {
       alert("Fehler beim Hochladen zu Cloudinary.");
     });
 }
-
 
 function sendLocationWithPhoto() {
   const title = document.getElementById("locationTitle").value;
@@ -167,7 +180,6 @@ function sendLocationWithPhoto() {
   }
 }
 
-
 function uploadAndSaveLocation({ lat, lon, title, file, description }) {
   const timestamp = Date.now();
 
@@ -195,8 +207,6 @@ function uploadAndSaveLocation({ lat, lon, title, file, description }) {
     startTimer();
   });
 }
-
-
 
 function showLocationHistory() {
   const dbRef = firebase.database().ref("locations");
@@ -278,12 +288,48 @@ function showLocationHistory() {
   });
 }
 
+function resetAllMisterXRollen() {
+  firebase.database().ref("roles").once("value").then(snapshot => {
+    const roles = snapshot.val();
+    for (const id in roles) {
+      if (roles[id].role === "misterx") {
+        firebase.database().ref("roles/" + id).set({
+          role: "start",
+          timestamp: Date.now()
+        });
+      }
+    }
+    alert("Alle Mister X Rollen wurden zurückgesetzt.");
+  });
+}
 
-
-
+async function canSwitchToMisterX() {
+  const snapshot = await firebase.database().ref("roles").once("value");
+  const roles = snapshot.val();
+  for (const id in roles){
+    if (roles[id].role === "misterx"){
+      return false;
+    }
+  }
+  return true;
+}
 
 // Ansicht wechseln
-function switchView(view) {
+async function switchView(view) {
+  if (view==="misterx"){
+    const allowed = await canSwitchToMisterX();
+    if (!allowed){
+      alert("Es ist bereits ein Gerät als Mister X angemeldet!")
+      return;
+    }
+  }
+  const deviceId = getDeviceId();
+  firebase.database().ref("roles/" + deviceId).set({
+    role: view,
+    timestamp: Date.now(),
+  });
+
+
   document.getElementById("startView").style.display = "none";
   document.querySelectorAll(".view").forEach(v => v.style.display = "none");
 
@@ -562,8 +608,6 @@ function deleteAllLocations() {
     });
   }
 }
-
-
 
 function resetTimer() {
   firebase.database().ref("timer").remove();
