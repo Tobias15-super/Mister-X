@@ -378,7 +378,7 @@ function goBack() {
   document.getElementById("startView").style.display = "block";
   clearInterval(countdown);
   localStorage.setItem("activeView","start");
-    const deviceId = getDeviceId();
+  const deviceId = getDeviceId();
   firebase.database().ref("roles/" + deviceId).set({
     role: "start",
     timestamp: Date.now(),
