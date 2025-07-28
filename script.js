@@ -369,7 +369,12 @@ function goBack() {
   document.querySelectorAll(".view").forEach(v => v.style.display = "none");
   document.getElementById("startView").style.display = "block";
   clearInterval(countdown);
-  localStorage.removeItem("activeView");
+  localStorage.setItem("activeView","Start");
+    const deviceId = getDeviceId();
+  firebase.database().ref("roles/" + deviceId).set({
+    role: view,
+    timestamp: Date.now(),
+  });
 };
 
 // Timer starten (nur Mister X)
