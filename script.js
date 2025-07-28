@@ -60,6 +60,8 @@ function requestPermission() {
           console.log("Token:", currentToken);
           firebase.database().ref("tokens/" + deviceId).set(token);
           saveTokenToSupabase(currentToken);
+          localStorage.setItem("nachrichtAktiv",true);
+          document.getElementById("permissionButton").style.display="none";
         } else {
           console.warn("Kein Token erhalten.");
         }
@@ -607,7 +609,14 @@ window.onload = () => {
   showLocationHistory();
   listenToTimer(); 
   setTimerInputFromFirebase();
+  showPermissionButton();
 };
+
+function showPermissionButton() {
+  if (localStorage.getItem("nachrichtAktiv")){
+    document.getElementById("permissionButton").style.display="block";
+  }
+}
 
 function deleteAllLocations() {
   if (confirm("Möchtest du wirklich alle gespeicherten Standorte löschen?")) {
