@@ -497,7 +497,7 @@ async function startTimer() {
     await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
       method: "DELETE",
       headers: {
-        Authorization: "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0"
+        "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0"
       }
     });
     await firebase.database().ref("timerScheduleId").remove();
@@ -541,7 +541,7 @@ async function startTimer() {
   const response = await fetch("https://qstash.upstash.io/v2/schedules", {
     method: "POST",
     headers: {
-      Authorization: "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0",
+      "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0",
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
@@ -818,7 +818,7 @@ async function resetTimer() {
     await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
       method: "DELETE",
       headers: {
-        Authorization: "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0"
+        "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0"
       }
     });
     await firebase.database().ref("timerScheduleId").remove();
