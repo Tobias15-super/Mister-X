@@ -514,8 +514,8 @@ async function startTimer() {
 
   let durationInput = Math.floor(data?.durationInput);
   let duration = 25 * 60; // fallback: 25 Minuten in Sekunden
-  if (durationInput && durationInput.value) {
-    duration = parseInt(durationInput.value, 10);
+  if (typeof data?.durationInput === "number" && data.durationInput > 0) {
+    duration = data.durationInput;
     if (isNaN(duration) || duration < 1) duration = 60;
   }
 
