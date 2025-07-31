@@ -421,7 +421,7 @@ async function switchView(view) {
     await supabaseClient
     .from("fcm_tokens")
     .update({ role })
-    .eq("device_id", deviceId);
+    .eq("device_name", deviceId);
 
     if (view==="settings"){
       if (prompt("Passwort eingeben!")!=="1001"){
@@ -479,7 +479,7 @@ async function goBack() {
   await supabaseClient
   .from("fcm_tokens")
   .update({ role })
-  .eq("device_id", deviceId);
+  .eq("device_name", deviceId);
 };
 
 async function startTimer() {
