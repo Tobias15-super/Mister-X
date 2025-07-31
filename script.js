@@ -415,7 +415,7 @@ async function switchView(view) {
       timestamp: Date.now(),
     });
     const role = view
-    awaitsupabaseClient
+    await supabaseClient
     .from("fcm_tokens")
     .update({ role })
     .eq("device_id", deviceId);
