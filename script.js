@@ -546,7 +546,7 @@ async function startTimer() {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      destination: "https://axirbthvnznvhfagduyj.functions.supabase.co/send-timer-message",
+      destination: "https://webhook.site/2d18361b-d352-4893-9331-5549bc00c8ef",
       delay: endTime - Date.now(),
       body: { timerId: "main" },
       headers: {
