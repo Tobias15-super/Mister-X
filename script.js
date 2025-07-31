@@ -464,20 +464,23 @@ function goBack() {
 
 // Timer starten (nur Mister X)
 function startTimer() {
-  // Hole die gewünschte Dauer aus dem Input, Standard 25 Minuten
-  let durationInput = document.getElementById("timerDurationInput");
-  let duration = 25 * 60; // fallback: 25 Minuten in Sekunden
-  if (durationInput && durationInput.value) {
-    duration = parseInt(durationInput.value, 10) * 60;
-    if (isNaN(duration) || duration < 1) duration = 60;
-  }
-  const startTime = Date.now();
+  // Hole die gewünschte Dauer aus firebase, Standard 25 Minuten
+  firebase.database().ref("timer").once("value").then(snapshot => {
+    const data = snapshot.val();
+    let durationInput = Math.floor(data.durationInput);
+    let duration = 25 * 60; // fallback: 25 Minuten in Sekunden
+    if (durationInput && durationInput.value) {
+      duration = parseInt(durationInput.value, 10);
+      if (isNaN(duration) || duration < 1) duration = 60;
+    }
+    const startTime = Date.now();
 
-  firebase.database().ref("timer").set({
-    startTime,
-    duration,
-    durationInput: duration,
-  });
+    firebase.database().ref("timer").set({
+      startTime,
+      duration,
+      durationInput: duration,
+    });
+  })
 }
 
 // Timer aus Firebase lesen
@@ -770,5 +773,26 @@ function load_max_mister_x() {
     })
     .catch((error) => {
       console.error("Fehler beim Laden von max_Team_X:", error);
+    });
+}
+
+
+function save_timer_duration() {
+  const anzahl = document.getElementById("timerDurationInput").value;
+  const anzahl_in_sekunden = anzahl * 60
+
+  const settingsRef = firebase.database().ref("timer");
+
+  // Erst löschen
+  settingsRef.child("durationInput").remove()
+    .then(() => {
+      // Dann neuen Wert setzen
+      return settingsRef.child("durationInput").set(Number(anzahl_in_sekunden));
+    })
+    .then(() => {
+      console.log("Duration_input:", anzahl_in_sekunden);
+    })
+    .catch((error) => {
+      console.error("Fehler beim Speichern von DurationInput:", error);
     });
 }
