@@ -530,9 +530,11 @@ function updateCountdown(startTime, duration) {
           elem.style.animation = "";
         }
       });
-      alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
-      getLocation();
-      }
+      if (localStorage.getItem("activeView")==="misterx"){
+        alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
+        getLocation();
+        }
+    }
     }
   , 1000);
 }
