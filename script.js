@@ -138,12 +138,44 @@ function uploadToCloudinary(file, callback) {
 function sendLocationWithPhoto() {
   const title = document.getElementById("locationTitle").value;
   const file = document.getElementById("photoInput").files[0];
-  const manualDescription = document.getElementById("manualLocationDescription").value;
+  const manualDescription = document.getElementById("manualLocationDescription").value.trim();
 
   if (!title || !file) {
     alert("Bitte Titel und Foto angeben.");
     return;
   }
+
+  const timestamp = Date.now();
+
+  const saveLocation = (lat, lon, description) => {
+    const locationData = {
+      lat,
+      lon,
+      title,
+      description: description !== "" ? description : null,
+      timestamp
+    };
+
+    const newRef = firebase.database().ref("locations").push(locationData);
+
+    // Benachrichtigung senden
+    const notificationText = description !== "" ? title + " – " + description : title;
+    sendNotification("Mister X hat sich gezeigt!", notificationText);
+
+    // Bild im Hintergrund hochladen
+    uploadToCloudinary(file, ({ url }) => {
+      newRef.update({ photoURL: url });
+    });
+
+    // Reset UI
+    document.getElementById("locationTitle").value = "";
+    document.getElementById("photoInput").value = "";
+    document.getElementById("manualLocationDescription").value = "";
+    document.getElementById("manualLocationContainer").style.display = "none";
+    document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
+
+    startTimer();
+  };
 
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
@@ -156,64 +188,21 @@ function sendLocationWithPhoto() {
           return;
         }
 
-        uploadAndSaveLocation({
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-          title,
-          file,
-          description: null
-        });
+        saveLocation(position.coords.latitude, position.coords.longitude, manualDescription);
       },
       error => {
         showError(error);
         document.getElementById("manualLocationContainer").style.display = "block";
+        saveLocation(null, null, manualDescription);
       }
     );
   } else {
     document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
     document.getElementById("manualLocationContainer").style.display = "block";
-  }
-
-  // Falls Standort nicht verfügbar, aber Beschreibung vorhanden
-  if (!navigator.geolocation || manualDescription.trim() !== "") {
-    uploadAndSaveLocation({
-      lat: null,
-      lon: null,
-      title,
-      file,
-      description: manualDescription.trim()
-    });
+    saveLocation(null, null, manualDescription);
   }
 }
 
-function uploadAndSaveLocation({ lat, lon, title, file, description }) {
-  const timestamp = Date.now();
-
-  uploadToCloudinary(file, ({ url}) => {
-    // Objekt dynamisch bauen, undefined Felder vermeiden
-    const locationData = {
-      lat,
-      lon,
-      title,
-      photoURL: url,
-      description,
-      timestamp
-    };
-
-
-    firebase.database().ref("locations").push(locationData);
-
-    // Reset UI
-    document.getElementById("locationTitle").value = "";
-    document.getElementById("photoInput").value = "";
-    document.getElementById("manualLocationDescription").value = "";
-    document.getElementById("manualLocationContainer").style.display = "none";
-    document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
-
-    startTimer();
-    sendNotification("Mister X hat sich gezeigt!", title + description)
-  });
-}
 
 function showLocationHistory() {
   const dbRef = firebase.database().ref("locations");
