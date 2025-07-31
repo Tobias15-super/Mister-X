@@ -552,8 +552,11 @@ async function startTimer() {
   });
 
   const result = await response.json();
-  const newScheduleId = result.scheduleId;
-  await firebase.database().ref("timerScheduleId").set(newScheduleId);
+  if (newScheduleId) {
+    await firebase.database().ref("timerScheduleId").set(newScheduleId);
+  } else {
+    console.error("Kein ScheduleId von QStash erhalten:", result);
+}
 }
 
 
@@ -814,7 +817,7 @@ async function resetTimer() {
     await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
       method: "DELETE",
       headers: {
-        Authorization: `Bearer ${YOUR_QSTASH_TOKEN}`
+        Authorization: `Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0`
       }
     });
     await firebase.database().ref("timerScheduleId").remove();
