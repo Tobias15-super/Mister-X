@@ -445,11 +445,13 @@ async function switchView(view) {
     const data = snapshot.val();
     if (data) {
       const { startTime, duration, durationInput } = data;
-      updateCountdown(startTime, duration);
-      updateStartButtonState(true);
-    } else {
+      if (duration){
+        updateCountdown(startTime, duration);
+        updateStartButtonState(true);
+      } else {
       updateStartButtonState(false);
     }
+    } 
   });
 };
 
