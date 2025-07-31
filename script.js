@@ -284,6 +284,54 @@ function sendLocationWithPhoto() {
 }
 
 
+function saveLocation(lat, lon, description) {
+  const title = document.getElementById("locationTitle").value;
+  const file = document.getElementById("photoInput").files[0];
+  const timestamp = Date.now();
+
+  // Standortdaten zusammenbauen
+  const locationData = {
+    title,
+    timestamp
+  };
+  if (lat != null && lon != null) {
+    locationData.lat = lat;
+    locationData.lon = lon;
+  }
+  if (description && description !== "") {
+    locationData.description = description;
+  }
+
+  // In Firebase speichern
+  const newRef = firebase.database().ref("locations").push(locationData);
+
+  // Benachrichtigung senden
+  let notificationText = title;
+  if (description && description !== "") {
+    notificationText += " – " + description;
+  } else if (lat && lon) {
+    notificationText += ` (Standort: ${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+  }
+  sendNotificationToRoles("Mister X hat sich gezeigt!", notificationText, "agent");
+
+  // Bild im Hintergrund hochladen
+  if (file) {
+    uploadToCloudinary(file, ({ url }) => {
+      newRef.update({ photoURL: url });
+    });
+  }
+
+  // Reset UI
+  document.getElementById("locationTitle").value = "";
+  document.getElementById("photoInput").value = "";
+  document.getElementById("manualLocationDescription").value = "";
+  document.getElementById("manualLocationContainer").style.display = "none";
+  document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
+
+  startTimer();
+}
+
+
 function showLocationHistory() {
   const dbRef = firebase.database().ref("locations");
 
@@ -548,10 +596,7 @@ async function startTimer() {
     body: JSON.stringify({
       destination: "https://webhook.site/2d18361b-d352-4893-9331-5549bc00c8ef",
       delay: endTime - Date.now(),
-      body: { timerId: "main" },
-      headers: {
-        Authorization: "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0=",
-      }
+      body: JSON.stringify({ timerId: "main" }),
     })
   });
 
