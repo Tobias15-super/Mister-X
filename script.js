@@ -308,9 +308,9 @@ function saveLocation(lat, lon, description) {
   // Benachrichtigung senden
   let notificationText = title;
   if (description && description !== "") {
-    notificationText += " – " + description;
+    notificationText += " - " + description;
   } else if (lat && lon) {
-    notificationText += ` (Standort: ${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+    notificationText;
   }
   sendNotificationToRoles("Mister X hat sich gezeigt!", notificationText, "agent");
 
@@ -764,6 +764,7 @@ function getLocation() {
           lon,
           timestamp,
         });
+        sendNotificationToRoles("Mister X hat sich gezeigt!", "Automatische Standort-Übermittlung.", "agent")
 
         showLocationHistory();
       },
