@@ -45,6 +45,11 @@ function getDeviceId() {
   return id.trim();
 }
 
+try {
+  localStorage.setItem("test", "1");
+} catch (e) {
+  alert("⚠️ Dein Browser blockiert lokalen Speicher. Bitte verlasse den privaten Modus oder ändere die Einstellungen.");
+}
 
 // Service Worker registrieren
 navigator.serviceWorker.register('firebase-messaging-sw.js')
