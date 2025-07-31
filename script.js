@@ -725,7 +725,9 @@ function deleteAllLocations() {
 }
 
 function resetTimer() {
-  firebase.database().ref("timer").remove();
+  const timerRef = firebase.database().ref("timer");
+  timerRef.child("duration").remove();
+  timerRef.child("startTime").remove();
   clearInterval(countdown);
   updateStartButtonState(false);
 
@@ -775,7 +777,6 @@ function load_max_mister_x() {
       console.error("Fehler beim Laden von max_Team_X:", error);
     });
 }
-
 
 function save_timer_duration() {
   const anzahl = document.getElementById("timerDurationInput").value;
