@@ -415,7 +415,7 @@ async function switchView(view) {
       timestamp: Date.now(),
     });
     const role = view
-    supabaseClient
+    await supabaseClient
     .from("fcm_tokens")
     .update({ role })
     .eq("device_id", deviceId);
@@ -473,7 +473,7 @@ function goBack() {
     timestamp: Date.now(),
   });
   const role = "start"
-  supabaseClient
+  await supabaseClient
   .from("fcm_tokens")
   .update({ role })
   .eq("device_id", deviceId);
