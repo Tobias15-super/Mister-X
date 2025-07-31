@@ -449,7 +449,7 @@ async function switchView(view) {
         updateCountdown(startTime, duration);
         updateStartButtonState(true);
       } else {
-      updateStartButtonState(false);
+        updateStartButtonState(false);
     }
     } 
   });
@@ -497,8 +497,9 @@ function listenToTimer() {
 
   firebase.database().ref("timer").on("value", (snapshot) => {
     const data = snapshot.val();
+    const { startTime, duration, durationInput } = data;
 
-    if (!data) {
+    if (!startTime) {
       clearInterval(countdown);
       updateStartButtonState(false);
 
@@ -514,7 +515,6 @@ function listenToTimer() {
       return;
     }
 
-    const { startTime, duration, durationInput } = data;
     updateCountdown(startTime, duration);
     updateStartButtonState(true);
   });
