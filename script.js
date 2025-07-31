@@ -414,6 +414,11 @@ async function switchView(view) {
       role: view,
       timestamp: Date.now(),
     });
+    const role = view
+    supabase
+    .from("fcm_tokens")
+    .update({ role })
+    .eq("device_id", deviceId);
 
     if (view==="settings"){
       if (prompt("Passwort eingeben!")!=="1001"){
@@ -467,28 +472,88 @@ function goBack() {
     role: "start",
     timestamp: Date.now(),
   });
+  const role = "start"
+  supabase
+  .from("fcm_tokens")
+  .update({ role })
+  .eq("device_id", deviceId);
 };
 
-// Timer starten (nur Mister X)
-function startTimer() {
-  // Hole die gewünschte Dauer aus firebase, Standard 25 Minuten
-  firebase.database().ref("timer").once("value").then(snapshot => {
-    const data = snapshot.val();
-    let durationInput = Math.floor(data.durationInput);
-    let duration = 25 * 60; // fallback: 25 Minuten in Sekunden
-    if (durationInput && durationInput.value) {
-      duration = parseInt(durationInput.value, 10);
-      if (isNaN(duration) || duration < 1) duration = 60;
-    }
-    const startTime = Date.now();
+async function startTimer() {
+  const timerRef = firebase.database().ref("timer");
 
-    firebase.database().ref("timer").set({
-      startTime,
-      duration,
-      durationInput: duration,
+  // 1. Vorherige Timer-Daten löschen
+  await timerRef.child("duration").remove();
+  await timerRef.child("startTime").remove();
+  await firebase.database().ref("timerMessage").remove();
+
+  // 2. Vorherigen Upstash-Timer abbrechen
+  const scheduleIdSnapshot = await firebase.database().ref("timerScheduleId").once("value");
+  const scheduleId = scheduleIdSnapshot.val();
+  if (scheduleId) {
+    await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0`
+      }
     });
-  })
+    await firebase.database().ref("timerScheduleId").remove();
+  }
+
+  // 3. Lokalen Countdown stoppen
+  if (typeof countdown !== "undefined") {
+    clearInterval(countdown);
+  }
+
+  // 4. Neue Dauer auslesen
+  const snapshot = await timerRef.once("value");
+  const data = snapshot.val();
+
+  let durationInput = Math.floor(data?.durationInput);
+  let duration = 25 * 60; // fallback: 25 Minuten in Sekunden
+  if (durationInput && durationInput.value) {
+    duration = parseInt(durationInput.value, 10);
+    if (isNaN(duration) || duration < 1) duration = 60;
+  }
+
+  const startTime = Date.now();
+  const endTime = startTime + duration * 1000;
+
+  // 5. Nachricht definieren
+  const message = {
+    title: "⏰ Zeit abgelaufen!",
+    body: "Mister X muss sich zeigen!",
+    roles: ["misterx"]
+  };
+
+  // 6. Neue Timer-Daten speichern
+  await timerRef.set({
+    startTime,
+    duration,
+    durationInput: duration
+  });
+  await firebase.database().ref("timerMessage").set(message);
+
+  // 7. Upstash-Timer planen
+  const response = await fetch("https://qstash.upstash.io/v2/schedules", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      destination: "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-timer-message",
+      delay: endTime - Date.now(),
+      body: JSON.stringify({ timerId: "main" })
+    })
+  });
+
+  const result = await response.json();
+  const newScheduleId = result.scheduleId;
+  await firebase.database().ref("timerScheduleId").set(newScheduleId);
 }
+
+
 
 // Timer aus Firebase lesen
 function listenToTimer() {
@@ -731,14 +796,34 @@ function deleteAllLocations() {
   }
 }
 
-function resetTimer() {
+async function resetTimer() {
   const timerRef = firebase.database().ref("timer");
-  timerRef.child("duration").remove();
-  timerRef.child("startTime").remove();
+
+  // Timer-Daten löschen
+  await timerRef.child("duration").remove();
+  await timerRef.child("startTime").remove();
+
+  // Upstash-Timer abbrechen, falls vorhanden
+  const scheduleIdSnapshot = await firebase.database().ref("timerScheduleId").once("value");
+  const scheduleId = scheduleIdSnapshot.val();
+
+  if (scheduleId) {
+    await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${YOUR_QSTASH_TOKEN}`
+      }
+    });
+    await firebase.database().ref("timerScheduleId").remove();
+  }
+
+  // Nachricht löschen
+  await firebase.database().ref("timerMessage").remove();
+
+  // UI zurücksetzen
   clearInterval(countdown);
   updateStartButtonState(false);
 
-  // Timer-Anzeigen zurücksetzen
   const misterxTimer = document.getElementById("timer");
   const agentTimer = document.getElementById("agentTimer");
   const settingsTimer = document.getElementById("settingsTimer");
@@ -746,8 +831,10 @@ function resetTimer() {
   if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
   if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
   if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
-  sendNotificationToRoles("Timer zurückgesetzt","Der Timer wurde zurückgesetzt!", "all");
+
+  sendNotificationToRoles("Timer zurückgesetzt", "Der Timer wurde zurückgesetzt!", "all");
 }
+
 
 function save_max_mister_x() {
   const anzahl = document.getElementById("max_Team_X").value;
