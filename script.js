@@ -216,6 +216,7 @@ function sendLocationWithPhoto() {
   const title = document.getElementById("locationTitle").value;
   const file = document.getElementById("photoInput").files[0];
   const manualDescription = document.getElementById("manualLocationDescription").value.trim();
+  const manualContainer = document.getElementById("manualLocationContainer");
 
   if (!title || !file) {
     alert("Bitte Titel und Foto angeben.");
@@ -224,19 +225,19 @@ function sendLocationWithPhoto() {
 
   const timestamp = Date.now();
 
-  const saveLocation = (lat, lon, description) => {
+  // Prüfen, ob Standortbeschreibung sichtbar ist und ausgefüllt wurde
+  if (manualContainer && manualContainer.style.display !== "none" && manualDescription !== "") {
+    // Nur Beschreibung speichern, kein GPS
     const locationData = {
-      lat,
-      lon,
       title,
-      description: description !== "" ? description : null,
+      description: manualDescription,
       timestamp
     };
 
     const newRef = firebase.database().ref("locations").push(locationData);
 
     // Benachrichtigung senden
-    const notificationText = description !== "" ? title + " – " + description : title;
+    const notificationText = title + " – " + manualDescription;
     sendNotificationToRoles("Mister X hat sich gezeigt!", notificationText, "agent");
 
     // Bild im Hintergrund hochladen
@@ -248,12 +249,14 @@ function sendLocationWithPhoto() {
     document.getElementById("locationTitle").value = "";
     document.getElementById("photoInput").value = "";
     document.getElementById("manualLocationDescription").value = "";
-    document.getElementById("manualLocationContainer").style.display = "none";
+    manualContainer.style.display = "none";
     document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
 
     startTimer();
-  };
+    return;
+  }
 
+  // Sonst wie bisher: GPS verwenden
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       position => {
@@ -261,7 +264,7 @@ function sendLocationWithPhoto() {
         if (accuracy > 100) {
           document.getElementById("status").innerText =
             `⚠️ Standort ungenau (±${Math.round(accuracy)} m). Bitte erneut versuchen oder Standortbeschreibung eingeben.`;
-          document.getElementById("manualLocationContainer").style.display = "block";
+          manualContainer.style.display = "block";
           return;
         }
 
@@ -269,13 +272,13 @@ function sendLocationWithPhoto() {
       },
       error => {
         showError(error);
-        document.getElementById("manualLocationContainer").style.display = "block";
+        manualContainer.style.display = "block";
         saveLocation(null, null, manualDescription);
       }
     );
   } else {
     document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
-    document.getElementById("manualLocationContainer").style.display = "block";
+    manualContainer.style.display = "block";
     saveLocation(null, null, manualDescription);
   }
 }
