@@ -415,7 +415,7 @@ async function switchView(view) {
       timestamp: Date.now(),
     });
     const role = view
-    await supabaseClient
+    awaitsupabaseClient
     .from("fcm_tokens")
     .update({ role })
     .eq("device_id", deviceId);
@@ -461,7 +461,7 @@ async function switchView(view) {
 };
 
 // Zurück zur Startauswahl
-function goBack() {
+async function goBack() {
   document.querySelectorAll(".view").forEach(v => v.style.display = "none");
   document.getElementById("startView").style.display = "block";
   document.getElementById("startView2").style.display = "block";
