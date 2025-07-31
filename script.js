@@ -122,7 +122,7 @@ messaging.onMessage((payload) => {
   alert(`${title}\n${body}`);
 });
 
-async function sendNotification(title, body, tokens = null, attempt = 1, maxAttempts = 30) {
+async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, maxAttempts = 30) {
   const res = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all", {
     method: "POST",
     headers: {
@@ -137,7 +137,7 @@ async function sendNotification(title, body, tokens = null, attempt = 1, maxAtte
   if (result.failedTokens && result.failedTokens.length > 0 && attempt < maxAttempts) {
     console.log(`🔁 Wiederhole für ${result.failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
     setTimeout(() => {
-      sendNotification(title, body, result.failedTokens, attempt + 1, maxAttempts);
+      sendNotificationToTokens(title, body, result.failedTokens, attempt + 1, maxAttempts);
     }, 10000);
   } else if (attempt >= maxAttempts) {
     console.warn("⏱️ Max. Anzahl an Versuchen erreicht.");
@@ -145,6 +145,41 @@ async function sendNotification(title, body, tokens = null, attempt = 1, maxAtte
     console.log("✅ Alle Benachrichtigungen erfolgreich gesendet.");
   }
 }
+
+async function sendNotificationToRoles(title, body, roles) {
+  const rolesSnapshot = await firebase.database().ref("roles").once("value");
+  const tokensSnapshot = await firebase.database().ref("tokens").once("value");
+
+  const rolesData = rolesSnapshot.val();
+  const tokensData = tokensSnapshot.val();
+
+  const matchingTokens = new Set();
+
+  // Wenn "all" übergeben wurde, alle Tokens nehmen
+  if (roles === "all" || (Array.isArray(roles) && roles.includes("all"))) {
+    for (const userId in tokensData) {
+      matchingTokens.add(tokensData[userId]);
+    }
+  } else {
+    const roleList = Array.isArray(roles) ? roles : [roles];
+
+    for (const userId in rolesData) {
+      const userRole = rolesData[userId]?.role;
+      if (roleList.includes(userRole) && tokensData[userId]) {
+        matchingTokens.add(tokensData[userId]);
+      }
+    }
+  }
+
+  if (matchingTokens.size === 0) {
+    console.warn(`⚠️ Keine passenden Tokens für Rollen "${roles}" gefunden.`);
+    return;
+  }
+
+  sendNotificationToTokens(title, body, Array.from(matchingTokens));
+}
+
+
 
 function uploadToCloudinary(file, callback) {
   const cloudName = "ddvf141hb";
@@ -197,7 +232,7 @@ function sendLocationWithPhoto() {
 
     // Benachrichtigung senden
     const notificationText = description !== "" ? title + " – " + description : title;
-    sendNotification("Mister X hat sich gezeigt!", notificationText);
+    sendNotificationToRoles("Mister X hat sich gezeigt!", notificationText, "agent");
 
     // Bild im Hintergrund hochladen
     uploadToCloudinary(file, ({ url }) => {
@@ -695,7 +730,7 @@ function resetTimer() {
   if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
   if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
   if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
-  sendNotification("Timer zurückgesetzt","Der Timer wurde zurückgesetzt!");
+  sendNotificationToRoles("Timer zurückgesetzt","Der Timer wurde zurückgesetzt!", "all");
 }
 
 function save_max_mister_x() {
