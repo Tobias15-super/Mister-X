@@ -78,7 +78,44 @@ function requestPermission() {
   });
 }
 
-// Optional: Nachrichten empfangen, wenn Seite offen ist
+
+function removeNotificationSetup() {
+  // Token aus Firebase entfernen
+  messaging.getToken({
+    vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
+  }).then((currentToken) => {
+    if (currentToken) {
+      const deviceId = getDeviceId();
+      firebase.database().ref("tokens/" + deviceId).remove();
+      console.log("Token aus Firebase entfernt:", currentToken);
+    }
+
+    // Token lokal löschen
+    messaging.deleteToken(currentToken).then(() => {
+      console.log("Token gelöscht.");
+    }).catch((err) => {
+      console.error("Fehler beim Löschen des Tokens:", err);
+    });
+
+    // Lokale Einstellungen zurücksetzen
+    localStorage.removeItem("nachrichtAktiv");
+    document.getElementById("permissionButton").style.display = "block";
+  });
+
+  // Service Worker abmelden
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (let registration of registrations) {
+      registration.unregister().then((success) => {
+        if (success) {
+          alert("Service Worker abgemeldet.");
+        }
+      });
+    }
+  });
+}
+
+
+// Nachrichten empfangen, wenn Seite offen ist
 messaging.onMessage((payload) => {
   console.log("Nachricht empfangen:", payload);
   const { title, body } = payload.notification;
@@ -610,12 +647,16 @@ window.onload = () => {
   showLocationHistory();
   listenToTimer(); 
   setTimerInputFromFirebase();
-  showPermissionButton();
+  showButtons();
 };
 
-function showPermissionButton() {
+function showButtons() {
   if (!localStorage.getItem("nachrichtAktiv")){
     document.getElementById("permissionButton").style.display="block";
+    document.getElementById("permissionButton2").style.display="none";
+  } else {
+    document.getElementById("permissionButton").style.display="none";
+    document.getElementById("permissionButton2").style.display="block";
   }
 }
 
