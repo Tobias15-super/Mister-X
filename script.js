@@ -420,6 +420,7 @@ async function switchView(view) {
 
 
   document.getElementById("startView").style.display = "none";
+  document.getElementById("startView2").style.display = "none";
   document.querySelectorAll(".view").forEach(v => v.style.display = "none");
 
   if (view === "misterx") {
@@ -451,6 +452,7 @@ async function switchView(view) {
 function goBack() {
   document.querySelectorAll(".view").forEach(v => v.style.display = "none");
   document.getElementById("startView").style.display = "block";
+  document.getElementById("startView2").style.display = "block";
   clearInterval(countdown);
   localStorage.setItem("activeView","start");
   const deviceId = getDeviceId();
@@ -680,6 +682,7 @@ window.onload = () => {
     switchView(savedView);
   } else {
     document.getElementById("startView").style.display = "block";
+    document.getElementById("startView2").style.display = "block";
   }
   showLocationHistory();
   listenToTimer(); 
