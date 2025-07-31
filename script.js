@@ -538,6 +538,7 @@ async function startTimer() {
   await firebase.database().ref("timerMessage").set(message);
 
   // 7. Upstash-Timer planen
+  console.log("Destination:", "https://axirbthvnznvhfagduyj.functions.supabase.co/send-timer-message");
   const response = await fetch("https://qstash.upstash.io/v2/schedules", {
     method: "POST",
     headers: {
@@ -547,7 +548,10 @@ async function startTimer() {
     body: JSON.stringify({
       destination: "https://axirbthvnznvhfagduyj.functions.supabase.co/send-timer-message",
       delay: endTime - Date.now(),
-      body: { timerId: "main" }
+      body: { timerId: "main" },
+      headers: {
+        Authorization: "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0=",
+      }
     })
   });
 
