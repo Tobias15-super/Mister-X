@@ -587,6 +587,11 @@ async function startTimer() {
 
   // 7. Upstash-Timer planen
   console.log("Destination:", "https://axirbthvnznvhfagduyj.functions.supabase.co/send-timer-message");
+  console.log("QStash destination:", JSON.stringify({
+  destination: "https://webhook.site/2d18361b-d352-4893-9331-5549bc00c8ef",
+  delay: endTime - Date.now(),
+  body: JSON.stringify({ timerId: "main" }),
+}));
   const response = await fetch("https://qstash.upstash.io/v2/schedules", {
     method: "POST",
     headers: {
