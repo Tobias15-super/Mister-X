@@ -412,16 +412,6 @@ async function switchView(view) {
         return;
       }
     }
-    const deviceId = getDeviceId();
-    firebase.database().ref("roles/" + deviceId).set({
-      role: view,
-      timestamp: Date.now(),
-    });
-    const role = view
-    await supabaseClient
-    .from("fcm_tokens")
-    .update({ role })
-    .eq("device_name", deviceId);
 
     if (view==="settings"){
       if (prompt("Passwort eingeben!")!=="1001"){
@@ -448,6 +438,16 @@ async function switchView(view) {
   }
 
   localStorage.setItem("activeView", view);
+      const deviceId = getDeviceId();
+    firebase.database().ref("roles/" + deviceId).set({
+      role: view,
+      timestamp: Date.now(),
+    });
+    const role = view
+    await supabaseClient
+    .from("fcm_tokens")
+    .update({ role })
+    .eq("device_name", deviceId);
 
   firebase.database().ref("timer").once("value").then(snapshot => {
     const data = snapshot.val();
