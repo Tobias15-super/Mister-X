@@ -570,6 +570,7 @@ function updateCountdown(startTime, duration) {
       if (localStorage.getItem("activeView")==="misterx"){
         alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
         getLocation();
+        startTimer();
         }
     }
     }
