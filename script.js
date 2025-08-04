@@ -817,19 +817,29 @@ document.getElementById("photoInput").addEventListener("change", function () {
 });
 
 // Beim Laden prüfen
-window.onload = () => {
-  const savedView = localStorage.getItem("activeView");
-  if (savedView && savedView!=="start") {
-    switchView(savedView);
-  } else {
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    const savedView = localStorage.getItem("activeView");
+
+    if (savedView && savedView !== "start") {
+      switchView(savedView);
+    } else {
+      document.getElementById("startView").style.display = "block";
+      document.getElementById("startView2").style.display = "block";
+    }
+  } catch (e) {
+    console.warn("Fehler beim Zugriff auf localStorage:", e);
+    // Fallback: Startansicht anzeigen
     document.getElementById("startView").style.display = "block";
     document.getElementById("startView2").style.display = "block";
   }
+
   showLocationHistory();
   listenToTimer(); 
   setTimerInputFromFirebase();
   showButtons();
-};
+});
+
 
 function showButtons() {
   if (!localStorage.getItem("nachrichtAktiv")){
