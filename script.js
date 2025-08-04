@@ -810,14 +810,6 @@ function updateStartButtonState(isRunning) {
   }
 };
 
-// Foto-Upload
-document.getElementById("photoInput").addEventListener("change", function () {
-  const file = this.files[0];
-  if (file) {
-    fotoHochgeladen = true;
-    document.getElementById("status").innerText = "📸 Foto ausgewählt!";
-  }
-});
 
 // Beim Laden prüfen
 function startScript() {
@@ -852,6 +844,18 @@ function startScript() {
 
   alert("Starte showButtons()");
   showButtons();
+
+    // Foto-Upload
+  const photoInput = document.getElementById("photoInput");
+  if (photoInput) {
+    photoInput.addEventListener("change", function () {
+      const file = this.files[0];
+      if (file) {
+        fotoHochgeladen = true;
+        document.getElementById("status").innerText = "📸 Foto ausgewählt!";
+      }
+    });
+  }
 };
 
 
