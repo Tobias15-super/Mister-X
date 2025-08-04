@@ -586,32 +586,35 @@ async function startTimer() {
   await firebase.database().ref("timerMessage").set(message);
 
   // 7. Upstash-Timer planen
-  console.log("Destination:", "https://axirbthvnznvhfagduyj.functions.supabase.co/send-timer-message");
-  console.log("QStash destination:", JSON.stringify({
-  destination: "https://webhook.site/2d18361b-d352-4893-9331-5549bc00c8ef",
-  delay: endTime - Date.now(),
-  body: JSON.stringify({ timerId: "main" }),
-}));
-  const response = await fetch("https://qstash.upstash.io/v2/schedules", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0=",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      destination: "https://webhook.site/2d18361b-d352-4893-9331-5549bc00c8ef",
-      delay: endTime - Date.now(),
-      body: JSON.stringify({ timerId: "main" }),
-    })
-  });
 
-  const result = await response.json();
-  const newScheduleId = result.scheduleId;
-if (newScheduleId) {
-  await firebase.database().ref("timerScheduleId").set(newScheduleId);
-} else {
-  console.error("Kein ScheduleId von QStash erhalten:", result);
-}
+const delayMs = Math.max(endTime - Date.now(), 0);
+
+
+const payload = {
+  destination: "https://webhook.site/2d18361b-d352-4893-9331-5549bc00c8ef",
+  delay: delayMs,
+  body: JSON.stringify({ timerId: "main" }),
+};
+console.log("Qstasg Payload:", payload);
+
+fetch("https://qstash.upstash.io/v2/schedules",{
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0=",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify(payload)
+})
+.then(res => res.json())
+.then(data => {
+  if (data.scheduleId){
+    console.log("Qstash erfolgreich geplant:", data);
+  } else {
+    console.error("Kein ScheduleId von QStash erhalten", data);
+  }
+})
+.catch(err => console.error("Fehler beim QStash-Aufruf:", err));
+
 }
 
 
