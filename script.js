@@ -820,7 +820,7 @@ document.getElementById("photoInput").addEventListener("change", function () {
 });
 
 // Beim Laden prüfen
-document.addEventListener("DOMContentLoaded", () => {
+function startScript() {
   alert("Seite geladen - DOMContentLoaded ausgelöst");
 
   try {
@@ -852,7 +852,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   alert("Starte showButtons()");
   showButtons();
-});
+};
 
 
 
@@ -981,3 +981,6 @@ function save_timer_duration() {
       console.error("Fehler beim Speichern von DurationInput:", error);
     });
 }
+
+
+startScript()
