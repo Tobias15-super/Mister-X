@@ -112,10 +112,22 @@ serve(async (req) => {
         body: JSON.stringify({
           message: {
             notification: { title, body },
-            token,
+            token, 
             webpush: {
               fcm_options: {
                 link: "https://tobias15-super.github.io/Mister-X/",
+              },
+              headers: {
+                Urgency: "high" // Für Web Push wichtig
+              }
+            },
+            android: {
+              priority: "high"
+            },
+            apns: {
+              headers: {
+                "apns-priority": "10" // 10 = sofortige Zustellung
+
               },
             },
           },

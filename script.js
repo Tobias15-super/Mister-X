@@ -8,12 +8,6 @@ let historyMarkers = [];
 
 alert("JavaScript funktioniert!");
 
-// Supabase initialisieren
-const supabaseClient = supabase.createClient(
-  'https://axirbthvnznvhfagduyj.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDI2MTcsImV4cCI6MjA2ODg3ODYxN30.wfJm9e10_iNuYm_r3es_FmKuXBePsxSjIJcVqmSuYjc'
-);
-
 // Token speichern
 function saveTokenToSupabase(token) {
   let device_name = ""
@@ -53,12 +47,6 @@ try {
 } catch (e) {
   alert("⚠️ Dein Browser blockiert lokalen Speicher. Bitte verlasse den privaten Modus oder ändere die Einstellungen.");
 }
-
-// Service Worker registrieren
-navigator.serviceWorker.register('firebase-messaging-sw.js')
-  .then((registration) => {
-    messaging.useServiceWorker(registration);
-  });
 
 // Berechtigung anfragen und Token holen
 function requestPermission() {
@@ -814,6 +802,19 @@ function updateStartButtonState(isRunning) {
 // Beim Laden prüfen
 function startScript() {
   alert("Seite geladen - DOMContentLoaded ausgelöst");
+
+    // Supabase initialisieren
+  const supabaseClient = supabase.createClient(
+    'https://axirbthvnznvhfagduyj.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDI2MTcsImV4cCI6MjA2ODg3ODYxN30.wfJm9e10_iNuYm_r3es_FmKuXBePsxSjIJcVqmSuYjc'
+  );
+
+
+    // Service Worker registrieren
+  navigator.serviceWorker.register('firebase-messaging-sw.js')
+    .then((registration) => {
+      messaging.useServiceWorker(registration);
+    });
 
   try {
     const savedView = localStorage.getItem("activeView");
