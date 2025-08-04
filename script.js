@@ -5,6 +5,9 @@ let map;
 let marker;
 let historyMarkers = [];
 
+
+alert("JavaScript funktioniert!");
+
 // Supabase initialisieren
 const supabaseClient = supabase.createClient(
   'https://axirbthvnznvhfagduyj.supabase.co',
