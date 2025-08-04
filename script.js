@@ -982,5 +982,4 @@ function save_timer_duration() {
     });
 }
 
-
-startScript()
+document.addEventListener("DOMContentLoaded", startScript);
