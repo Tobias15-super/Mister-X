@@ -818,27 +818,39 @@ document.getElementById("photoInput").addEventListener("change", function () {
 
 // Beim Laden prüfen
 document.addEventListener("DOMContentLoaded", () => {
+  alert("Seite geladen - DOMContentLoaded ausgelöst");
+
   try {
     const savedView = localStorage.getItem("activeView");
+    alert("Gespeicherte Ansicht: " + savedView);
 
     if (savedView && savedView !== "start") {
+      alert("Wechsle zu gespeicherter Ansicht: " + savedView);
       switchView(savedView);
     } else {
+      alert("Keine gespeicherte Ansicht gefunden - zeige Startansicht");
       document.getElementById("startView").style.display = "block";
       document.getElementById("startView2").style.display = "block";
     }
   } catch (e) {
-    console.warn("Fehler beim Zugriff auf localStorage:", e);
-    // Fallback: Startansicht anzeigen
+    alert("Fehler beim Zugriff auf localStorage: " + e.message);
     document.getElementById("startView").style.display = "block";
     document.getElementById("startView2").style.display = "block";
   }
 
+  alert("Starte showLocationHistory()");
   showLocationHistory();
-  listenToTimer(); 
+
+  alert("Starte listenToTimer()");
+  listenToTimer();
+
+  alert("Starte setTimerInputFromFirebase()");
   setTimerInputFromFirebase();
+
+  alert("Starte showButtons()");
   showButtons();
 });
+
 
 
 function showButtons() {
