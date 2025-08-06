@@ -7,6 +7,7 @@ let historyMarkers = [];
 
 
 alert("JavaScript funktioniert!");
+alert ("0");
 
 // Token speichern
 function saveTokenToSupabase(token) {
