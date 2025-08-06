@@ -5,6 +5,11 @@ let map;
 let marker;
 let historyMarkers = [];
 
+
+window.onerror = function(message, source, lineno, colno, error) {
+  alert("JS-Fehler: " + message + " in " + source + " Zeile " + lineno);
+};
+
   // Supabase initialisieren
 const supabaseClient = supabase.createClient(
   'https://axirbthvnznvhfagduyj.supabase.co',
@@ -119,12 +124,7 @@ function removeNotificationSetup() {
 
 alert ("1");
 
-// Nachrichten empfangen, wenn Seite offen ist
-messaging.onMessage((payload) => {
-  console.log("Nachricht empfangen:", payload);
-  const { title, body } = payload.notification;
-  alert(`${title}\n${body}`);
-});
+
 
 async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, maxAttempts = 30) {
   const res = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all", {
@@ -818,6 +818,17 @@ function startScript() {
     .then((registration) => {
       messaging.useServiceWorker(registration);
     });
+
+    // Nachrichten empfangen, wenn Seite offen ist
+  if (window.messaging) {
+    messaging.onMessage((payload) => {
+      console.log("Nachricht empfangen:", payload);
+      const { title, body } = payload.notification;
+      alert(`${title}\n${body}`);
+    });
+  } else {
+    alert("Messaging nicht verfügbar!");
+  }
 
   try {
     const savedView = localStorage.getItem("activeView");
