@@ -110,6 +110,7 @@ function removeNotificationSetup() {
   });
 }
 
+alert ("1")
 
 // Nachrichten empfangen, wenn Seite offen ist
 messaging.onMessage((payload) => {
@@ -175,7 +176,7 @@ async function sendNotificationToRoles(title, body, roles) {
   sendNotificationToTokens(title, body, Array.from(matchingTokens));
 }
 
-
+alert ("2")
 
 function uploadToCloudinary(file, callback) {
   const cloudName = "ddvf141hb";
@@ -608,7 +609,7 @@ fetch("https://qstash.upstash.io/v2/schedules",{
 
 }
 
-
+alert ("3")
 
 // Timer aus Firebase lesen
 function listenToTimer() {
