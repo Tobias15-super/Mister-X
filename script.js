@@ -95,6 +95,19 @@ function removeNotificationSetup() {
       console.log("Token aus Firebase entfernt:", currentToken);
     }
 
+    // Token aus Supabase entfernen
+    supabaseClient
+      .from('fcm_tokens')
+      .delete()
+      .eq('token', currentToken)
+      .then(({ error }) => {
+        if (error) {
+          console.error("Fehler beim Löschen des Tokens aus Supabase:", error);
+        } else {
+          console.log("Token erfolgreich aus Supabase gelöscht.");
+        }
+      });
+
     // Token lokal löschen
     messaging.deleteToken(currentToken).then(() => {
       console.log("Token gelöscht.");
