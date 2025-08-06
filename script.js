@@ -988,3 +988,4 @@ function save_timer_duration() {
 }
 
 document.addEventListener("DOMContentLoaded", startScript);
+alert("Ende des Skripts");
