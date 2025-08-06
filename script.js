@@ -5,6 +5,12 @@ let map;
 let marker;
 let historyMarkers = [];
 
+  // Supabase initialisieren
+const supabaseClient = supabase.createClient(
+  'https://axirbthvnznvhfagduyj.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDI2MTcsImV4cCI6MjA2ODg3ODYxN30.wfJm9e10_iNuYm_r3es_FmKuXBePsxSjIJcVqmSuYjc'
+);
+
 
 alert("JavaScript funktioniert!");
 alert ("0");
@@ -111,7 +117,7 @@ function removeNotificationSetup() {
   });
 }
 
-alert ("1")
+alert ("1");
 
 // Nachrichten empfangen, wenn Seite offen ist
 messaging.onMessage((payload) => {
@@ -177,7 +183,7 @@ async function sendNotificationToRoles(title, body, roles) {
   sendNotificationToTokens(title, body, Array.from(matchingTokens));
 }
 
-alert ("2")
+alert ("2");
 
 function uploadToCloudinary(file, callback) {
   const cloudName = "ddvf141hb";
@@ -610,7 +616,7 @@ fetch("https://qstash.upstash.io/v2/schedules",{
 
 }
 
-alert ("3")
+alert ("3");
 
 // Timer aus Firebase lesen
 function listenToTimer() {
@@ -805,11 +811,6 @@ function updateStartButtonState(isRunning) {
 function startScript() {
   alert("Seite geladen - DOMContentLoaded ausgelöst");
 
-    // Supabase initialisieren
-  const supabaseClient = supabase.createClient(
-    'https://axirbthvnznvhfagduyj.supabase.co',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4aXJidGh2bnpudmhmYWdkdXlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDI2MTcsImV4cCI6MjA2ODg3ODYxN30.wfJm9e10_iNuYm_r3es_FmKuXBePsxSjIJcVqmSuYjc'
-  );
 
 
     // Service Worker registrieren
