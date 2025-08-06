@@ -17,9 +17,6 @@ const supabaseClient = supabase.createClient(
 );
 
 
-alert("JavaScript funktioniert!");
-alert ("0");
-
 // Token speichern
 function saveTokenToSupabase(token) {
   let device_name = ""
@@ -122,9 +119,6 @@ function removeNotificationSetup() {
   });
 }
 
-alert ("1");
-
-
 
 async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, maxAttempts = 30) {
   const res = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all", {
@@ -183,7 +177,6 @@ async function sendNotificationToRoles(title, body, roles) {
   sendNotificationToTokens(title, body, Array.from(matchingTokens));
 }
 
-alert ("2");
 
 function uploadToCloudinary(file, callback) {
   const cloudName = "ddvf141hb";
@@ -616,8 +609,6 @@ fetch("https://qstash.upstash.io/v2/schedules",{
 
 }
 
-alert ("3");
-
 // Timer aus Firebase lesen
 function listenToTimer() {
   if (timerListenerRegistered) return;
@@ -806,75 +797,6 @@ function updateStartButtonState(isRunning) {
   }
 };
 
-
-// Beim Laden prüfen
-function startScript() {
-  alert("Seite geladen - DOMContentLoaded ausgelöst");
-
-
-
-    // Service Worker registrieren
-  navigator.serviceWorker.register('firebase-messaging-sw.js')
-    .then((registration) => {
-      messaging.useServiceWorker(registration);
-    });
-
-    // Nachrichten empfangen, wenn Seite offen ist
-  if (window.messaging) {
-    messaging.onMessage((payload) => {
-      console.log("Nachricht empfangen:", payload);
-      const { title, body } = payload.notification;
-      alert(`${title}\n${body}`);
-    });
-  } else {
-    alert("Messaging nicht verfügbar!");
-  }
-
-  try {
-    const savedView = localStorage.getItem("activeView");
-    alert("Gespeicherte Ansicht: " + savedView);
-
-    if (savedView && savedView !== "start") {
-      alert("Wechsle zu gespeicherter Ansicht: " + savedView);
-      switchView(savedView);
-    } else {
-      alert("Keine gespeicherte Ansicht gefunden - zeige Startansicht");
-      document.getElementById("startView").style.display = "block";
-      document.getElementById("startView2").style.display = "block";
-    }
-  } catch (e) {
-    alert("Fehler beim Zugriff auf localStorage: " + e.message);
-    document.getElementById("startView").style.display = "block";
-    document.getElementById("startView2").style.display = "block";
-  }
-
-  alert("Starte showLocationHistory()");
-  showLocationHistory();
-
-  alert("Starte listenToTimer()");
-  listenToTimer();
-
-  alert("Starte setTimerInputFromFirebase()");
-  setTimerInputFromFirebase();
-
-  alert("Starte showButtons()");
-  showButtons();
-
-    // Foto-Upload
-  const photoInput = document.getElementById("photoInput");
-  if (photoInput) {
-    photoInput.addEventListener("change", function () {
-      const file = this.files[0];
-      if (file) {
-        fotoHochgeladen = true;
-        document.getElementById("status").innerText = "📸 Foto ausgewählt!";
-      }
-    });
-  }
-};
-
-
-
 function showButtons() {
   if (!localStorage.getItem("nachrichtAktiv")){
     document.getElementById("permissionButton").style.display="block";
@@ -1001,5 +923,62 @@ function save_timer_duration() {
     });
 }
 
-alert("Ende des Skripts");
+
+// Beim Laden prüfen
+function startScript() {
+  alert("Seite geladen - DOMContentLoaded ausgelöst");
+
+
+
+    // Service Worker registrieren
+  navigator.serviceWorker.register('firebase-messaging-sw.js')
+    .then((registration) => {
+      messaging.useServiceWorker(registration);
+    });
+
+    // Nachrichten empfangen, wenn Seite offen ist
+  if (window.messaging) {
+    messaging.onMessage((payload) => {
+      console.log("Nachricht empfangen:", payload);
+      const { title, body } = payload.notification;
+      alert(`${title}\n${body}`);
+    });
+  } else {
+    alert("Messaging nicht verfügbar!");
+  }
+
+  try {
+    const savedView = localStorage.getItem("activeView");
+
+    if (savedView && savedView !== "start") {
+      switchView(savedView);
+    } else {
+      document.getElementById("startView").style.display = "block";
+      document.getElementById("startView2").style.display = "block";
+    }
+  } catch (e) {
+    alert("Fehler beim Zugriff auf localStorage: " + e.message);
+    document.getElementById("startView").style.display = "block";
+    document.getElementById("startView2").style.display = "block";
+  }
+
+  showLocationHistory();
+  listenToTimer();
+  setTimerInputFromFirebase();
+  showButtons();
+
+    // Foto-Upload
+  const photoInput = document.getElementById("photoInput");
+  if (photoInput) {
+    photoInput.addEventListener("change", function () {
+      const file = this.files[0];
+      if (file) {
+        fotoHochgeladen = true;
+        document.getElementById("status").innerText = "📸 Foto ausgewählt!";
+      }
+    });
+  }
+};
+
+
 document.addEventListener("DOMContentLoaded", startScript);
