@@ -66,7 +66,7 @@ try {
 function requestPermission() {
   Notification.requestPermission().then((permission) => {
     if (permission === 'granted') {
-      messaging.getToken({
+      getToken(messaging, {
         vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
       }).then((currentToken) => {
         if (currentToken) {
