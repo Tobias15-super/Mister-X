@@ -1,5 +1,4 @@
 let countdown;
-let fotoHochgeladen = false;
 let timerListenerRegistered = false;
 let map;
 let marker;
@@ -8,6 +7,8 @@ let historyMarkers = [];
 import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
 import { ref, set, get, onValue, remove, push } from 'firebase/database';
+import * as supabase from '@supabase/supabase-js';
+
 
 
 
