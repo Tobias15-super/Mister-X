@@ -670,9 +670,14 @@ function listenToTimer() {
   //firebase.database().ref("timer").on("value", (snapshot) => {
   onValue(ref(rtdb, "timer"), (snapshot) => {
     const data = snapshot.val();
+    const {
+      startTime = null,
+      duration = null,
+      durationInput = null
+    } = data;
     const { startTime, duration, durationInput } = data;
 
-    if (!startTime) {
+    if (startTime === null || duration === null) {
       clearInterval(countdown);
       updateStartButtonState(false);
 
