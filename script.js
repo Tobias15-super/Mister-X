@@ -70,7 +70,7 @@ function requestPermission() {
     if (permission === 'granted') {
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/firebase-messaging-sw.js')
+          navigator.serviceWorker.register('Mister-X/firebase-messaging-sw.js')
             .then((registration) => {
               log('Service Worker registriert mit Scope:', registration.scope);
             })
