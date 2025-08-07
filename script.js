@@ -1057,12 +1057,14 @@ function startScript() {
   }
 };
 
-function log(msg) {
-  console.log(msg);
+
+function log(...msgs) {
+  const fullMsg = msgs.join(" ");
+  console.log(fullMsg);
   const logElem = document.getElementById("settingsLog");
   if (logElem) {
-    const now = new Date().toLocaleDateString();
-    logElem.textContent += `[${now}] ${msg}\n`;
+    const now = new Date().toLocaleTimeString();
+    logElem.textContent += `[${now}] ${fullMsg}\n`;
     logElem.scrollTop = logElem.scrollHeight;
   }
 }
