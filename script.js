@@ -1060,7 +1060,7 @@ function startScript() {
 
 function log(...msgs) {
   const fullMsg = msgs.join(" ");
-  console.log(fullMsg);
+  console.log(...msgs);
   const logElem = document.getElementById("settingsLog");
   if (logElem) {
     const now = new Date().toLocaleTimeString();
