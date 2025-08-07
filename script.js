@@ -5,6 +5,11 @@ let map;
 let marker;
 let historyMarkers = [];
 
+import { rtdb, storage, messaging } from './firebase.js';
+import { ref, set, get, onValue, remove, push } from 'firebase/database';
+import { collection, getDocs } from 'firebase/firestore/lite';
+
+
 
 window.onerror = function(message, source, lineno, colno, error) {
   alert("JS-Fehler: " + message + " in " + source + " Zeile " + lineno);
@@ -67,7 +72,8 @@ function requestPermission() {
         if (currentToken) {
           const deviceId = getDeviceId();
           console.log("Token:", currentToken);
-          firebase.database().ref("tokens/" + deviceId).set(currentToken);
+          //firebase.database().ref("tokens/" + deviceId).set(currentToken);
+          set(ref(rtdb, "tokens/" + deviceId), {currentToken})
           saveTokenToSupabase(currentToken);
           localStorage.setItem("nachrichtAktiv",true);
           document.getElementById("permissionButton").style.display="none";
@@ -91,7 +97,8 @@ function removeNotificationSetup() {
   }).then((currentToken) => {
     if (currentToken) {
       const deviceId = getDeviceId();
-      firebase.database().ref("tokens/" + deviceId).remove();
+      //firebase.database().ref("tokens/" + deviceId).remove();
+      remove(ref(rtdb, "tokens/" + deviceId))
       console.log("Token aus Firebase entfernt:", currentToken);
     }
 
@@ -158,8 +165,10 @@ async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, m
 }
 
 async function sendNotificationToRoles(title, body, roles) {
-  const rolesSnapshot = await firebase.database().ref("roles").once("value");
-  const tokensSnapshot = await firebase.database().ref("tokens").once("value");
+  //const rolesSnapshot = await firebase.database().ref("roles").once("value");
+  const rolesSnapshot = await get(ref(rtdb, "timer"));
+  //const tokensSnapshot = await firebase.database().ref("tokens").once("value");
+  const tokensSnapshot = await get(ref(rtdb,"tokens"));
 
   const rolesData = rolesSnapshot.val();
   const tokensData = tokensSnapshot.val();
@@ -239,7 +248,8 @@ function sendLocationWithPhoto() {
       timestamp
     };
 
-    const newRef = firebase.database().ref("locations").push(locationData);
+    //const newRef = firebase.database().ref("locations").push(locationData);
+    const newRef = push(ref(rtdb,"locations"), locationData);
 
     // Benachrichtigung senden
     const notificationText = title + " – " + manualDescription;
@@ -308,7 +318,8 @@ function saveLocation(lat, lon, description) {
   }
 
   // In Firebase speichern
-  const newRef = firebase.database().ref("locations").push(locationData);
+  //const newRef = firebase.database().ref("locations").push(locationData);
+  const newRef = push(ref(rtdb,"locations"), locationData);
 
   // Benachrichtigung senden
   let notificationText = title;
@@ -338,9 +349,9 @@ function saveLocation(lat, lon, description) {
 
 
 function showLocationHistory() {
-  const dbRef = firebase.database().ref("locations");
+  //const dbRef = firebase.database().ref("locations");
 
-  dbRef.on("value", snapshot => {
+  onValue(ref(rtdb, "locations"), (snapshot) => {
     if (!snapshot.exists()) {
       if (map) {
         map.remove();
@@ -418,11 +429,13 @@ function showLocationHistory() {
 }
 
 function resetAllMisterXRollen() {
-  firebase.database().ref("roles").once("value").then(snapshot => {
+  //firebase.database().ref("roles").once("value").then(snapshot => {
+  get(ref(rtdb, "roles")).then(snapshot => {
     const roles = snapshot.val();
     for (const id in roles) {
       if (roles[id].role === "misterx") {
-        firebase.database().ref("roles/" + id).set({
+        //firebase.database().ref("roles/" + id).set({
+        set(ref(rtdb, "roles/" + id), {
           role: "start",
           timestamp: Date.now()
         });
@@ -434,11 +447,13 @@ function resetAllMisterXRollen() {
 
 async function canSwitchToMisterX() {
   // 1. max_Team_X auslesen
-  const maxSnapshot = await firebase.database().ref("settings/max_Team_X").once("value");
+  //const maxSnapshot = await firebase.database().ref("settings/max_Team_X").once("value");
+  const maxSnapshot = await get(ref(rtdb, "settings/max_Team_X"));
   const maxMisterX = maxSnapshot.exists() ? maxSnapshot.val() : 1;
 
   // 2. Rollen auslesen
-  const rolesSnapshot = await firebase.database().ref("roles").once("value");
+  //const rolesSnapshot = await firebase.database().ref("roles").once("value");
+  const rolesSnapshot = await get(ref(rtdb, "roles"));
   const roles = rolesSnapshot.val();
 
   // 3. Mister-X-Zähler
@@ -492,7 +507,8 @@ async function switchView(view) {
 
   localStorage.setItem("activeView", view);
       const deviceId = getDeviceId();
-    firebase.database().ref("roles/" + deviceId).set({
+    //firebase.database().ref("roles/" + deviceId).set({
+    set(ref(rtdb, "roles/" + deviceId), {
       role: view,
       timestamp: Date.now(),
     });
@@ -502,7 +518,8 @@ async function switchView(view) {
     .update({ role })
     .eq("device_name", deviceId);
 
-  firebase.database().ref("timer").once("value").then(snapshot => {
+  //firebase.database().ref("timer").once("value").then(snapshot => {
+  get(ref(rtdb, "timer")).then(snapshot => {
     const data = snapshot.val();
     if (data) {
       const { startTime, duration, durationInput } = data;
@@ -524,7 +541,8 @@ async function goBack() {
   clearInterval(countdown);
   localStorage.setItem("activeView","start");
   const deviceId = getDeviceId();
-  firebase.database().ref("roles/" + deviceId).set({
+  //firebase.database().ref("roles/" + deviceId).set({
+  set(ref(rtdb, "roles/" + deviceId), {
     role: "start",
     timestamp: Date.now(),
   });
@@ -536,15 +554,20 @@ async function goBack() {
 };
 
 async function startTimer() {
-  const timerRef = firebase.database().ref("timer");
+  //const timerRef = firebase.database().ref("timer");
+
 
   // 1. Vorherige Timer-Daten löschen
-  await timerRef.child("duration").remove();
-  await timerRef.child("startTime").remove();
-  await firebase.database().ref("timerMessage").remove();
+  //await timerRef.child("duration").remove();
+  await remove(ref(rtdb, "timer/duration"));
+  //await timerRef.child("startTime").remove();
+  await remove(ref(rtdb, "timer/startTime"));
+  //await firebase.database().ref("timerMessage").remove();
+  await remove(ref(rtdb, "timerMessage"));
 
   // 2. Vorherigen Upstash-Timer abbrechen
-  const scheduleIdSnapshot = await firebase.database().ref("timerScheduleId").once("value");
+  //const scheduleIdSnapshot = await firebase.database().ref("timerScheduleId").once("value");
+  const scheduleIdSnapshot = await get(ref(rtdb, "timerScheduleId"));
   const scheduleId = scheduleIdSnapshot.val();
   if (scheduleId) {
     await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
@@ -553,7 +576,8 @@ async function startTimer() {
         "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0"
       }
     });
-    await firebase.database().ref("timerScheduleId").remove();
+    //await firebase.database().ref("timerScheduleId").remove();
+    await remove(ref(rtdb, "timerScheduleId"));
   }
 
   // 3. Lokalen Countdown stoppen
@@ -588,7 +612,8 @@ async function startTimer() {
     duration,
     durationInput: duration
   });
-  await firebase.database().ref("timerMessage").set(message);
+  //await firebase.database().ref("timerMessage").set(message);
+  await set(ref(rtdb, "timerMessage"), message);
 
   // 7. Upstash-Timer planen
 
@@ -627,7 +652,8 @@ function listenToTimer() {
   if (timerListenerRegistered) return;
   timerListenerRegistered = true;
 
-  firebase.database().ref("timer").on("value", (snapshot) => {
+  //firebase.database().ref("timer").on("value", (snapshot) => {
+  onValue(ref(rtdb, "timer"), (snapshot) => {
     const data = snapshot.val();
     const { startTime, duration, durationInput } = data;
 
@@ -720,7 +746,9 @@ function updateCountdown(startTime, duration) {
 }
 
 function setTimerInputFromFirebase(){
-  firebase.database().ref("timer").once("value").then(snapshot => {
+  //firebase.database().ref("timer").once("value").then(snapshot => {
+  get(ref(rtdb, "timer")).then(snapshot => {
+    if (!snapshot.exists()) return;
     const data = snapshot.val();
     const timerInputElem = document.getElementById("timerDurationInput");
     if (!timerInputElem) return;
@@ -758,14 +786,17 @@ function getLocation() {
           document.getElementById("status").innerText =
             "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
             standortbeschreibung = prompt("Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben)") || "wurde nicht angegeben!";
-            firebase.database().ref("locations").push({
+            //firebase.database().ref("locations").push({
+            push(ref(rtdb, "locations"), {
               description: standortbeschreibung.trim(),
               timestamp,
             })
           return;
         }
 
-        firebase.database().ref("locations").push({
+        //firebase.database().ref("locations").push({
+        push(ref(rtdb, "locations"), {
+          title: "Automatischer Standort",
           lat,
           lon,
           timestamp,
@@ -822,7 +853,8 @@ function showButtons() {
 
 function deleteAllLocations() {
   if (confirm("Möchtest du wirklich alle gespeicherten Standorte löschen?")) {
-    firebase.database().ref("locations").remove().then(() => {
+    //firebase.database().ref("locations").remove().then(() => {
+    remove(ref(rtdb, "locations")).then(() => {
       alert("Alle Standorte wurden gelöscht.");
 
       // Karte und Feed lokal ausblenden
@@ -841,15 +873,19 @@ function deleteAllLocations() {
 }
 
 async function resetTimer() {
-  const timerRef = firebase.database().ref("timer");
+  //const timerRef = firebase.database().ref("timer");
 
   // Timer-Daten löschen
-  await timerRef.child("duration").remove();
-  await timerRef.child("startTime").remove();
+  //await timerRef.child("duration").remove();
+  await remove(ref(rtdb, "timer/duration"));
+  //await timerRef.child("startTime").remove();
+  await remove(ref(rtdb, "timer/startTime"));
 
   // Upstash-Timer abbrechen, falls vorhanden
-  const scheduleIdSnapshot = await firebase.database().ref("timerScheduleId").once("value");
+  //const scheduleIdSnapshot = await firebase.database().ref("timerScheduleId").once("value");
+  const scheduleIdSnapshot = await get(ref(rtdb, "timerScheduleId"));
   const scheduleId = scheduleIdSnapshot.val();
+
 
   if (scheduleId) {
     await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
@@ -858,11 +894,13 @@ async function resetTimer() {
         "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0"
       }
     });
-    await firebase.database().ref("timerScheduleId").remove();
+    //await firebase.database().ref("timerScheduleId").remove();
+    await remove(ref(rtdb, "timerScheduleId"));
   }
 
   // Nachricht löschen
-  await firebase.database().ref("timerMessage").remove();
+  //await firebase.database().ref("timerMessage").remove();
+  await remove(ref(rtdb, "timerMessage"));
 
   // UI zurücksetzen
   clearInterval(countdown);
@@ -883,13 +921,15 @@ async function resetTimer() {
 function save_max_mister_x() {
   const anzahl = document.getElementById("max_Team_X").value;
 
-  const settingsRef = firebase.database().ref("settings");
+  //const settingsRef = firebase.database().ref("settings");
 
   // Erst löschen
-  settingsRef.child("max_Team_X").remove()
+  //settingsRef.child("max_Team_X").remove()
+  remove(ref(rtdb, "settings/max_Team_X"))
     .then(() => {
       // Dann neuen Wert setzen
-      return settingsRef.child("max_Team_X").set(Number(anzahl));
+      //return settingsRef.child("max_Team_X").set(Number(anzahl));
+      return set(ref(rtdb, "settings/max_Team_X"), Number(anzahl));
     })
     .then(() => {
       console.log("max_Team_X erfolgreich gespeichert:", anzahl);
@@ -902,7 +942,8 @@ function save_max_mister_x() {
 function load_max_mister_x() {
   const input = document.getElementById("max_Team_X");
 
-  firebase.database().ref("settings/max_Team_X").once("value")
+  //firebase.database().ref("settings/max_Team_X").once("value")
+  get(ref(rtdb, "settings/max_Team_X"))
     .then((snapshot) => {
       if (snapshot.exists()) {
         input.value = snapshot.val();
@@ -920,13 +961,14 @@ function save_timer_duration() {
   const anzahl = document.getElementById("timerDurationInput").value;
   const anzahl_in_sekunden = anzahl * 60
 
-  const settingsRef = firebase.database().ref("timer");
+  //const settingsRef = firebase.database().ref("timer");
 
   // Erst löschen
-  settingsRef.child("durationInput").remove()
+  remove(ref(rtdb, "timer/durationInput"))
     .then(() => {
       // Dann neuen Wert setzen
-      return settingsRef.child("durationInput").set(Number(anzahl_in_sekunden));
+      //return settingsRef.child("durationInput").set(Number(anzahl_in_sekunden));
+      return set(ref(rtdb, "timer/durationInput"), Number(anzahl_in_sekunden));
     })
     .then(() => {
       console.log("Duration_input:", anzahl_in_sekunden);

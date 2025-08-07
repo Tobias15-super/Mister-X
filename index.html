@@ -79,32 +79,10 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@1.35.6/dist/umd/supabase.min.js"></script>
 
-<script>
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore/lite';
-import { firebase_database } from 'firebase/database';
-import { firebase_storage } from 'firebase/storage';
-import { firebase_messaging } from 'firebase/messaging';
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
-    authDomain: "mister-x-d6b59.firebaseapp.com",
-    databaseURL: "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "mister-x-d6b59",
-    storageBucket: "mister-x-d6b59.firebasestorage.app",
-    messagingSenderId: "616391598963",
-    appId: "1:616391598963:web:da07882b0f481d3000db06",
-    measurementId: "G-W66SK677NG"
-  };
-
-  // Firebase initialisieren
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const messaging = firebase_messaging();
-</script>
+<script type="module"> src="/script.js"></script>
 
 
 
-  <script src="script.js" defer></script>
+<script src="script.js" defer></script>
 </body>
 </html>
