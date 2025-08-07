@@ -265,7 +265,7 @@ function sendLocationWithPhoto() {
     const newRef = push(ref(rtdb,"locations"), locationData);
 
     // Benachrichtigung senden
-    const notificationText = title + " – " + manualDescription;
+    const notificationText = title + " - " + manualDescription;
     sendNotificationToRoles("Mister X hat sich gezeigt!", notificationText, "agent");
 
     // Bild im Hintergrund hochladen
@@ -996,7 +996,7 @@ function save_timer_duration() {
 
 // Beim Laden prüfen
 function startScript() {
-  alert("Seite geladen - DOMContentLoaded ausgelöst");
+  //alert("Seite geladen - DOMContentLoaded ausgelöst");
 
 
 
