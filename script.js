@@ -67,6 +67,18 @@ try {
 function requestPermission() {
   Notification.requestPermission().then((permission) => {
     if (permission === 'granted') {
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/firebase-messaging-sw.js')
+            .then((registration) => {
+              console.log('Service Worker registriert mit Scope:', registration.scope);
+            })
+            .catch((error) => {
+              console.error('Service Worker Registrierung fehlgeschlagen:', error);
+            });
+        });
+      }
+
       getToken(messaging, {
         vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
       }).then((currentToken) => {
