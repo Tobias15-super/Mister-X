@@ -7,7 +7,6 @@ let historyMarkers = [];
 
 import { rtdb, storage, messaging } from './firebase.js';
 import { ref, set, get, onValue, remove, push } from 'firebase/database';
-import { collection, getDocs } from 'firebase/firestore/lite';
 
 
 
