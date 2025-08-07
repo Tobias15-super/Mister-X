@@ -5,7 +5,7 @@ let map;
 let marker;
 let historyMarkers = [];
 
-import { getToken } from 'firebase/messaging';
+import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
 import { ref, set, get, onValue, remove, push } from 'firebase/database';
 
@@ -92,7 +92,7 @@ function requestPermission() {
 
 function removeNotificationSetup() {
   // Token aus Firebase entfernen
-  messaging.getToken({
+  getToken(messaging, {
     vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
   }).then((currentToken) => {
     if (currentToken) {
@@ -116,7 +116,7 @@ function removeNotificationSetup() {
       });
 
     // Token lokal löschen
-    messaging.deleteToken(currentToken).then(() => {
+    deleteToken(messaging).then(() => {
       console.log("Token gelöscht.");
     }).catch((err) => {
       console.error("Fehler beim Löschen des Tokens:", err);
@@ -1000,7 +1000,7 @@ function startScript() {
 
     // Nachrichten empfangen, wenn Seite offen ist
   if (window.messaging) {
-    messaging.onMessage((payload) => {
+    onMessage(messaging, (payload) => {
       console.log("Nachricht empfangen:", payload);
       const { title, body } = payload.notification;
       alert(`${title}\n${body}`);
