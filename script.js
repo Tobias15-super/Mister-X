@@ -135,13 +135,6 @@ function removeNotificationSetup() {
         }
       });
 
-    // Token lokal löschen
-    deleteToken(messaging).then(() => {
-      console.log("Token gelöscht.");
-    }).catch((err) => {
-      console.error("Fehler beim Löschen des Tokens:", err);
-    });
-
     // Lokale Einstellungen zurücksetzen
     localStorage.removeItem("nachrichtAktiv");
     document.getElementById("permissionButton").style.display = "block";
