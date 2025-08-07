@@ -1059,7 +1059,7 @@ function startScript() {
 
 function log(msg) {
   console.log(msg);
-  const logElem = document.getElementById("settingslog");
+  const logElem = document.getElementById("settingsLog");
   if (logElem) {
     const now = new Date().toLocaleDateString();
     logElem.textContent += `[${now}] ${msg}\n`;
