@@ -1014,7 +1014,7 @@ function startScript() {
     });
 
     // Nachrichten empfangen, wenn Seite offen ist
-  if (window.messaging) {
+  if (messaging) {
     onMessage(messaging, (payload) => {
       console.log("Nachricht empfangen:", payload);
       const { title, body } = payload.notification;
