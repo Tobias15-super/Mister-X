@@ -87,7 +87,7 @@ function requestPermission() {
         if (currentToken) {
           const deviceId = getDeviceId();
           log("Token:", currentToken);
-          set(ref(rtdb, "tokens/" + deviceId), { currentToken });
+          set(ref(rtdb, "tokens/" + deviceId), currentToken);
           saveTokenToSupabase(currentToken);
           localStorage.setItem("nachrichtAktiv", true);
           document.getElementById("permissionButton").style.display = "none";
