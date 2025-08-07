@@ -41,7 +41,7 @@ function saveTokenToSupabase(token) {
       if (error) {
         console.error("Fehler beim Speichern des Tokens:", error);
       } else {
-        console.log("Token erfolgreich gespeichert.");
+        log("Token erfolgreich gespeichert.");
       }
     });
 }
@@ -72,7 +72,7 @@ function requestPermission() {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/firebase-messaging-sw.js')
             .then((registration) => {
-              console.log('Service Worker registriert mit Scope:', registration.scope);
+              log('Service Worker registriert mit Scope:', registration.scope);
             })
             .catch((error) => {
               console.error('Service Worker Registrierung fehlgeschlagen:', error);
@@ -86,7 +86,7 @@ function requestPermission() {
       }).then((currentToken) => {
         if (currentToken) {
           const deviceId = getDeviceId();
-          console.log("Token:", currentToken);
+          log("Token:", currentToken);
           set(ref(rtdb, "tokens/" + deviceId), { currentToken });
           saveTokenToSupabase(currentToken);
           localStorage.setItem("nachrichtAktiv", true);
@@ -119,7 +119,7 @@ function removeNotificationSetup() {
       const deviceId = getDeviceId();
       //firebase.database().ref("tokens/" + deviceId).remove();
       remove(ref(rtdb, "tokens/" + deviceId))
-      console.log("Token aus Firebase entfernt:", currentToken);
+      log("Token aus Firebase entfernt:", currentToken);
     }
 
     // Token aus Supabase entfernen
@@ -131,7 +131,7 @@ function removeNotificationSetup() {
         if (error) {
           console.error("Fehler beim Löschen des Tokens aus Supabase:", error);
         } else {
-          console.log("Token erfolgreich aus Supabase gelöscht.");
+          log("Token erfolgreich aus Supabase gelöscht.");
         }
       });
 
@@ -163,17 +163,17 @@ async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, m
   });
 
   const result = await res.json();
-  console.log(`📦 Versuch ${attempt}:`, result);
+  log(`📦 Versuch ${attempt}:`, result);
 
   if (result.failedTokens && result.failedTokens.length > 0 && attempt < maxAttempts) {
-    console.log(`🔁 Wiederhole für ${result.failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
+    log(`🔁 Wiederhole für ${result.failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
     setTimeout(() => {
       sendNotificationToTokens(title, body, result.failedTokens, attempt + 1, maxAttempts);
     }, 10000);
   } else if (attempt >= maxAttempts) {
     console.warn("⏱️ Max. Anzahl an Versuchen erreicht.");
   } else {
-    console.log("✅ Alle Benachrichtigungen erfolgreich gesendet.");
+    log("✅ Alle Benachrichtigungen erfolgreich gesendet.");
   }
 }
 
@@ -640,7 +640,7 @@ const payload = {
   delay: delayMs,
   body: JSON.stringify({ timerId: "main" }),
 };
-console.log("Qstasg Payload:", payload);
+log("Qstasg Payload:", payload);
 
 fetch("https://qstash.upstash.io/v2/schedules",{
   method: "POST",
@@ -653,7 +653,7 @@ fetch("https://qstash.upstash.io/v2/schedules",{
 .then(res => res.json())
 .then(data => {
   if (data.scheduleId){
-    console.log("Qstash erfolgreich geplant:", data);
+    log("Qstash erfolgreich geplant:", data);
   } else {
     console.error("Kein ScheduleId von QStash erhalten", data);
   }
@@ -947,7 +947,7 @@ function save_max_mister_x() {
       return set(ref(rtdb, "settings/max_Team_X"), Number(anzahl));
     })
     .then(() => {
-      console.log("max_Team_X erfolgreich gespeichert:", anzahl);
+      log("max_Team_X erfolgreich gespeichert:", anzahl);
     })
     .catch((error) => {
       console.error("Fehler beim Speichern von max_Team_X:", error);
@@ -962,7 +962,7 @@ function load_max_mister_x() {
     .then((snapshot) => {
       if (snapshot.exists()) {
         input.value = snapshot.val();
-        console.log("max_Team_X geladen:", snapshot.val());
+        log("max_Team_X geladen:", snapshot.val());
       } else {
         console.warn("Kein max_Team_X-Wert gefunden.");
       }
@@ -986,7 +986,7 @@ function save_timer_duration() {
       return set(ref(rtdb, "timer/durationInput"), Number(anzahl_in_sekunden));
     })
     .then(() => {
-      console.log("Duration_input:", anzahl_in_sekunden);
+      log("Duration_input:", anzahl_in_sekunden);
     })
     .catch((error) => {
       console.error("Fehler beim Speichern von DurationInput:", error);
@@ -1003,10 +1003,10 @@ function startScript() {
     // Service Worker registrieren
   navigator.serviceWorker.register('firebase-messaging-sw.js')
     .then((registration) => {
-      console.log("Service Worker registriert:", registration);
+      log("Service Worker registriert:", registration);
       getToken(messaging, { serviceWorkerRegistration: registration , vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"})
       .then((token) => {
-        console.log("Token erhalten:", token);
+        log("Token erhalten:", token);
       })
       .catch((err) => {
         console.error("Fehler beim Abrufen des Tokens:", err);
@@ -1016,7 +1016,7 @@ function startScript() {
     // Nachrichten empfangen, wenn Seite offen ist
   if (messaging) {
     onMessage(messaging, (payload) => {
-      console.log("Nachricht empfangen:", payload);
+      log("Nachricht empfangen:", payload);
       const { title, body } = payload.notification;
       alert(`${title}\n${body}`);
     });
@@ -1056,6 +1056,16 @@ function startScript() {
     });
   }
 };
+
+function log(msg) {
+  log(msg);
+  const logElem = document.getElementById("settingslog");
+  if (logElem) {
+    const now = new Date().toLocaleDateString();
+    logElem.textContent += `[${now}] ${msg}\n`;
+    logElem.scrollTop = logElem.scrollHeight;
+  }
+}
 
 
 document.addEventListener("DOMContentLoaded", startScript);
