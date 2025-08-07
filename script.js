@@ -7,7 +7,7 @@ let fotoHochgeladen = false;
 
 import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
-import { ref, set, get, onValue, remove, push } from 'firebase/database';
+import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 
 
@@ -271,7 +271,7 @@ function sendLocationWithPhoto() {
     // Bild im Hintergrund hochladen
     uploadToCloudinary(file, ({ url }) => {
       //newRef.update({ photoURL: url });
-      set(ref(newRef, "photoURL"), url)
+      update(newRef, { photoURL: url }); // Foto-URL aktualisieren
     });
 
     // Reset UI
