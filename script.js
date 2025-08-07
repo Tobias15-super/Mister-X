@@ -348,7 +348,7 @@ function saveLocation(lat, lon, description) {
   if (file) {
     uploadToCloudinary(file, ({ url }) => {
       //newRef.update({ photoURL: url });
-      set(ref(newRef, "photoURL"), url);
+      update(newRef, { photoURL: url }); // Foto-URL aktualisieren
     });
   }
 
