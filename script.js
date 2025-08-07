@@ -5,6 +5,7 @@ let map;
 let marker;
 let historyMarkers = [];
 
+import { getToken } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
 import { ref, set, get, onValue, remove, push } from 'firebase/database';
 
@@ -987,7 +988,14 @@ function startScript() {
     // Service Worker registrieren
   navigator.serviceWorker.register('firebase-messaging-sw.js')
     .then((registration) => {
-      messaging.useServiceWorker(registration);
+      console.log("Service Worker registriert:", registration);
+      getToken(messaging, { serviceWorkerRegistration: registration , vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"})
+      .then((token) => {
+        console.log("Token erhalten:", token);
+      })
+      .catch((err) => {
+        console.error("Fehler beim Abrufen des Tokens:", err);
+      });
     });
 
     // Nachrichten empfangen, wenn Seite offen ist
@@ -1036,3 +1044,4 @@ function startScript() {
 
 
 document.addEventListener("DOMContentLoaded", startScript);
+window.switchView = switchView;
