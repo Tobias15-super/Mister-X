@@ -1058,7 +1058,7 @@ function startScript() {
 };
 
 function log(msg) {
-  log(msg);
+  console.log(msg);
   const logElem = document.getElementById("settingslog");
   if (logElem) {
     const now = new Date().toLocaleDateString();
