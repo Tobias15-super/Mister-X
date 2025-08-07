@@ -3,6 +3,7 @@ let timerListenerRegistered = false;
 let map;
 let marker;
 let historyMarkers = [];
+let fotoHochgeladen = false;
 
 import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
@@ -153,7 +154,7 @@ function removeNotificationSetup() {
 }
 
 
-async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, maxAttempts = 30) {
+async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, maxAttempts = 20) {
   const res = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all", {
     method: "POST",
     headers: {
@@ -179,7 +180,7 @@ async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, m
 
 async function sendNotificationToRoles(title, body, roles) {
   //const rolesSnapshot = await firebase.database().ref("roles").once("value");
-  const rolesSnapshot = await get(ref(rtdb, "timer"));
+  const rolesSnapshot = await get(ref(rtdb, "roles"));
   //const tokensSnapshot = await firebase.database().ref("tokens").once("value");
   const tokensSnapshot = await get(ref(rtdb,"tokens"));
 
