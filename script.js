@@ -76,6 +76,7 @@ function requestPermission() {
             })
             .catch((error) => {
               console.error('Service Worker Registrierung fehlgeschlagen:', error);
+              alert("❌ Service Worker konnte nicht registriert werden: " + error.message);
             });
         });
       }
@@ -86,22 +87,27 @@ function requestPermission() {
         if (currentToken) {
           const deviceId = getDeviceId();
           console.log("Token:", currentToken);
-          //firebase.database().ref("tokens/" + deviceId).set(currentToken);
-          set(ref(rtdb, "tokens/" + deviceId), {currentToken})
+          set(ref(rtdb, "tokens/" + deviceId), { currentToken });
           saveTokenToSupabase(currentToken);
-          localStorage.setItem("nachrichtAktiv",true);
-          document.getElementById("permissionButton").style.display="none";
+          localStorage.setItem("nachrichtAktiv", true);
+          document.getElementById("permissionButton").style.display = "none";
+          alert("✅ Benachrichtigungen aktiviert!");
         } else {
           console.warn("Kein Token erhalten.");
+          alert("⚠️ Kein Token erhalten. Bitte erneut versuchen.");
         }
       }).catch((err) => {
         console.error("Fehler beim Token holen:", err);
+        alert("❌ Fehler beim Token holen: " + err.message);
       });
+
     } else {
       console.warn("Benachrichtigungen nicht erlaubt.");
+      alert("⚠️ Benachrichtigungen wurden abgelehnt.");
     }
   });
 }
+
 
 
 function removeNotificationSetup() {
