@@ -675,7 +675,7 @@ function listenToTimer() {
       duration = null,
       durationInput = null
     } = data;
-    const { startTime, duration, durationInput } = data;
+
 
     if (startTime === null || duration === null) {
       clearInterval(countdown);
