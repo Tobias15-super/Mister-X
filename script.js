@@ -270,7 +270,8 @@ function sendLocationWithPhoto() {
 
     // Bild im Hintergrund hochladen
     uploadToCloudinary(file, ({ url }) => {
-      newRef.update({ photoURL: url });
+      //newRef.update({ photoURL: url });
+      set(ref(newRef, "photoURL"), url)
     });
 
     // Reset UI
@@ -346,7 +347,8 @@ function saveLocation(lat, lon, description) {
   // Bild im Hintergrund hochladen
   if (file) {
     uploadToCloudinary(file, ({ url }) => {
-      newRef.update({ photoURL: url });
+      //newRef.update({ photoURL: url });
+      set(ref(newRef, "photoURL"), url);
     });
   }
 
@@ -599,7 +601,7 @@ async function startTimer() {
   }
 
   // 4. Neue Dauer auslesen
-  const snapshot = await timerRef.once("value");
+  const snapshot = await get(ref(rtdb, "timer"));
   const data = snapshot.val();
 
   let durationInput = Math.floor(data?.durationInput);
@@ -620,7 +622,7 @@ async function startTimer() {
   };
 
   // 6. Neue Timer-Daten speichern
-  await timerRef.set({
+  await set(ref(rtdb, "timer"), {
     startTime,
     duration,
     durationInput: duration
