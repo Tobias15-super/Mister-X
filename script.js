@@ -1045,3 +1045,13 @@ function startScript() {
 
 document.addEventListener("DOMContentLoaded", startScript);
 window.switchView = switchView;
+window.requestPermission = requestPermission;
+window.sendLocationWithPhoto = sendLocationWithPhoto;
+window.startTimer = startTimer;
+window.goBack = goBack;
+window.save_timer_duration = save_timer_duration;
+window.save_max_mister_x = save_max_mister_x;
+window.resetTimer = resetTimer;
+window.deleteAllLocations = deleteAllLocations;
+window.resetAllMisterXRollen = resetAllMisterXRollen;
+window.removeNotificationSetup = removeNotificationSetup;
