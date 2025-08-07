@@ -1,7 +1,7 @@
 {
   "name": "Mister X Spiel",
   "short_name": "MisterX",
-  "start_url": "/",
+  "start_url": "/Mister-X",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#000000",
