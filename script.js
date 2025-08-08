@@ -111,7 +111,7 @@ function requestPermission() {
 
 
 function refreshTokenIfPermitted() {
-  if (Notification.permission === 'granted' && localStorage.getItem("serviceWorkerRegistered") === "true") {
+  if (typeof Notification !== "undefined" && Notification.permission === 'granted' && localStorage.getItem("serviceWorkerRegistered") === "true") {
     navigator.serviceWorker.ready.then((registration) => {
       getToken(messaging, {
         serviceWorkerRegistration: registration,
