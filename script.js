@@ -121,6 +121,17 @@ function refreshTokenIfPermitted() {
           const deviceId = getDeviceId();
           log("🔄 Token aktualisiert:", newToken);
           set(ref(rtdb, "tokens/" + deviceId), newToken);
+          supabaseClient
+            .from('fcm_tokens')
+            .delete()
+            .eq('token', currentToken)
+            .then(({ error }) => {
+              if (error) {
+                console.error("Fehler beim Löschen des Tokens aus Supabase:", error);
+              } else {
+                log("Token erfolgreich aus Supabase gelöscht.");
+              }
+            });
           saveTokenToSupabase(newToken);
           localStorage.setItem("nachrichtAktiv", true);
         } else {
