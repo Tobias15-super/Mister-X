@@ -164,6 +164,7 @@ function removeNotificationSetup() {
     // Lokale Einstellungen zurücksetzen
     localStorage.removeItem("nachrichtAktiv");
     document.getElementById("permissionButton").style.display = "block";
+    document.getElementById("permissionButton2").style.display = "none";
   });
 
   // Service Worker abmelden
