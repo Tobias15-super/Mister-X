@@ -16,7 +16,7 @@ firebase.initializeApp(firebaseConfig);
 
 const messaging = firebase.messaging();
 
-/*
+
 messaging.onBackgroundMessage(function(payload) {
   log('[firebase-messaging-sw.js] Nachricht empfangen:', payload);
   const notificationTitle = payload.notification.title;
@@ -26,4 +26,3 @@ messaging.onBackgroundMessage(function(payload) {
 
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
-*/
