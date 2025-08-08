@@ -73,6 +73,7 @@ function requestPermission() {
           navigator.serviceWorker.register('Mister-X/firebase-messaging-sw.js')
             .then((registration) => {
               log('Service Worker registriert mit Scope:', registration.scope);
+              localStorage.setItem("serviceWorkerRegistered", true);
             })
             .catch((error) => {
               console.error('Service Worker Registrierung fehlgeschlagen:', error);
@@ -110,7 +111,7 @@ function requestPermission() {
 
 
 function refreshTokenIfPermitted() {
-  if (Notification.permission === 'granted') {
+  if (Notification.permission === 'granted' && localStorage.getItem("serviceWorkerRegistered") === "true") {
     navigator.serviceWorker.ready.then((registration) => {
       getToken(messaging, {
         serviceWorkerRegistration: registration,
