@@ -109,6 +109,32 @@ function requestPermission() {
 }
 
 
+function refreshTokenIfPermitted() {
+  if (Notification.permission === 'granted') {
+    navigator.serviceWorker.ready.then((registration) => {
+      getToken(messaging, {
+        serviceWorkerRegistration: registration,
+        vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
+      }).then((newToken) => {
+        if (newToken) {
+          const deviceId = getDeviceId();
+          log("🔄 Token aktualisiert:", newToken);
+          set(ref(rtdb, "tokens/" + deviceId), newToken);
+          saveTokenToSupabase(newToken);
+          localStorage.setItem("nachrichtAktiv", true);
+        } else {
+          console.warn("⚠️ Kein Token beim Refresh erhalten.");
+        }
+      }).catch((err) => {
+        console.error("❌ Fehler beim Token-Refresh:", err);
+      });
+    });
+  } else {
+    console.log("🔕 Token-Refresh übersprungen: Keine Berechtigung für Benachrichtigungen.");
+  }
+}
+
+
 
 function removeNotificationSetup() {
   // Token aus Firebase entfernen
@@ -1048,6 +1074,7 @@ function startScript() {
   listenToTimer();
   setTimerInputFromFirebase();
   showButtons();
+  refreshTokenIfPermitted();
 
     // Foto-Upload
   const photoInput = document.getElementById("photoInput");
