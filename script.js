@@ -761,7 +761,7 @@ function updateCountdown(startTime, duration) {
     // Funktion zum Timer-Style setzen
     function setTimerStyle(timerElem) {
       if (!timerElem) return;
-      if (remaining <= 300 && remaining > 0) {
+      if (remaining <= 300 && remaining > 1) {
         timerElem.style.color = "red";
         timerElem.style.animation = "blinker 1s linear infinite";
       } else {
