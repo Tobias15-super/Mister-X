@@ -844,7 +844,7 @@ function getLocation() {
         if (accuracy > 100) {
           document.getElementById("status").innerText =
             "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
-            standortbeschreibung = prompt("Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben)") || "wurde nicht angegeben!";
+            let standortbeschreibung = prompt("Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben)") || "wurde nicht angegeben!";
             //firebase.database().ref("locations").push({
             push(ref(rtdb, "locations"), {
               description: standortbeschreibung.trim(),
