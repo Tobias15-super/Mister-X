@@ -708,7 +708,7 @@ function listenToTimer() {
 
   //firebase.database().ref("timer").on("value", (snapshot) => {
   onValue(ref(rtdb, "timer"), (snapshot) => {
-    const data = snapshot.val();
+    const data = snapshot.val() || {};
     const {
       startTime = null,
       duration = null,
