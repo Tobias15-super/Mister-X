@@ -367,6 +367,7 @@ async function sendLocationWithPhoto() {
   const manualContainer = document.getElementById("manualLocationContainer");
   const statusEl = document.getElementById("status");
 
+  const selectedPost = getselectedPost();
   if (!selectedPost) {
     alert("Bitte zuerst einen Posten auswählen.");
     return;
@@ -470,7 +471,7 @@ async function sendLocationWithPhoto() {
   document.getElementById("manualLocationDescription").value = "";
   manualContainer.style.display = "none";
   document.getElementById("postenSearch").value = "";
-  selectedPost = null;
+  setselectedPost(null);
 
   statusEl.innerText = "✅ Posten/Farbe gemeldet & Foto wird hochgeladen.";
   startTimer?.();
@@ -923,10 +924,10 @@ function renderSuggestions(items) {
   }
   box.innerHTML = items.map(it => {
     const distanceStr = (it.distance != null)
-      ? ` – ${(it.distance/1).toFixed(0)} m`
+      ? ` - ${(it.distance/1).toFixed(0)} m`
       : "";
     return `<div class="item" data-color="${it.color}" data-postid="${it.postId}">
-              <strong>${it.postId}</strong> – ${it.title || "(ohne Titel)"}
+              ${it.title || "(ohne Titel)"}
               <span class="tag">${it.color}</span>${distanceStr}
             </div>`;
   }).join("");
@@ -940,8 +941,8 @@ function renderSuggestions(items) {
       const post = postenCache[color]?.posts?.[postId];
       if (!post) return;
 
-      selectedPost = { color, postId, title: post.title || postId, lat: post.lat, lon: post.lon };
-      document.getElementById("postenSearch").value = `${postId} – ${selectedPost.title} [${color}]`;
+      setselectedPost({ color, postId, title: post.title || postId, lat: post.lat, lon: post.lon });
+      document.getElementById("postenSearch").value = `${postId} - ${selectedPost.title} [${color}]`;
       box.style.display = "none";
       document.getElementById("status").innerText = `✅ Posten ausgewählt: ${postId} (${color})`;
     });
@@ -960,7 +961,7 @@ function filterByText(query) {
   }).slice(0, 25); // Top 25
 }
 
-async function listNearest(count = 15) {
+async function listNearest(count = 5) {
   try {
     const pos = await getCurrentPositionPromise();
     const { latitude, longitude, accuracy } = pos.coords;
@@ -1728,7 +1729,7 @@ function log(...msgs) {
 
 
 
-document.addEventListener("DOMContentLoaded", startScript);
+
 window.switchView = switchView;
 window.requestPermission = requestPermission;
 window.sendLocationWithPhoto = sendLocationWithPhoto;
@@ -1740,3 +1741,8 @@ window.resetTimer = resetTimer;
 window.deleteAllLocations = deleteAllLocations;
 window.resetAllMisterXRollen = resetAllMisterXRollen;
 window.removeNotificationSetup = removeNotificationSetup;
+window.mxState = window.mxState || {};
+window.mxState.selectedPost = null; 
+function setselectedPost(p) {window.mxState.selectedPost = p; }
+function getselectedPost() { return window.mxState.selectedPost; }
+document.addEventListener("DOMContentLoaded", startScript);
