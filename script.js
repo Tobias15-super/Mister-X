@@ -5,6 +5,22 @@ let marker;
 let historyMarkers = [];
 let fotoHochgeladen = false;
 let messaging
+let postenLayer = null;
+const postenMarkers = {};
+let postenCache = null;
+
+
+const COLOR_MAP = {
+  blau:  "#1E90FF",
+  gruen: "#2ECC71",
+  rot:   "#FF5252",
+  gelb:  "#F4D03F",
+  orange:"#FF8C00",
+  violett:"#8E44AD",
+  schwarz:"#333333",
+  grau:  "#7F8C8D"
+};
+
 
 import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
@@ -485,6 +501,8 @@ function showLocationHistory() {
       }
 
       map = L.map('map').setView([lat, lon], 15);
+      ensurePostenLayer();
+      renderPostenMarkersFromCache();
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap',
       }).addTo(map);
@@ -575,6 +593,161 @@ function showLocationHistory() {
     });
   });
 }
+
+
+// Style je nach aktiv/visited
+function styleForPosten(colorName, isActiveColor, visited) {
+  const base = COLOR_MAP[colorName] || "#666";
+  if (visited) {
+    return {
+      radius: 8,
+      color: base,
+      fillColor: base,
+      fillOpacity: 0.9,
+      opacity: 1,
+      weight: 3
+    };
+  }
+  if (isActiveColor === false) {
+    return {
+      radius: 5,
+      color: base,
+      fillColor: base,
+      fillOpacity: 0.25,
+      opacity: 0.4,
+      weight: 1
+    };
+  }
+  return {
+    radius: 6,
+    color: base,
+    fillColor: base,
+    fillOpacity: 0.6,
+    opacity: 0.9,
+    weight: 2
+  };
+}
+
+// Popup-HTML für einen Posten
+function makePostenPopupHTML(color, key, loc, isActiveColor) {
+  const title = loc.title || key;
+  const visited = !!loc.visited;
+  const activeTxt = isActiveColor ? "aktiv" : "inaktiv";
+  const visitedTxt = visited ? "✅ besucht" : "🕒 offen";
+  return `
+    <div style="min-width:180px">
+      <strong>${title}</strong><br>
+      <small>Farbe: ${color} (${activeTxt})</small><br>
+      <small>Status: ${visitedTxt}</small>
+    </div>
+  `;
+}
+
+// Hilfsfunktion: robust lat/lon holen
+function extractLatLon(loc) {
+  const lat =
+    loc.lat ??
+    loc.latitude ??
+    null;
+  const lon =
+    loc.lon ??
+    loc.longitude ??
+    null;
+  return { lat, lon };
+}
+
+function listenAndRenderPosten() {
+  const postenRef = ref(rtdb, "posten");
+  onValue(postenRef, (snap) => {
+    postenCache = snap.exists() ? snap.val() : null;
+    renderPostenMarkersFromCache();
+  });
+}
+
+function ensurePostenLayer() {
+  if (!postenLayer) postenLayer = L.layerGroup();
+  if (map && !map.hasLayer(postenLayer)) postenLayer.addTo(map);
+}
+
+function renderPostenMarkersFromCache() {
+  if (!map || !postenCache) return;
+
+  ensurePostenLayer();
+
+  const seen = new Set();
+
+  Object.entries(postenCache).forEach(([color, group]) => {
+    if (!group || typeof group !== "object") return;
+
+    const isActiveColor = !!group.active;
+
+    Object.entries(group).forEach(([key, loc]) => {
+      if (key === "active") return;
+      if (!loc || typeof loc !== "object") return;
+
+      const { lat, lon } = extractLatLon(loc);
+      if (lat == null || lon == null) return;
+
+      const markerKey = `${color}/${key}`;
+      seen.add(markerKey);
+
+      const style = styleForPosten(color, isActiveColor, !!loc.visited);
+
+      if (postenMarkers[markerKey]) {
+        const m = postenMarkers[markerKey];
+        m.setLatLng([lat, lon]);
+        m.setStyle(style);
+        if (m.getPopup()) {
+          m.getPopup().setContent(makePostenPopupHTML(color, key, loc, isActiveColor));
+        }
+      } else {
+        const m = L.circleMarker([lat, lon], style)
+          .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor))
+          .on("click", () => {
+            // Optional: bei Klick Karte zentrieren
+            map.setView([lat, lon], Math.max(map.getZoom(), 16));
+          });
+        m.addTo(postenLayer);
+        postenMarkers[markerKey] = m;
+      }
+    });
+  });
+
+  // Entferne Marker, die nicht mehr in der DB sind
+  Object.keys(postenMarkers).forEach((k) => {
+    if (!seen.has(k)) {
+      postenLayer.removeLayer(postenMarkers[k]);
+      delete postenMarkers[k];
+    }
+  });
+}
+
+async function resetPostenStatus(defaultActive = true) {
+  const postenRef = ref(rtdb, "posten");
+  const snap = await get(postenRef);
+  if (!snap.exists()) return;
+
+  const data = snap.val();
+  const updates = {};
+
+  Object.entries(data).forEach(([color, group]) => {
+    if (!group || typeof group !== "object") return;
+    // Farbe aktivieren
+    updates[`posten/${color}/active`] = defaultActive;
+
+    // Alle Posten visited zurücksetzen
+    Object.entries(group).forEach(([key, loc]) => {
+      if (key === "active" || !loc || typeof loc !== "object") return;
+      updates[`posten/${color}/${key}/visited`] = false;
+    });
+  });
+
+  await update(ref(rtdb), updates);
+}
+
+
+
+
 
 
 function resetAllMisterXRollen() {
@@ -744,8 +917,7 @@ async function startTimer() {
 
 }
 
-async function stopTimer() {
-}
+
 
 export { startTimer, stopTimer };
 
@@ -959,26 +1131,35 @@ function showButtons() {
   }
 }
 
-function deleteAllLocations() {
-  if (confirm("Möchtest du wirklich alle gespeicherten Standorte löschen?")) {
-    //firebase.database().ref("locations").remove().then(() => {
-    remove(ref(rtdb, "locations")).then(() => {
-      alert("Alle Standorte wurden gelöscht.");
+async function deleteAllLocations() {
+  if (!confirm("Möchtest du wirklich alle gespeicherten Standorte löschen?")) return;
 
-      // Karte und Feed lokal ausblenden
-      if (map) {
-        map.remove();
-        map = null;
-      }
-      document.getElementById("map").style.display = "none";
-      document.getElementById("locationFeed").innerHTML = "";
-      historyMarkers = [];
+  try {
+    await remove(ref(rtdb, "locations"));
+    alert("Alle Standorte wurden gelöscht.");
 
-      // Optional: Status zurücksetzen
-      document.getElementById("status").innerText = "";
-    });
+    // Karte und Feed lokal ausblenden
+    if (map) {
+      map.remove();
+      map = null;
+    }
+    document.getElementById("map").style.display = "none";
+    document.getElementById("locationFeed").innerHTML = "";
+    historyMarkers = [];
+
+    // Optional: Status zurücksetzen
+    const statusEl = document.getElementById("status");
+    if (statusEl) statusEl.innerText = "";
+
+    await resetPostenStatus(true); // active=true, visited=false
+    // Nach Reset neu rendern
+    renderPostenMarkersFromCache();
+  } catch (err) {
+    console.error(err);
+    alert("Fehler beim Löschen der Standorte.");
   }
 }
+
 
 async function resetTimer() {
   //const timerRef = firebase.database().ref("timer");
@@ -1188,6 +1369,7 @@ async function startScript() {
     setTimerInputFromFirebase();
     showButtons();
     refreshTokenIfPermitted(); // <- diese Funktion sollte intern checken, ob Messaging/Token existiert
+    listenAndRenderPosten();
 
     // Foto-Upload Listener
     const photoInput = document.getElementById('photoInput');
