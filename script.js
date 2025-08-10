@@ -489,6 +489,18 @@ function showLocationHistory() {
         historyMarkers.push(m);
       });
 
+      // Linie zwischen den Standorten zeichnen
+      const pathCoordinates = validEntries.map(loc => [loc.lat, loc.lon]);
+      if (pathCoordinates.length > 1) {
+        const pathLine = L.polyline(pathCoordinates, {
+          color: 'blue',
+          weight: 3,
+          opacity: 0.7,
+          smoothFactor: 1
+        }).addTo(map);
+}
+
+
       document.getElementById("map").style.display = "block";
     } else {
       if (map) {
