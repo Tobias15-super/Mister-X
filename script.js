@@ -6,7 +6,7 @@ let historyMarkers = [];
 let fotoHochgeladen = false;
 let messaging
 
-
+import { app } from './firebaseClient'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
@@ -1088,7 +1088,7 @@ async function startScript() {
     // (B) Foreground-Messages nur, wenn FCM generell unterstützt wird
     if (support.fcm) {
 
-      if (!messaging) messaging = getMessaging();
+      if (!messaging) messaging = getMessaging(app);
       onMessage(messaging, (payload) => {
         log('Nachricht empfangen (foreground):', payload);
         const { title, body } = payload.notification || {};
