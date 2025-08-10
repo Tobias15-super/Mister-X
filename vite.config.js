@@ -8,7 +8,7 @@ export default defineConfig({
       srcDir: 'src',
       strategies: 'injectManifest',
       injectManifest: {
-        swSrc: '/Mister-x/src/sw.js',
+        swSrc: '/src/sw.js',
         swDest: 'sw.js',
       },
       devOptions: {
