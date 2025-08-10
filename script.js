@@ -6,9 +6,10 @@ let historyMarkers = [];
 let fotoHochgeladen = false;
 
 import { deleteToken, getToken, onMessage } from 'firebase/messaging';
-import { rtdb, storage, messaging } from './firebase.js';
+import { rtdb, storage, messaging, functions } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
+import { httpsCallable } from 'firebase/functions';
 
 
 
@@ -39,7 +40,7 @@ function saveTokenToSupabase(token) {
     .upsert({ token, device_name: device_name })
     .then(({ error }) => {
       if (error) {
-        console.error("Fehler beim Speichern des Tokens:", error);
+        log("Fehler beim Speichern des Tokens:", error);
       } else {
         log("Token erfolgreich gespeichert.");
       }
@@ -70,13 +71,13 @@ function requestPermission() {
     if (permission === 'granted') {
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('Mister-X/firebase-messaging-sw.js')
+          navigator.serviceWorker.register('/sw.js')
             .then((registration) => {
               log('Service Worker registriert mit Scope:', registration.scope);
               localStorage.setItem("serviceWorkerRegistered", true);
             })
             .catch((error) => {
-              console.error('Service Worker Registrierung fehlgeschlagen:', error);
+              log('Service Worker Registrierung fehlgeschlagen:', error);
               alert("❌ Service Worker konnte nicht registriert werden: " + error.message);
             });
         });
@@ -94,57 +95,78 @@ function requestPermission() {
           document.getElementById("permissionButton").style.display = "none";
           alert("✅ Benachrichtigungen aktiviert!");
         } else {
-          console.warn("Kein Token erhalten.");
+          log("Kein Token erhalten.");
           alert("⚠️ Kein Token erhalten. Bitte erneut versuchen.");
         }
       }).catch((err) => {
-        console.error("Fehler beim Token holen:", err);
+        log("Fehler beim Token holen:", err);
         alert("❌ Fehler beim Token holen: " + err.message);
       });
 
     } else {
-      console.warn("Benachrichtigungen nicht erlaubt.");
+      log("Benachrichtigungen nicht erlaubt.");
       alert("⚠️ Benachrichtigungen wurden abgelehnt.");
     }
   });
 }
 
 
-function refreshTokenIfPermitted() {
-  if (typeof Notification !== "undefined" && Notification.permission === 'granted' && localStorage.getItem("serviceWorkerRegistered") === "true") {
-    navigator.serviceWorker.ready.then((registration) => {
-      getToken(messaging, {
-        serviceWorkerRegistration: registration,
-        vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
-      }).then((newToken) => {
-        if (newToken) {
-          const deviceId = getDeviceId();
-          log("🔄 Token aktualisiert:", newToken);
-          set(ref(rtdb, "tokens/" + deviceId), newToken);
-          supabaseClient
-            .from('fcm_tokens')
-            .delete()
-            .eq('token', currentToken)
-            .then(({ error }) => {
-              if (error) {
-                console.error("Fehler beim Löschen des Tokens aus Supabase:", error);
-              } else {
-                log("Token erfolgreich aus Supabase gelöscht.");
-              }
-            });
-          saveTokenToSupabase(newToken);
-          localStorage.setItem("nachrichtAktiv", true);
-        } else {
-          console.warn("⚠️ Kein Token beim Refresh erhalten.");
-        }
-      }).catch((err) => {
-        console.error("❌ Fehler beim Token-Refresh:", err);
-      });
+async function refreshTokenIfPermitted() {
+  if (
+    typeof Notification === "undefined" ||
+    Notification.permission !== "granted" ||
+    localStorage.getItem("serviceWorkerRegistered") !== "true"
+  ) {
+    log("🔕 Token-Refresh übersprungen: Keine Berechtigung oder kein SW.");
+    return;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const newToken = await getToken(messaging, {
+      serviceWorkerRegistration: registration,
+      vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
     });
-  } else {
-    console.log("🔕 Token-Refresh übersprungen: Keine Berechtigung für Benachrichtigungen.");
+
+    if (!newToken) {
+      log("⚠️ Kein Token beim Refresh erhalten.");
+      return;
+    }
+
+    const deviceId = getDeviceId();
+    const oldToken = localStorage.getItem("fcmToken");
+
+    if (newToken !== oldToken) {
+      log("🔄 Token aktualisiert:", newToken);
+
+      // Firebase Realtime Database
+      await set(ref(rtdb, "tokens/" + deviceId), newToken);
+
+      // Supabase: alten Token löschen
+      const { error } = await supabaseClient
+        .from('fcm_tokens')
+        .delete()
+        .eq('device_name', deviceId);
+
+      if (error) {
+        log("❌ Fehler beim Löschen aus Supabase:", error);
+      } else {
+        log("✅ Alter Token aus Supabase gelöscht.");
+      }
+
+      // Supabase: neuen Token speichern
+      await saveTokenToSupabase(newToken);
+
+      localStorage.setItem("fcmToken", newToken);
+      localStorage.setItem("nachrichtAktiv", "true");
+    } else {
+      log("ℹ️ Token ist unverändert.");
+    }
+  } catch (err) {
+    log("❌ Fehler beim Token-Refresh:", err);
   }
 }
+
 
 
 
@@ -167,7 +189,7 @@ function removeNotificationSetup() {
       .eq('token', currentToken)
       .then(({ error }) => {
         if (error) {
-          console.error("Fehler beim Löschen des Tokens aus Supabase:", error);
+          log("Fehler beim Löschen des Tokens aus Supabase:", error);
         } else {
           log("Token erfolgreich aus Supabase gelöscht.");
         }
@@ -210,7 +232,7 @@ async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, m
       sendNotificationToTokens(title, body, result.failedTokens, attempt + 1, maxAttempts);
     }, 10000);
   } else if (attempt >= maxAttempts) {
-    console.warn("⏱️ Max. Anzahl an Versuchen erreicht.");
+    log("⏱️ Max. Anzahl an Versuchen erreicht.");
   } else {
     log("✅ Alle Benachrichtigungen erfolgreich gesendet.");
   }
@@ -244,7 +266,7 @@ async function sendNotificationToRoles(title, body, roles) {
   }
 
   if (matchingTokens.size === 0) {
-    console.warn(`⚠️ Keine passenden Tokens für Rollen "${roles}" gefunden.`);
+    log(`⚠️ Keine passenden Tokens für Rollen "${roles}" gefunden.`);
     return;
   }
 
@@ -273,7 +295,7 @@ function uploadToCloudinary(file, callback) {
       }
     })
     .catch(error => {
-      console.error("Upload-Fehler:", error);
+      log("Upload-Fehler:", error);
       alert("Fehler beim Hochladen zu Cloudinary.");
     });
 }
@@ -607,44 +629,21 @@ async function goBack() {
   .eq("device_name", deviceId);
 };
 
+
 async function startTimer() {
-  //const timerRef = firebase.database().ref("timer");
-
-
-  // 1. Vorherige Timer-Daten löschen
-  //await timerRef.child("duration").remove();
   await remove(ref(rtdb, "timer/duration"));
-  //await timerRef.child("startTime").remove();
   await remove(ref(rtdb, "timer/startTime"));
-  //await firebase.database().ref("timerMessage").remove();
   await remove(ref(rtdb, "timerMessage"));
+  stopTimer();
 
-  // 2. Vorherigen Upstash-Timer abbrechen
-  //const scheduleIdSnapshot = await firebase.database().ref("timerScheduleId").once("value");
-  const scheduleIdSnapshot = await get(ref(rtdb, "timerScheduleId"));
-  const scheduleId = scheduleIdSnapshot.val();
-  if (scheduleId) {
-    await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
-      method: "DELETE",
-      headers: {
-        "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0"
-      }
-    });
-    //await firebase.database().ref("timerScheduleId").remove();
-    await remove(ref(rtdb, "timerScheduleId"));
-  }
-
-  // 3. Lokalen Countdown stoppen
   if (typeof countdown !== "undefined") {
     clearInterval(countdown);
   }
 
-  // 4. Neue Dauer auslesen
   const snapshot = await get(ref(rtdb, "timer"));
   const data = snapshot.val();
 
-  let durationInput = Math.floor(data?.durationInput);
-  let duration = 25 * 60; // fallback: 25 Minuten in Sekunden
+  let duration = 25 * 60;
   if (typeof data?.durationInput === "number" && data.durationInput > 0) {
     duration = data.durationInput;
     if (isNaN(duration) || duration < 1) duration = 60;
@@ -653,53 +652,30 @@ async function startTimer() {
   const startTime = Date.now();
   const endTime = startTime + duration * 1000;
 
-  // 5. Nachricht definieren
   const message = {
     title: "⏰ Zeit abgelaufen!",
     body: "Mister X muss sich zeigen!",
     roles: ["misterx"]
   };
 
-  // 6. Neue Timer-Daten speichern
   await set(ref(rtdb, "timer"), {
     startTime,
     duration,
-    durationInput: duration
+    durationInput: duration,
+    canceled: false,
+    fired: false,
   });
-  //await firebase.database().ref("timerMessage").set(message);
+
   await set(ref(rtdb, "timerMessage"), message);
 
-  // 7. Upstash-Timer planen
-
-const delayMs = Math.max(endTime - Date.now(), 0);
-
-
-const payload = {
-  destination: "https://webhook.site/2d18361b-d352-4893-9331-5549bc00c8ef",
-  delay: delayMs,
-  body: JSON.stringify({ timerId: "main" }),
-};
-log("Qstasg Payload:", payload);
-
-fetch("https://qstash.upstash.io/v2/schedules",{
-  method: "POST",
-  headers: {
-    "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0=",
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify(payload)
-})
-.then(res => res.json())
-.then(data => {
-  if (data.scheduleId){
-    log("Qstash erfolgreich geplant:", data);
-  } else {
-    console.error("Kein ScheduleId von QStash erhalten", data);
-  }
-})
-.catch(err => console.error("Fehler beim QStash-Aufruf:", err));
 
 }
+
+async function stopTimer() {
+}
+
+export { startTimer, stopTimer };
+
 
 // Timer aus Firebase lesen
 function listenToTimer() {
@@ -994,7 +970,7 @@ function save_max_mister_x() {
       log("max_Team_X erfolgreich gespeichert:", anzahl);
     })
     .catch((error) => {
-      console.error("Fehler beim Speichern von max_Team_X:", error);
+      log("Fehler beim Speichern von max_Team_X:", error);
     });
 }
 
@@ -1008,11 +984,11 @@ function load_max_mister_x() {
         input.value = snapshot.val();
         log("max_Team_X geladen:", snapshot.val());
       } else {
-        console.warn("Kein max_Team_X-Wert gefunden.");
+        log("Kein max_Team_X-Wert gefunden.");
       }
     })
     .catch((error) => {
-      console.error("Fehler beim Laden von max_Team_X:", error);
+      log("Fehler beim Laden von max_Team_X:", error);
     });
 }
 
@@ -1033,7 +1009,7 @@ function save_timer_duration() {
       log("Duration_input:", anzahl_in_sekunden);
     })
     .catch((error) => {
-      console.error("Fehler beim Speichern von DurationInput:", error);
+      log("Fehler beim Speichern von DurationInput:", error);
     });
 }
 
@@ -1045,7 +1021,7 @@ function startScript() {
 
 
     // Service Worker registrieren
-  navigator.serviceWorker.register('firebase-messaging-sw.js')
+  navigator.serviceWorker.register('/sw.js')
     .then((registration) => {
       log("Service Worker registriert:", registration);
       getToken(messaging, { serviceWorkerRegistration: registration , vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"})
@@ -1053,7 +1029,7 @@ function startScript() {
         log("Token erhalten:", token);
       })
       .catch((err) => {
-        console.error("Fehler beim Abrufen des Tokens:", err);
+        log("Fehler beim Abrufen des Tokens:", err);
       });
     });
 
@@ -1105,7 +1081,7 @@ function startScript() {
 
 function log(...msgs) {
   const fullMsg = msgs.join(" ");
-  console.log(...msgs);
+  log(...msgs);
   const logElem = document.getElementById("settingsLog");
   if (logElem) {
     const now = new Date().toLocaleTimeString();

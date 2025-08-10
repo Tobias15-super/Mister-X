@@ -4,6 +4,7 @@ import { getDatabase } from 'firebase/database';
 import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
 
+
   const firebaseConfig = {
     apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
     authDomain: "mister-x-d6b59.firebaseapp.com",
