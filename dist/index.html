@@ -12,7 +12,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Mister X Spiel</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <script type="module" crossorigin src="/Mister-X/assets/index-Q74RCq5z.js"></script>
+  <script type="module" crossorigin src="/Mister-X/assets/index-BVWTVTZY.js"></script>
   <link rel="stylesheet" crossorigin href="/Mister-X/assets/index-BvF6U62T.css">
 <link rel="manifest" href="/Mister-X/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/Mister-X/registerSW.js"></script></head>
 <body>
@@ -72,7 +72,14 @@
   </div>
   </div>
   <div id="map" style="width: 100%; height: 600px; margin-top: 1em;"></div>
-  <div id="locationFeed"></div>
+  <div id="locationFeed">
+    <label>
+      <input type="checkbox" id="toggleTracking"> Meine Position anzeigen (Live)
+    </label>
+    <label style="margin-left:1em;">
+      <input type="checkbox" id="toggleFollow"> Karte folgt mir
+    </label>
+  </div>
   <div id="startView2">
     <br><br><br><br><br><br><br><br><br><br>
   <button class ="small-button" id="permissionButton2" onclick="removeNotificationSetup()" style="display: none;">Benachrichtigungen deaktivieren</button>
