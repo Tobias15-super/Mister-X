@@ -880,7 +880,6 @@ async function startTimer() {
   await remove(ref(rtdb, "timer/duration"));
   await remove(ref(rtdb, "timer/startTime"));
   await remove(ref(rtdb, "timerMessage"));
-  stopTimer();
 
   if (typeof countdown !== "undefined") {
     clearInterval(countdown);
@@ -919,7 +918,7 @@ async function startTimer() {
 
 
 
-export { startTimer, stopTimer };
+export { startTimer };
 
 
 // Timer aus Firebase lesen
