@@ -9,7 +9,7 @@ export default defineConfig({
       strategies: 'injectManifest',
       injectManifest: {
         swSrc: 'firebase-messaging-sw.js',
-        swDest: 'sw.js',
+        swDest: 'sws.js',
       },
       devOptions: {
         enabled: true
