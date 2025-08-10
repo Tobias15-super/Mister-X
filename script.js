@@ -471,7 +471,7 @@ async function sendLocationWithPhoto() {
   document.getElementById("manualLocationDescription").value = "";
   manualContainer.style.display = "none";
   document.getElementById("postenSearch").value = "";
-  setselectedPost(null);
+  setSelectedPost(null);
 
   statusEl.innerText = "✅ Posten/Farbe gemeldet & Foto wird hochgeladen.";
   startTimer?.();
@@ -939,12 +939,29 @@ function renderSuggestions(items) {
       const color = el.getAttribute("data-color");
       const postId = el.getAttribute("data-postid");
       const post = postenCache[color]?.posts?.[postId];
-      if (!post) return;
+      if (!post) {
+        console.warn("Ausgewählter Posten nicht im Cache gefunden:", { color, postId });
+        document.getElementById("status").innerText = "Dieser Posten ist nicht mehr verfügbar.";
+        box.style.display = "none";
+        return;
+      }
 
-      setselectedPost({ color, postId, title: post.title || postId, lat: post.lat, lon: post.lon });
-      document.getElementById("postenSearch").value = `${postId} - ${selectedPost.title} [${color}]`;
+      const chosen = {
+        color,
+        postId,
+        title: post.title || postId,
+        lat: post.lat ?? null,
+        lon: post.lon ?? null
+      };
+      setSelectedPost(chosen);
+      const searchEl = document.getElementById("postenSearch");
+      if (searchEl) {
+        searchEl.value = `${chosen.title} [${color}]`;
+      }
+      
       box.style.display = "none";
-      document.getElementById("status").innerText = `✅ Posten ausgewählt: ${postId} (${color})`;
+      const statusEl = document.getElementById("status");
+      if (statusEl) statusEl.innerText = `✅ Posten ausgewählt: ${chosen.title} (${color})`;
     });
   });
 }
@@ -1025,6 +1042,7 @@ function wireSearchUI() {
     if (nearest.length === 0) {
       document.getElementById("status").innerText =
         "Keine nahegelegenen Posten gefunden (oder Standort unbekannt).";
+        return;
     }
     renderSuggestions(nearest);
   });
@@ -1651,12 +1669,7 @@ async function startScript() {
 
     // (D) Dein bestehendes App-Setup ohne Push:
     const savedView = localStorage.getItem('activeView');
-    if (savedView && savedView !== 'start') {
-      switchView(savedView);
-    } else {
-      document.getElementById('startView')?.style?.setProperty('display', 'block');
-      document.getElementById('startView2')?.style?.setProperty('display', 'block');
-    }
+    switchView(savedView);
     showLocationHistory();
     listenToTimer();
     setTimerInputFromFirebase();
@@ -1743,6 +1756,6 @@ window.resetAllMisterXRollen = resetAllMisterXRollen;
 window.removeNotificationSetup = removeNotificationSetup;
 window.mxState = window.mxState || {};
 window.mxState.selectedPost = null; 
-function setselectedPost(p) {window.mxState.selectedPost = p; }
+function setSelectedPost(p) {window.mxState.selectedPost = p; }
 function getselectedPost() { return window.mxState.selectedPost; }
 document.addEventListener("DOMContentLoaded", startScript);
