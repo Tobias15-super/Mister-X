@@ -44,7 +44,7 @@ const COLOR_MAP = {
 import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
-import { ref, child, set, get, onValue, remove, update, runTransaction, push, update } from 'firebase/database';
+import { ref, child, set, get, onValue, remove, runTransaction, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 
 
