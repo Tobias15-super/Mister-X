@@ -9,6 +9,7 @@ import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
+import { registerSW } from 'virtual:pwa-register';
 
 
 
@@ -66,49 +67,53 @@ try {
 }
 
 // Berechtigung anfragen und Token holen
-function requestPermission() {
-  Notification.requestPermission().then((permission) => {
-    if (permission === 'granted') {
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-              log('Service Worker registriert mit Scope:', registration.scope);
-              localStorage.setItem("serviceWorkerRegistered", true);
-            })
-            .catch((error) => {
-              log('Service Worker Registrierung fehlgeschlagen:', error);
-              alert("❌ Service Worker konnte nicht registriert werden: " + error.message);
-            });
-        });
-      }
+async function requestPermission() {
+  try {
+    const permission = await Notification.requestPermission();
 
-      getToken(messaging, {
-        vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
-      }).then((currentToken) => {
-        if (currentToken) {
-          const deviceId = getDeviceId();
-          log("Token:", currentToken);
-          set(ref(rtdb, "tokens/" + deviceId), currentToken);
-          saveTokenToSupabase(currentToken);
-          localStorage.setItem("nachrichtAktiv", true);
-          document.getElementById("permissionButton").style.display = "none";
-          alert("✅ Benachrichtigungen aktiviert!");
-        } else {
-          log("Kein Token erhalten.");
-          alert("⚠️ Kein Token erhalten. Bitte erneut versuchen.");
-        }
-      }).catch((err) => {
-        log("Fehler beim Token holen:", err);
-        alert("❌ Fehler beim Token holen: " + err.message);
-      });
-
-    } else {
-      log("Benachrichtigungen nicht erlaubt.");
-      alert("⚠️ Benachrichtigungen wurden abgelehnt.");
+    if (permission !== 'granted') {
+      log('Benachrichtigungen nicht erlaubt:', permission);
+      alert('⚠️ Benachrichtigungen wurden abgelehnt.');
+      return;
     }
-  });
+
+    // 1) SW sicherstellen (unter /Mister-X/firebase-messaging-sw.js)
+    const registration = await ensureSWRegistration();
+    log('Service Worker registriert mit Scope:', registration.scope);
+    localStorage.setItem('serviceWorkerRegistered', 'true'); // Strings speichern
+
+    // 2) FCM-Token holen – mit derselben Registration + VAPID Key
+    // -> notwendig, da der SW NICHT am Domain-Root liegt (Firebase-API)
+    const currentToken = await getToken(messaging, {
+      serviceWorkerRegistration: registration,
+      vapidKey:
+        'BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE',
+    });
+
+    if (!currentToken) {
+      log('Kein Token erhalten.');
+      alert('⚠️ Kein Token erhalten. Bitte erneut versuchen.');
+      return;
+    }
+
+    // 3) Token speichern
+    const deviceId = getDeviceId();
+    log('Token:', currentToken);
+    await set(ref(rtdb, `tokens/${deviceId}`), currentToken);
+    await saveTokenToSupabase(currentToken);
+
+    // 4) UI aktualisieren
+    localStorage.setItem('nachrichtAktiv', 'true');
+    const btn = document.getElementById('permissionButton');
+    if (btn) btn.style.display = 'none';
+
+    alert('✅ Benachrichtigungen aktiviert!');
+  } catch (error) {
+    log('Fehler bei Berechtigung/Registrierung/Token:', error);
+    alert('❌ Fehler: ' + (error?.message ?? String(error)));
+  }
 }
+
 
 
 async function refreshTokenIfPermitted() {
@@ -1013,70 +1018,89 @@ function save_timer_duration() {
     });
 }
 
-
-// Beim Laden prüfen
-function startScript() {
-  //alert("Seite geladen - DOMContentLoaded ausgelöst");
-
-
-
-    // Service Worker registrieren
-  navigator.serviceWorker.register('/sw.js')
-    .then((registration) => {
-      log("Service Worker registriert:", registration);
-      getToken(messaging, { serviceWorkerRegistration: registration , vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"})
-      .then((token) => {
-        log("Token erhalten:", token);
-      })
-      .catch((err) => {
-        log("Fehler beim Abrufen des Tokens:", err);
-      });
-    });
-
-    // Nachrichten empfangen, wenn Seite offen ist
-  if (messaging) {
-    onMessage(messaging, (payload) => {
-      log("Nachricht empfangen:", payload);
-      const { title, body } = payload.notification;
-      alert(`${title}\n${body}`);
-    });
-  } else {
-    alert("Messaging nicht verfügbar!");
+async function ensureSWRegistration() {
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('Service Worker wird vom Browser nicht unterstützt.');
   }
 
-  try {
-    const savedView = localStorage.getItem("activeView");
+  // Falls bereits registriert, wiederverwenden:
+  const existing = await navigator.serviceWorker.getRegistration();
+  if (existing) return existing;
 
-    if (savedView && savedView !== "start") {
+  // Sonst neu registrieren – mit BASE_URL und **deinem** Dateinamen aus Variante B:
+  const swUrl = `${import.meta.env.BASE_URL}firebase-messaging-sw.js`;
+  return navigator.serviceWorker.register(swUrl);
+}
+
+
+
+// Beim Laden prüfen / initialisieren
+async function startScript() {
+  try {
+    // 1) SW-Registrierung sicherstellen (kein doppeltes register())
+    const registration = await ensureSWRegistration();
+    log('Service Worker registriert:', registration);
+
+    // 2) Falls Benachrichtigungen bereits erlaubt sind, Token holen
+    if (Notification.permission === 'granted') {
+      try {
+        const token = await getToken(messaging, {
+          serviceWorkerRegistration: registration,
+          vapidKey:
+            'BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE',
+        });
+        log('Token erhalten:', token);
+      } catch (err) {
+        log('Fehler beim Abrufen des Tokens:', err);
+      }
+    }
+
+    // 3) Nachrichten empfangen, wenn Seite offen ist
+    if (messaging) {
+      onMessage(messaging, (payload) => {
+        log('Nachricht empfangen:', payload);
+        const { title, body } = payload.notification || {};
+        if (title || body) alert(`${title ?? 'Nachricht'}\n${body ?? ''}`);
+      });
+    } else {
+      alert('Messaging nicht verfügbar!');
+    }
+
+    // 4) UI-State / App-Initialisierung
+    const savedView = localStorage.getItem('activeView');
+    if (savedView && savedView !== 'start') {
       switchView(savedView);
     } else {
-      document.getElementById("startView").style.display = "block";
-      document.getElementById("startView2").style.display = "block";
+      document.getElementById('startView')?.style?.setProperty('display', 'block');
+      document.getElementById('startView2')?.style?.setProperty('display', 'block');
+    }
+
+    showLocationHistory();
+    listenToTimer();
+    setTimerInputFromFirebase();
+    showButtons();
+    refreshTokenIfPermitted();
+
+    // 5) Foto-Upload
+    const photoInput = document.getElementById('photoInput');
+    if (photoInput) {
+      photoInput.addEventListener('change', function () {
+        const file = this.files?.[0];
+        if (file) {
+          window.fotoHochgeladen = true;
+          const el = document.getElementById('status');
+          if (el) el.innerText = '📸 Foto ausgewählt!';
+        }
+      });
     }
   } catch (e) {
-    alert("Fehler beim Zugriff auf localStorage: " + e.message);
-    document.getElementById("startView").style.display = "block";
-    document.getElementById("startView2").style.display = "block";
+    alert('Fehler in startScript: ' + (e?.message ?? String(e)));
+    // Fallback Anzeige
+    document.getElementById('startView')?.style?.setProperty('display', 'block');
+    document.getElementById('startView2')?.style?.setProperty('display', 'block');
   }
+}
 
-  showLocationHistory();
-  listenToTimer();
-  setTimerInputFromFirebase();
-  showButtons();
-  refreshTokenIfPermitted();
-
-    // Foto-Upload
-  const photoInput = document.getElementById("photoInput");
-  if (photoInput) {
-    photoInput.addEventListener("change", function () {
-      const file = this.files[0];
-      if (file) {
-        fotoHochgeladen = true;
-        document.getElementById("status").innerText = "📸 Foto ausgewählt!";
-      }
-    });
-  }
-};
 
 
 function log(...msgs) {

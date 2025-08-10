@@ -30,7 +30,7 @@ onBackgroundMessage(messaging, (payload) => {
     icon: 'icons/android-chrome-192x192.png', // optional: Icon für die Benachrichtigung
     badge: 'icons/android-chrome-192x192.png', // optional: kleines Symbol für Statusleiste
     data: {
-      url: '/Mister-X', // wohin soll die App springen?
+      url: '/Mister-X/', // wohin soll die App springen?
     }
   };
 
