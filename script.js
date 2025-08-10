@@ -1002,6 +1002,7 @@ async function listNearest(count = 5) {
 }
 
 async function initPostenListener() {
+  log ("🔄 Initialisiere Posten-Listener…");
   const postenRef = ref(rtdb, "posten");
   onValue(postenRef, (snap) => {
     const raw = snap.val() || {};
