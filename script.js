@@ -7,7 +7,7 @@ let fotoHochgeladen = false;
 let messaging
 
 
-import { deleteToken, getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
