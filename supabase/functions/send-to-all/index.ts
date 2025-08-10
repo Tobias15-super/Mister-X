@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { SignJWT, importPKCS8 } from "https://deno.land/x/jose@v4.13.1/index.ts";
+/*import { url } from "inspector";*/
 
 // 🔐 Service Account aus Umgebungsvariablen laden
 const SERVICE_ACCOUNT = {
@@ -112,6 +113,11 @@ serve(async (req) => {
         body: JSON.stringify({
           message: {
             /*notification: { title, body },*/
+            data: {
+              title,
+              body,
+              url: "https://tobias15-super.github.io/Mister-X/",
+            },
             token, 
             webpush: {
               fcm_options: {
