@@ -16,7 +16,7 @@ const COLOR_MAP = {
   rot:   "#FF5252",
   gelb:  "#F4D03F",
   orange:"#FF8C00",
-  violett:"#8E44AD",
+  lila:"#8E44AD",
   schwarz:"#333333",
   grau:  "#7F8C8D"
 };
@@ -700,7 +700,7 @@ function renderPostenMarkersFromCache() {
           .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor))
           .on("click", () => {
             // Optional: bei Klick Karte zentrieren
-            map.setView([lat, lon], Math.max(map.getZoom(), 16));
+            //map.setView([lat, lon], Math.max(map.getZoom(), 16));
           });
         m.addTo(postenLayer);
         postenMarkers[markerKey] = m;
