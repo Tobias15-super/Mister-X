@@ -5,7 +5,6 @@ export default defineConfig({
   base: '/Mister-X/',
   plugins: [
     VitePWA({
-      srcDir: 'src',
       strategies: 'injectManifest',
       injectManifest: {
         swSrc: 'src/sw.js',
