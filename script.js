@@ -1080,15 +1080,35 @@ function startScript() {
 
 
 function log(...msgs) {
-  const fullMsg = msgs.join(" ");
-  log(...msgs);
   const logElem = document.getElementById("settingsLog");
-  if (logElem) {
-    const now = new Date().toLocaleTimeString();
-    logElem.textContent += `[${now}] ${fullMsg}\n`;
-    logElem.scrollTop = logElem.scrollHeight;
-  }
+  if (!logElem) return;
+
+  const now = new Date().toLocaleTimeString();
+  const entry = document.createElement("div");
+
+  entry.innerHTML = `<strong>[${now}]</strong>`;
+
+  msgs.forEach(msg => {
+    if (typeof msg === "object") {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.textContent = "Objekt anzeigen";
+      details.appendChild(summary);
+
+      const pre = document.createElement("pre");
+      pre.textContent = JSON.stringify(msg, null, 2);
+      details.appendChild(pre);
+
+      entry.appendChild(details);
+    } else {
+      entry.innerHTML += ` ${msg}`;
+    }
+  });
+
+  logElem.appendChild(entry);
+  logElem.scrollTop = logElem.scrollHeight;
 }
+
 
 
 document.addEventListener("DOMContentLoaded", startScript);
