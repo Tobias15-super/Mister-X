@@ -6,10 +6,10 @@ let historyMarkers = [];
 let fotoHochgeladen = false;
 
 import { deleteToken, getToken, onMessage } from 'firebase/messaging';
-import { rtdb, storage, messaging, functions } from './firebase.js';
+import { rtdb, storage, messaging } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
-import { httpsCallable } from 'firebase/functions';
+
 
 
 

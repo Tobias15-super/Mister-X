@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       srcDir: 'src',
-      filename: 'sw.js',
+      filename: 'firebase-messaging-sw.js',
       strategies: 'injectManifest',
       injectManifest: {
         swSrc: 'src/firebase-messaging-sw.js',
