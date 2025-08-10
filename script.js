@@ -4,6 +4,7 @@ let map;
 let marker;
 let historyMarkers = [];
 let fotoHochgeladen = false;
+let messaging
 
 import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
@@ -67,27 +68,40 @@ try {
 }
 
 // Berechtigung anfragen und Token holen
+
 async function requestPermission() {
   try {
-    const permission = await Notification.requestPermission();
+    // 0) Umgebung prüfen
+    const fcmSupported = await isSupported();
+    if (!fcmSupported) {
+      alert('❌ Push-Benachrichtigungen werden in diesem Browser/Modus nicht unterstützt.');
+      return;
+    }
+    if (!('Notification' in window)) {
+      alert('❌ Notification API nicht verfügbar.');
+      return;
+    }
 
+    // 1) Permission anfordern (nur auf User-Geste!)
+    const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
       log('Benachrichtigungen nicht erlaubt:', permission);
       alert('⚠️ Benachrichtigungen wurden abgelehnt.');
       return;
     }
 
-    // 1) SW sicherstellen (unter /Mister-X/firebase-messaging-sw.js)
-    const registration = await ensureSWRegistration();
+    // 2) Service Worker registrieren (Lazy)
+    const registration = await ensureSWRegistration(); // deine bestehende Funktion
     log('Service Worker registriert mit Scope:', registration.scope);
-    localStorage.setItem('serviceWorkerRegistered', 'true'); // Strings speichern
+    localStorage.setItem('serviceWorkerRegistered', 'true');
 
-    // 2) FCM-Token holen – mit derselben Registration + VAPID Key
-    // -> notwendig, da der SW NICHT am Domain-Root liegt (Firebase-API)
+    // 3) Messaging-Instanz holen
+    const messaging = getMessaging();
+
+    // 4) Token holen (mit VAPID-Key und SW-Registration)
     const currentToken = await getToken(messaging, {
       serviceWorkerRegistration: registration,
-      vapidKey:
-        'BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE',
+      vapidKey: 'BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE',
     });
 
     if (!currentToken) {
@@ -96,13 +110,13 @@ async function requestPermission() {
       return;
     }
 
-    // 3) Token speichern
+    // 5) Token speichern (RTDB + Supabase)
     const deviceId = getDeviceId();
     log('Token:', currentToken);
     await set(ref(rtdb, `tokens/${deviceId}`), currentToken);
     await saveTokenToSupabase(currentToken);
 
-    // 4) UI aktualisieren
+    // 6) UI aktualisieren
     localStorage.setItem('nachrichtAktiv', 'true');
     const btn = document.getElementById('permissionButton');
     if (btn) btn.style.display = 'none';
@@ -113,6 +127,7 @@ async function requestPermission() {
     alert('❌ Fehler: ' + (error?.message ?? String(error)));
   }
 }
+
 
 
 
@@ -1033,40 +1048,80 @@ async function ensureSWRegistration() {
 }
 
 
+function isStandalonePWA() {
+  // iOS & cross-browser
+  return window.matchMedia?.('(display-mode: standalone)').matches
+      || window.navigator?.standalone === true;
+}
+
+async function detectSupport() {
+  const support = {
+    notificationsAPI: 'Notification' in window,
+    serviceWorker: 'serviceWorker' in navigator,
+    pushManager: 'PushManager' in window,
+    standalone: isStandalonePWA(),
+    fcm: false
+  };
+  try {
+    // Prüft gebündelt alle nötigen APIs (FCM-spezifisch)
+    support.fcm = await isSupported();
+  } catch {
+    support.fcm = false;
+  }
+  return support;
+}
+
+
+
 
 // Beim Laden prüfen / initialisieren
+
 async function startScript() {
   try {
-    // 1) SW-Registrierung sicherstellen (kein doppeltes register())
-    const registration = await ensureSWRegistration();
-    log('Service Worker registriert:', registration);
+    // (A) Kapazitäten prüfen – NICHTS forcen
+    const support = await detectSupport();
 
-    // 2) Falls Benachrichtigungen bereits erlaubt sind, Token holen
-    if (Notification.permission === 'granted') {
-      try {
-        const token = await getToken(messaging, {
-          serviceWorkerRegistration: registration,
-          vapidKey:
-            'BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE',
-        });
-        log('Token erhalten:', token);
-      } catch (err) {
-        log('Fehler beim Abrufen des Tokens:', err);
-      }
-    }
-
-    // 3) Nachrichten empfangen, wenn Seite offen ist
-    if (messaging) {
+    // (B) Foreground-Messages nur, wenn FCM generell unterstützt wird
+    if (support.fcm) {
+      messaging = getMessaging();
       onMessage(messaging, (payload) => {
-        log('Nachricht empfangen:', payload);
+        log('Nachricht empfangen (foreground):', payload);
         const { title, body } = payload.notification || {};
         if (title || body) alert(`${title ?? 'Nachricht'}\n${body ?? ''}`);
       });
-    } else {
-      alert('Messaging nicht verfügbar!');
     }
 
-    // 4) UI-State / App-Initialisierung
+    // (C) UI: Button/Hint steuern
+    const btn = document.getElementById('enablePush');
+    const hint = document.getElementById('pushHint');
+
+    if (btn) {
+      // iOS nicht installiert? Hinweis, kein Button.
+      if (!support.fcm && /iPhone|iPad|iPod/i.test(navigator.userAgent) && !support.standalone) {
+        btn.style.display = 'none';
+        if (hint) {
+          hint.textContent = 'Installiere die App zum Home-Bildschirm, um Benachrichtigungen zu aktivieren.';
+          hint.style.display = 'block';
+        }
+      } else if (!support.fcm || !support.notificationsAPI || !support.serviceWorker || !support.pushManager) {
+        btn.style.display = 'none';
+        if (hint) {
+          hint.textContent = 'Benachrichtigungen werden von diesem Browser/Modus nicht unterstützt.';
+          hint.style.display = 'block';
+        }
+      } else {
+        // Bereits erteilt? Zeige „aktiv“ – Token holst du erst auf Klick oder hier optional.
+        if (Notification.permission === 'granted') {
+          btn.textContent = 'Benachrichtigungen sind aktiv';
+          btn.disabled = true;
+        } else {
+          btn.addEventListener('click', enablePush, { once: true });
+          btn.style.display = 'inline-flex';
+        }
+      }
+    }
+
+    // (D) Dein bestehendes App-Setup ohne Push:
     const savedView = localStorage.getItem('activeView');
     if (savedView && savedView !== 'start') {
       switchView(savedView);
@@ -1074,14 +1129,13 @@ async function startScript() {
       document.getElementById('startView')?.style?.setProperty('display', 'block');
       document.getElementById('startView2')?.style?.setProperty('display', 'block');
     }
-
     showLocationHistory();
     listenToTimer();
     setTimerInputFromFirebase();
     showButtons();
-    refreshTokenIfPermitted();
+    refreshTokenIfPermitted(); // <- diese Funktion sollte intern checken, ob Messaging/Token existiert
 
-    // 5) Foto-Upload
+    // Foto-Upload Listener
     const photoInput = document.getElementById('photoInput');
     if (photoInput) {
       photoInput.addEventListener('change', function () {
@@ -1095,11 +1149,11 @@ async function startScript() {
     }
   } catch (e) {
     alert('Fehler in startScript: ' + (e?.message ?? String(e)));
-    // Fallback Anzeige
     document.getElementById('startView')?.style?.setProperty('display', 'block');
     document.getElementById('startView2')?.style?.setProperty('display', 'block');
   }
 }
+
 
 
 
