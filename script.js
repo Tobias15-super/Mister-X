@@ -9,6 +9,24 @@ let postenLayer = null;
 const postenMarkers = {};
 let postenCache = null;
 
+// ====== Benutzer-Standort ======
+let userWatchId = null;
+let userMarker = null;
+let userAccuracyCircle = null;
+let followMe = false;  // optional: Karte folgt der Position
+
+// Optional: ein eigenes Icon für "ich" (sonst Leaflet-Default)
+const meIcon = L.icon({
+  iconUrl: 'https://unpkg.com/leaflet@1/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+
 
 const COLOR_MAP = {
   blau:  "#1E90FF",
@@ -498,6 +516,7 @@ function showLocationHistory() {
       map = L.map('map').setView([lat, lon], 15);
       ensurePostenLayer();
       renderPostenMarkersFromCache();
+      reattachUserLocationOnMap();
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap',
       }).addTo(map);
@@ -589,6 +608,83 @@ function showLocationHistory() {
   });
 }
 
+function startUserLocationTracking() {
+  if (!navigator.geolocation) {
+    alert('❌ Geolocation wird nicht unterstützt.');
+    return;
+  }
+  if (userWatchId != null) {
+    // Bereits aktiv
+    return;
+  }
+
+  userWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      if (!map) return;
+
+      // Marker/Circle anlegen oder aktualisieren
+      if (!userMarker) {
+        userMarker = L.marker([latitude, longitude], { icon: meIcon })
+          .bindPopup(`<strong>Dein Standort</strong><br>Genauigkeit: ±${Math.round(accuracy)} m`)
+          .addTo(map);
+      } else {
+        userMarker.setLatLng([latitude, longitude]);
+        if (userMarker.getPopup()) {
+          userMarker.getPopup().setContent(`<strong>Dein Standort</strong><br>Genauigkeit: ±${Math.round(accuracy)} m`);
+        }
+      }
+
+      if (!userAccuracyCircle) {
+        userAccuracyCircle = L.circle([latitude, longitude], {
+          radius: accuracy,
+          color: '#136aec',
+          fillColor: '#136aec',
+          fillOpacity: 0.15,
+          weight: 1
+        }).addTo(map);
+      } else {
+        userAccuracyCircle.setLatLng([latitude, longitude]);
+        userAccuracyCircle.setRadius(accuracy);
+      }
+
+      // Optional: Karte folgen lassen
+      if (followMe) {
+        const targetZoom = Math.max(map.getZoom(), 16);
+        map.setView([latitude, longitude], targetZoom, { animate: true });
+      }
+
+    },
+    (err) => {
+      console.warn('Geolocation-Fehler:', err);
+      stopUserLocationTracking();
+      alert('⚠️ Tracking gestoppt: ' + err.message);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+  );
+}
+
+function stopUserLocationTracking() {
+  if (userWatchId != null) {
+    navigator.geolocation.clearWatch(userWatchId);
+    userWatchId = null;
+  }
+
+  if (map && userMarker) { map.removeLayer(userMarker); userMarker = null; }
+  if (map && userAccuracyCircle) { map.removeLayer(userAccuracyCircle); userAccuracyCircle = null; }
+}
+
+function reattachUserLocationOnMap() {
+  // Nach einem Neuaufbau der Karte (z. B. in showLocationHistory) Marker/Circle wieder anhängen
+  if (!map) return;
+  if (userMarker && !map.hasLayer(userMarker)) userMarker.addTo(map);
+  if (userAccuracyCircle && !map.hasLayer(userAccuracyCircle)) userAccuracyCircle.addTo(map);
+}
+
+
+
+
+// ====== Posten-Funktionen ======
 
 // Style je nach aktiv/visited
 function styleForPosten(colorName, isActiveColor, visited) {
@@ -617,7 +713,7 @@ function styleForPosten(colorName, isActiveColor, visited) {
     radius: 6,
     color: base,
     fillColor: base,
-    fillOpacity: 0.6,
+    fillOpacity: 0.7,
     opacity: 0.9,
     weight: 2
   };
@@ -1364,6 +1460,16 @@ async function startScript() {
     showButtons();
     refreshTokenIfPermitted(); // <- diese Funktion sollte intern checken, ob Messaging/Token existiert
     listenAndRenderPosten();
+
+    // Event-Handler für Karte
+    document.getElementById('toggleTracking')?.addEventListener('change', (e) => {
+      if (e.target.checked) startUserLocationTracking();
+      else stopUserLocationTracking();
+    });
+    document.getElementById('toggleFollow')?.addEventListener('change', (e) => {
+      followMe = e.target.checked;
+    });
+
 
     // Foto-Upload Listener
     const photoInput = document.getElementById('photoInput');
