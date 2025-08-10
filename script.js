@@ -49,12 +49,7 @@ const supabaseClient = supabase.createClient(
 // Token speichern
 async function saveTokenToSupabase(token) {
   let device_name = ""
-  if (localStorage.getItem("deviceId")){
-    device_name = localStorage.getItem("deviceId")
-  } else {
-    device_name = prompt("Wie soll dieses Gerät heißen?") || "Unbekannt";
-    localStorage.setItem("deviceId", device_name);
-  }
+  const deviceId = getDeviceId();
 
   const { error } = await supabaseClient
   .from('fcm_tokens')
@@ -69,7 +64,7 @@ async function saveTokenToSupabase(token) {
 
   supabaseClient
     .from('fcm_tokens')
-    .upsert({ token, device_name: device_name })
+    .upsert({ token, device_name: deviceId })
     .then(({ error }) => {
       if (error) {
         log("Fehler beim Speichern des Tokens:", error);
