@@ -4237,7 +4237,7 @@ function ei(t) {
 function ti(t, e) {
   ei(t), Zs(e);
 }
-ti([{"revision":null,"url":"assets/index-BvF6U62T.css"},{"revision":null,"url":"assets/index-eJGwQiwK.js"},{"revision":"776294cf0196aa5e312c19d4d3ed67d7","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}]);
+ti([{"revision":null,"url":"assets/index-BvF6U62T.css"},{"revision":null,"url":"assets/index-DHnH6oQJ.js"},{"revision":"f3136165b3563466dcc00f04879da7ac","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}]);
 const ni = {
   apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
   authDomain: "mister-x-d6b59.firebaseapp.com",
@@ -4250,8 +4250,8 @@ const ni = {
 }, ri = Ye(ni), si = As(ri);
 Rs(si, (t) => {
   console.log("[firebase-messaging-sw.js] Nachricht empfangen:", t);
-  const { title: e, body: n } = t.notification, r = {
-    body: n,
+  const e = t.notification.title ?? "Neue Nachricht", n = {
+    body,
     icon: "icons/android-chrome-192x192.png",
     // optional: Icon für die Benachrichtigung
     badge: "icons/android-chrome-192x192.png",
@@ -4261,7 +4261,7 @@ Rs(si, (t) => {
       // wohin soll die App springen?
     }
   };
-  self.registration.showNotification(e, r);
+  self.registration.showNotification(e, n);
 });
 self.addEventListener("notificationclick", function(t) {
   t.notification.close(), t.waitUntil(
