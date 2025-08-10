@@ -4,14 +4,15 @@ let map;
 let marker;
 let historyMarkers = [];
 let fotoHochgeladen = false;
+let messaging
 
 
 import { deleteToken, getMessaging, getToken, onMessage } from 'firebase/messaging';
-import { rtdb, storage, messaging } from './firebase.js';
+import { rtdb, storage } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 
-const messaging = getMessaging()
+
 
 
 
@@ -96,6 +97,9 @@ async function requestPermission() {
     const registration = await ensureSWRegistration(); // deine bestehende Funktion
     log('Service Worker registriert mit Scope:', registration.scope);
     localStorage.setItem('serviceWorkerRegistered', 'true');
+
+    // 3) Messaging initialisieren
+    if (!messaging) messaging = getMessaging(app);
 
 
     // 4) Token holen (mit VAPID-Key und SW-Registration)
@@ -1083,7 +1087,8 @@ async function startScript() {
 
     // (B) Foreground-Messages nur, wenn FCM generell unterstützt wird
     if (support.fcm) {
-      messaging = getMessaging();
+
+      if (!messaging) messaging = getMessaging(app);
       onMessage(messaging, (payload) => {
         log('Nachricht empfangen (foreground):', payload);
         const { title, body } = payload.notification || {};
