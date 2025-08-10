@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <!-- Leaflet CSS -->
+<link rel="manifest" href="/Mister-X/manifest.json">
+<meta name="theme-color" content="#000000">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mister X Spiel</title>
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <script type="module" crossorigin src="/Mister-X/assets/index-4yG1MjZA.js"></script>
+  <link rel="stylesheet" crossorigin href="/Mister-X/assets/index-BvF6U62T.css">
+<link rel="manifest" href="/Mister-X/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/Mister-X/registerSW.js"></script></head>
+<body>
+  <h1>Mister X Spiel</h1>
+
+  <!-- Startauswahl -->
+  <div id="startView">
+    <p>Wer bist du?</p>
+    <button onclick="switchView('misterx')">🕵️ Mister X</button>
+    <button onclick="switchView('agent')">🧭 Agent</button>
+    <button onclick="switchView('settings')">⚙️ Einstellungen</button>
+    <button class ="small-button" id="permissionButton" onclick="requestPermission()" style="display:none;">Benachrichtigungen aktivieren</button>
+  </div>
+
+  <!-- Mister X Ansicht -->
+  <div id="misterxView" class="view" style="display:none;">
+    <h2>Mister X</h2>
+    <h3 id="timer">⏳ Zeit bis zum nächsten Posten: --:--</h3>
+    <input type="text" id="locationTitle" placeholder="Titel eingeben" />
+    <input type="file" id="photoInput" accept="image/*" />
+    <button onclick="sendLocationWithPhoto()">📍 Neuen Posten mit Foto senden</button>
+    <div id="manualLocationContainer" style="display: none;">
+      <input type="text" id="manualLocationDescription" placeholder="Standortbeschreibung eingeben" />
+    </div>
+
+    <br><br>
+    <p id="status"></p>
+    <button id="startTimerButton" onclick="startTimer()">▶️ Timer starten</button>
+    <button onclick="goBack()">🔙 Zurück</button>
+  </div>
+
+  <!-- Agenten-Ansicht -->
+  <div id="agentView" class="view" style="display:none;">
+    <h2>Agenten-Ansicht</h2>
+    <h3 id="agentTimer">⏳ Mister X Timer: --:--</h3>
+    <button onclick="goBack()">🔙 Zurück</button>
+  </div>
+
+  <!-- Einstellungen -->
+  <div id="settingsView" class="view" style="display:none;">
+  <h2>Einstellungen</h2>
+  <h3 id="settingsTimer">⏳ Aktueller Timer: --:--</h3>
+  <label for="timerDurationInput" onclick="save_timer_duration()">Timer-Dauer (Minuten):</label>
+  <input type="number" id="timerDurationInput" min="1" max="120" value="25" style="width:60px;" />
+  <label for="max_Team_X" onclick="save_max_mister_x()">Maximale Mister-X-Mitglieder:</label>
+  <input type="number" id="max_Team_X" min="1" max="10" value="1" style="width:60px;" />
+  <button onclick="startTimer()">▶️ Timer starten</button>
+  <button onclick="resetTimer()">⏹️ Timer stoppen & zurücksetzen</button>
+  <button onclick="deleteAllLocations()">📍 Alle Standorte und Einträge löschen</button>
+  <button onclick="resetAllMisterXRollen()">Alle Mister X Rollen zurücksetzen</button>
+
+  <button onclick="goBack()">🔙 Zurück</button>
+  <hr>
+  <div>
+    <h4>Log-Nachrichten</h4>
+    <pre id="settingsLog" style="background:#eee; padding:8px; max-height:200px; overflow:auto;"></pre>
+  </div>
+  </div>
+  <div id="map" style="width: 100%; height: 600px; margin-top: 1em;"></div>
+  <div id="locationFeed"></div>
+  <div id="startView2">
+    <br><br><br><br><br><br><br><br><br><br>
+  <button class ="small-button" id="permissionButton2" onclick="removeNotificationSetup()" style="display: none;">Benachrichtigungen deaktivieren</button>
+  </div>
+
+
+
+
+
+</body>
+</html>
