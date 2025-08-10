@@ -5,11 +5,10 @@ export default defineConfig({
   base: '/Mister-X/',
   plugins: [
     VitePWA({
-      srcDir: 'src',
       strategies: 'injectManifest',
       injectManifest: {
-        swSrc: 'src/firebase-messaging-sw.js',
-        swDest: 'sw.js',
+        swSrc: 'src/firebase-messaging-sw.js', // Datei existiert
+        swDest: 'sw.js', // wird in dist/sw.js geschrieben
       },
       devOptions: {
         enabled: true
