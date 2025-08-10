@@ -1091,7 +1091,7 @@ async function startScript() {
       if (!messaging) messaging = getMessaging(app);
       onMessage(messaging, (payload) => {
         log('Nachricht empfangen (foreground):', payload);
-        const { title, body } = payload.notification || {};
+        const { title, body } = payload.data || {};
         if (title || body) alert(`${title ?? 'Nachricht'}\n${body ?? ''}`);
       });
     }

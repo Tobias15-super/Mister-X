@@ -23,23 +23,33 @@ const messaging = getMessaging(app);
 onBackgroundMessage(messaging, (payload) => {
   console.log('[firebase-messaging-sw.js] Nachricht empfangen:', payload);
 
-  const title = payload.notification.title ?? 'Neue Nachricht';
+  const title = payload.data.title ?? 'Neue Nachricht';
 
   const options = {
-    body,
+    body: payload.data.body || '',
     icon: 'icons/android-chrome-192x192.png', // optional: Icon für die Benachrichtigung
     badge: 'icons/android-chrome-192x192.png', // optional: kleines Symbol für Statusleiste
     data: {
-      url: '/Mister-X/', // wohin soll die App springen?
+      url: payload.data.url || '/Mister-X/', // wohin soll die App springen?
     }
   };
 
   self.registration.showNotification(title, options);
 });
 
-self.addEventListener('notificationclick', function(event) {
+
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
-    clients.openWindow(event.notification.data.url)
+    (async () => {
+      const url = event.notification.data?.url || '/Mister-X/';
+      const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      // Falls die App schon offen ist, Fokus statt neuem Tab:
+      for (const client of allClients) {
+        if ('focus' in client && client.url.includes('/Mister-X/')) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })()
   );
 });
+
