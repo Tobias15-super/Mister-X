@@ -8,6 +8,7 @@ let messaging
 let postenLayer = null;
 const postenMarkers = {};
 let postenCache = null;
+let selectedPosten = null;
 
 // ====== Benutzer-Standort ======
 let userWatchId = null;
@@ -43,7 +44,7 @@ const COLOR_MAP = {
 import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
-import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
+import { ref, child, set, get, onValue, remove, update, runTransaction, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 
 
@@ -173,8 +174,6 @@ async function requestPermission() {
 }
 
 
-
-
 async function refreshTokenIfPermitted() {
   if (
     typeof Notification === "undefined" ||
@@ -230,8 +229,6 @@ async function refreshTokenIfPermitted() {
     log("❌ Fehler beim Token-Refresh:", err);
   }
 }
-
-
 
 
 function removeNotificationSetup() {
@@ -364,78 +361,122 @@ function uploadToCloudinary(file, callback) {
     });
 }
 
-function sendLocationWithPhoto() {
-  const title = document.getElementById("locationTitle").value;
+async function sendLocationWithPhoto() {
   const file = document.getElementById("photoInput").files[0];
   const manualDescription = document.getElementById("manualLocationDescription").value.trim();
   const manualContainer = document.getElementById("manualLocationContainer");
+  const statusEl = document.getElementById("status");
 
-  if (!title || !file) {
-    alert("Bitte Titel und Foto angeben.");
+  if (!selectedPost) {
+    alert("Bitte zuerst einen Posten auswählen.");
+    return;
+  }
+  if (!file) {
+    alert("Bitte ein Foto auswählen.");
     return;
   }
 
   const timestamp = Date.now();
 
-  // Prüfen, ob Standortbeschreibung sichtbar ist und ausgefüllt wurde
-  if (manualContainer && manualContainer.style.display !== "none" && manualDescription !== "") {
-    // Nur Beschreibung speichern, kein GPS
-    const locationData = {
-      title,
-      description: manualDescription,
-      timestamp
-    };
-
-    //const newRef = firebase.database().ref("locations").push(locationData);
-    const newRef = push(ref(rtdb,"locations"), locationData);
-
-    // Benachrichtigung senden
-    const notificationText = title + " - " + manualDescription;
-    sendNotificationToRoles("Mister X hat sich gezeigt!", notificationText, "agent");
-
-    // Bild im Hintergrund hochladen
-    uploadToCloudinary(file, ({ url }) => {
-      //newRef.update({ photoURL: url });
-      update(newRef, { photoURL: url }); // Foto-URL aktualisieren
-    });
-
-    // Reset UI
-    document.getElementById("locationTitle").value = "";
-    document.getElementById("photoInput").value = "";
-    document.getElementById("manualLocationDescription").value = "";
-    manualContainer.style.display = "none";
-    document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
-
-    startTimer();
-    return;
-  }
-
-  // Sonst wie bisher: GPS verwenden
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        const accuracy = position.coords.accuracy;
+  // 1) Standort bestimmen (nur wenn keine manuelle Beschreibung aktiv ist)
+  let coords = { lat: null, lon: null, accuracy: null };
+  if (!(manualContainer && manualContainer.style.display !== "none" && manualDescription !== "")) {
+    // GPS-Variante
+    if (navigator.geolocation) {
+      try {
+        const position = await getCurrentPositionPromise();
+        const { latitude, longitude, accuracy } = position.coords;
         if (accuracy > 100) {
-          document.getElementById("status").innerText =
-            `⚠️ Standort ungenau (±${Math.round(accuracy)} m). Bitte erneut versuchen oder Standortbeschreibung eingeben.`;
+          statusEl.innerText = `⚠️ Standort ungenau (±${Math.round(accuracy)} m). Bitte erneut versuchen oder Standortbeschreibung eingeben.`;
           manualContainer.style.display = "block";
           return;
         }
-
-        saveLocation(position.coords.latitude, position.coords.longitude, manualDescription);
-      },
-      error => {
-        showError(error);
+        coords = { lat: latitude, lon: longitude, accuracy };
+      } catch (error) {
+        showError?.(error);
         manualContainer.style.display = "block";
-        saveLocation(null, null, manualDescription);
+        // Wir lassen coords null -> wird als manueller Fall behandelt
       }
-    );
-  } else {
-    document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
-    manualContainer.style.display = "block";
-    saveLocation(null, null, manualDescription);
+    } else {
+      statusEl.innerText = "Geolocation wird nicht unterstützt.";
+      manualContainer.style.display = "block";
+    }
   }
+
+  const { color, postId, title } = selectedPost;
+
+  // 2) Farbe „claimen“ (active: true -> false) via Transaction,
+  //    damit nicht mehrere Geräte gleichzeitig denselben Farb-Run abschließen.
+  const activeRef = ref(rtdb, `posten/${color}/active`);
+  statusEl.innerText = "⏳ Reserviere Farbe…";
+
+  try {
+    const txnRes = await runTransaction(activeRef, (current) => {
+      if (current === true) return false; // claim -> setze auf false
+      return current;                      // schon false -> keine Änderung
+    });
+
+    if (!txnRes.committed || txnRes.snapshot.val() !== false) {
+      statusEl.innerText = "❌ Diese Farbe ist bereits inaktiv. Liste wird aktualisiert.";
+      // Liste aktualisiert sich ohnehin via onValue
+      return;
+    }
+  } catch (e) {
+    statusEl.innerText = "❌ Konnte Farbe nicht reservieren.";
+    console.error(e);
+    return;
+  }
+
+  // 3) Den ausgewählten Posten auf visited:true setzen
+  try {
+    await update(ref(rtdb), {
+      [`posten/${color}/${postId}/visited`]: true
+    });
+  } catch (e) {
+    statusEl.innerText = "❌ Konnte Posten nicht auf 'visited' setzen.";
+    console.error(e);
+    return;
+  }
+
+  // 4) Location-Eintrag schreiben (ohne Foto-URL), dann Foto hochladen und URL nachtragen
+  const locationData = {
+    color,
+    postId,
+    title,
+    timestamp,
+    description: manualDescription || null,
+    lat: coords.lat,
+    lon: coords.lon
+  };
+
+  // locations/ pushen
+  const locRef = push(ref(rtdb, "locations"), locationData);
+
+  // 5) Benachrichtigung an Agents
+  const notificationText = `${title} (${color.toUpperCase()})`;
+  sendNotificationToRoles?.("Mister X hat sich gezeigt!", notificationText, "agent");
+
+  // 6) Foto im Hintergrund hochladen und URL aktualisieren
+  uploadToCloudinary(file, async ({ url }) => {
+    try {
+      await update(locRef, { photoURL: url });
+    } catch (e) {
+      console.error("Foto-URL konnte nicht gesetzt werden", e);
+    }
+  });
+
+  // 7) UI Reset
+  document.getElementById("photoInput").value = "";
+  document.getElementById("manualLocationDescription").value = "";
+  manualContainer.style.display = "none";
+  document.getElementById("postenSearch").value = "";
+  selectedPost = null;
+
+  statusEl.innerText = "✅ Posten/Farbe gemeldet & Foto wird hochgeladen.";
+  startTimer?.();
 }
+
+
 
 
 function saveLocation(lat, lon, description) {
@@ -836,6 +877,165 @@ async function resetPostenStatus(defaultActive = true) {
   await update(ref(rtdb), updates);
 }
 
+// ======= Mister X Funktionen =======
+
+const deg2rad = d => d * Math.PI / 180;
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // m
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2
+          + Math.cos(deg2rad(lat1))*Math.cos(deg2rad(lat2))*Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a)); // Meter
+}
+
+function getCurrentPositionPromise(options = { enableHighAccuracy:true, timeout:8000, maximumAge:0 }) {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("Geolocation nicht unterstützt"));
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
+  
+  
+function collectActivePosts({ excludeVisited = true } = {}) {
+  const list = [];
+  for (const [color, node] of Object.entries(postenCache)) {
+    if (!node || node.active !== true) continue; // Nur aktive Farben
+    for (const [postId, p] of Object.entries(node.posts || {})) {
+      if (!p || typeof p !== "object") continue;
+      if (excludeVisited && p.visited === true) continue;
+      list.push({ color, postId, ...p });
+    }
+  }
+  return list;
+}
+
+
+
+function renderSuggestions(items) {
+  const box = document.getElementById("postenSuggestions");
+  if (!items || items.length === 0) {
+    box.style.display = "none";
+    box.innerHTML = "";
+    return;
+  }
+  box.innerHTML = items.map(it => {
+    const distanceStr = (it.distance != null)
+      ? ` – ${(it.distance/1).toFixed(0)} m`
+      : "";
+    return `<div class="item" data-color="${it.color}" data-postid="${it.postId}">
+              <strong>${it.postId}</strong> – ${it.title || "(ohne Titel)"}
+              <span class="tag">${it.color}</span>${distanceStr}
+            </div>`;
+  }).join("");
+  box.style.display = "block";
+
+  // Click-Handler für Auswahl
+  box.querySelectorAll(".item").forEach(el => {
+    el.addEventListener("click", () => {
+      const color = el.getAttribute("data-color");
+      const postId = el.getAttribute("data-postid");
+      const post = postenCache[color]?.posts?.[postId];
+      if (!post) return;
+
+      selectedPost = { color, postId, title: post.title || postId, lat: post.lat, lon: post.lon };
+      document.getElementById("postenSearch").value = `${postId} – ${selectedPost.title} [${color}]`;
+      box.style.display = "none";
+      document.getElementById("status").innerText = `✅ Posten ausgewählt: ${postId} (${color})`;
+    });
+  });
+}
+
+function filterByText(query) {
+  const q = (query || "").trim().toLowerCase();
+  const posts = collectActivePosts();
+  if (!q) return [];
+  return posts.filter(p => {
+    const id = String(p.postId).toLowerCase();
+    const title = String(p.title || "").toLowerCase();
+    const color = String(p.color).toLowerCase();
+    return id.includes(q) || title.includes(q) || color.includes(q);
+  }).slice(0, 25); // Top 25
+}
+
+async function listNearest(count = 15) {
+  try {
+    const pos = await getCurrentPositionPromise();
+    const { latitude, longitude, accuracy } = pos.coords;
+    if (accuracy > 100) {
+      document.getElementById("status").innerText =
+        `⚠️ Standort ungenau (±${Math.round(accuracy)} m). Ergebnisse evtl. ungenau.`;
+    }
+    const posts = collectActivePosts().map(p => ({
+      ...p,
+      distance: (p.lat != null && p.lon != null)
+        ? haversineDistance(latitude, longitude, p.lat, p.lon)
+        : Number.POSITIVE_INFINITY
+    }));
+    posts.sort((a, b) => (a.distance - b.distance));
+    return posts.slice(0, count);
+  } catch (err) {
+    document.getElementById("status").innerText =
+      "📍 Konnte Standort nicht bestimmen. Du kannst trotzdem per Suche auswählen.";
+    return [];
+  }
+}
+
+async function initPostenListener() {
+  const postenRef = ref(rtdb, "posten");
+  onValue(postenRef, (snap) => {
+    const raw = snap.val() || {};
+    // In ein konsistentes Objekt umsetzen
+    const normalized = {};
+    for (const [color, obj] of Object.entries(raw)) {
+      if (!obj || typeof obj !== "object") continue;
+      const { active, ...rest } = obj;
+      // rest enthält Post-Children (B1, B2, …)
+      const posts = {};
+      for (const [k, v] of Object.entries(rest)) {
+        if (v && typeof v === "object") posts[k] = v;
+      }
+      normalized[color] = { active: !!active, posts };
+    }
+    postenCache = normalized;
+    // Optional: Vorschlagsliste aktualisieren, wenn ein Query im Feld steht
+    const q = document.getElementById("postenSearch").value;
+    if (q) renderSuggestions(filterByText(q));
+  });
+}
+
+function wireSearchUI() {
+  const search = document.getElementById("postenSearch");
+  const nearbyBtn = document.getElementById("nearbyBtn");
+
+  let debounce;
+  search.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      const list = filterByText(search.value);
+      renderSuggestions(list);
+    }, 150);
+  });
+
+  nearbyBtn.addEventListener("click", async () => {
+    const nearest = await listNearest(20);
+    if (nearest.length === 0) {
+      document.getElementById("status").innerText =
+        "Keine nahegelegenen Posten gefunden (oder Standort unbekannt).";
+    }
+    renderSuggestions(nearest);
+  });
+
+  // Klicken außerhalb schließt Dropdown
+  document.addEventListener("click", (e) => {
+    const box = document.getElementById("postenSuggestions");
+    const within = box.contains(e.target) || search.contains(e.target) || nearbyBtn.contains(e.target);
+    if (!within) box.style.display = "none";
+  });
+}
+
 
 
 
@@ -910,6 +1110,8 @@ async function switchView(view) {
   if (view === "misterx") {
     document.getElementById("misterxView").style.display = "block";
     showLocationHistory();
+    initPostenListener();
+    wireSearchUI();
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
     showLocationHistory();

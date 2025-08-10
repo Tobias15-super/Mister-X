@@ -30,7 +30,12 @@
   <div id="misterxView" class="view" style="display:none;">
     <h2>Mister X</h2>
     <h3 id="timer">⏳ Zeit bis zum nächsten Posten: --:--</h3>
-    <input type="text" id="locationTitle" placeholder="Titel eingeben" />
+  <div style="margin-bottom: .5rem;">
+    <input type="text" id="postenSearch" placeholder="Posten suchen (z.B. B1, Titel) …" autocomplete="off" />
+    <button type="button" id="nearbyBtn">📍 Nächste Posten anzeigen</button>
+    <div id="postenSuggestions" class="dropdown" style="display:none;"></div>
+  </div>
+
     <input type="file" id="photoInput" accept="image/*" />
     <button onclick="sendLocationWithPhoto()">📍 Neuen Posten mit Foto senden</button>
     <div id="manualLocationContainer" style="display: none;">
