@@ -1088,7 +1088,7 @@ async function startScript() {
     // (B) Foreground-Messages nur, wenn FCM generell unterstützt wird
     if (support.fcm) {
 
-      if (!messaging) messaging = getMessaging(app);
+      if (!messaging) messaging = getMessaging();
       onMessage(messaging, (payload) => {
         log('Nachricht empfangen (foreground):', payload);
         const { title, body } = payload.notification || {};
