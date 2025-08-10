@@ -17,7 +17,7 @@ import { getMessaging } from 'firebase/messaging';
   };
 
   // Firebase initialisieren
-  const app = initializeApp(firebaseConfig);
+  export const app = initializeApp(firebaseConfig);
 
   export const rtdb = getDatabase(app);
   export const storage = getStorage(app);

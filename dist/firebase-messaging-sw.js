@@ -4250,8 +4250,8 @@ const ni = {
 }, ri = Ye(ni), si = As(ri);
 Rs(si, (t) => {
   console.log("[firebase-messaging-sw.js] Nachricht empfangen:", t);
-  const { title: e, body: n } = t.notification, r = {
-    body: n,
+  const e = t.notification.title ?? "Neue Nachricht", n = {
+    body,
     icon: "icons/android-chrome-192x192.png",
     // optional: Icon für die Benachrichtigung
     badge: "icons/android-chrome-192x192.png",
@@ -4261,7 +4261,7 @@ Rs(si, (t) => {
       // wohin soll die App springen?
     }
   };
-  self.registration.showNotification(e, r);
+  self.registration.showNotification(e, n);
 });
 self.addEventListener("notificationclick", function(t) {
   t.notification.close(), t.waitUntil(

@@ -6,7 +6,7 @@ let historyMarkers = [];
 let fotoHochgeladen = false;
 let messaging
 
-import { app } from './firebaseClient'
+import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
