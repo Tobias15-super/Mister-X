@@ -4,12 +4,14 @@ let map;
 let marker;
 let historyMarkers = [];
 let fotoHochgeladen = false;
-let messaging
 
-import { deleteToken, getToken, onMessage } from 'firebase/messaging';
+
+import { deleteToken, getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
+
+const messaging = getMessaging()
 
 
 
@@ -95,8 +97,6 @@ async function requestPermission() {
     log('Service Worker registriert mit Scope:', registration.scope);
     localStorage.setItem('serviceWorkerRegistered', 'true');
 
-    // 3) Messaging-Instanz holen
-    const messaging = getMessaging();
 
     // 4) Token holen (mit VAPID-Key und SW-Registration)
     const currentToken = await getToken(messaging, {
