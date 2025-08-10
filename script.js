@@ -8,7 +8,7 @@ let messaging
 let postenLayer = null;
 const postenMarkers = {};
 let postenCache = null;
-let selectedPosten = null;
+let selectedPost = null;
 
 // ====== Benutzer-Standort ======
 let userWatchId = null;
