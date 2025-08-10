@@ -31,7 +31,7 @@ const supabaseClient = supabase.createClient(
 
 
 // Token speichern
-function saveTokenToSupabase(token) {
+async function saveTokenToSupabase(token) {
   let device_name = ""
   if (localStorage.getItem("deviceId")){
     device_name = localStorage.getItem("deviceId")
@@ -39,6 +39,17 @@ function saveTokenToSupabase(token) {
     device_name = prompt("Wie soll dieses Gerät heißen?") || "Unbekannt";
     localStorage.setItem("deviceId", device_name);
   }
+
+  const { error } = await supabaseClient
+  .from('fcm_tokens')
+  .delete()
+  .eq('device_name', deviceId);
+  if (error) {
+    log("❌ Fehler beim Löschen aus Supabase:", error);
+  } else {
+    log("✅ Alter Token aus Supabase gelöscht.");
+  }
+
 
   supabaseClient
     .from('fcm_tokens')
