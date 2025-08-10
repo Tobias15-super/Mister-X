@@ -9,7 +9,7 @@ import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { rtdb, storage, messaging } from './firebase.js';
 import { ref, set, get, onValue, remove, push, update } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
-import { registerSW } from 'virtual:pwa-register';
+
 
 
 
@@ -1104,6 +1104,7 @@ async function startScript() {
 
 
 function log(...msgs) {
+  console.log(...msgs);
   const logElem = document.getElementById("settingsLog");
   if (!logElem) return;
 
