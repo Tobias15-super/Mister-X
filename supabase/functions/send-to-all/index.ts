@@ -111,7 +111,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           message: {
-            notification: { title, body },
+            /*notification: { title, body },*/
             token, 
             webpush: {
               fcm_options: {

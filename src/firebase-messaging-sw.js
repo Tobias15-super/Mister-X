@@ -23,7 +23,7 @@ const messaging = getMessaging(app);
 onBackgroundMessage(messaging, (payload) => {
   console.log('[firebase-messaging-sw.js] Nachricht empfangen:', payload);
 
-  const { title, body } = payload.notification;
+  const title = payload.notification.title ?? 'Neue Nachricht';
 
   const options = {
     body,
