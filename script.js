@@ -449,8 +449,6 @@ function saveLocation(lat, lon, description) {
 
 
 function showLocationHistory() {
-  //const dbRef = firebase.database().ref("locations");
-
   onValue(ref(rtdb, "locations"), (snapshot) => {
     if (!snapshot.exists()) {
       if (map) {
@@ -464,17 +462,14 @@ function showLocationHistory() {
     }
 
     const data = snapshot.val();
-    // 1.) Chronologisch sortieren: Neueste zuerst
     const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
-
-    // Karte vorbereiten – nur wenn gültige Koordinaten vorhanden sind
     const validEntries = entries.filter(e => e.lat != null && e.lon != null);
 
     if (validEntries.length > 0) {
       const { lat, lon } = validEntries[0];
 
       if (map) {
-        map.remove(); // Leaflet-Karte korrekt entfernen
+        map.remove();
         map = null;
       }
 
@@ -496,7 +491,6 @@ function showLocationHistory() {
 
       document.getElementById("map").style.display = "block";
     } else {
-      // Keine gültigen Koordinaten → Karte ausblenden
       if (map) {
         map.remove();
         map = null;
@@ -504,29 +498,61 @@ function showLocationHistory() {
       document.getElementById("map").style.display = "none";
     }
 
-    // Feed unter der Karte aktualisieren
     const feed = document.getElementById("locationFeed");
     feed.innerHTML = "";
 
-    entries.forEach(loc => {
-      // 2.) Titel setzen: "Automatischer Standort" wenn kein Titel vorhanden
+    entries.forEach((loc, index) => {
       const entryTitle = loc.title ? loc.title : "Automatischer Standort";
-      // 4.) Uhrzeit zum Titel
       const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
-      // 3.) Foto nur anzeigen, wenn vorhanden
-      const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px;">` : "";
+      const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" class="zoomable-photo" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px; cursor: zoom-in;" data-index="${index}">` : "";
 
       const entryDiv = document.createElement("div");
       entryDiv.style.marginBottom = "1em";
       entryDiv.innerHTML = `
-        <strong>${entryTitle} (${entryTime})</strong><br>
+        <strong class="location-title" data-lat="${loc.lat}" data-lon="${loc.lon}" style="cursor: pointer;">${entryTitle} (${entryTime})</strong><br>
         ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
         ${photoHTML}
       `;
       feed.appendChild(entryDiv);
     });
+
+    // Titel-Klick → Karte zentrieren
+    document.querySelectorAll(".location-title").forEach(el => {
+      el.addEventListener("click", () => {
+        const lat = parseFloat(el.dataset.lat);
+        const lon = parseFloat(el.dataset.lon);
+        if (map && !isNaN(lat) && !isNaN(lon)) {
+          map.setView([lat, lon], 17);
+        }
+      });
+    });
+
+    // Bild-Klick → Zoom/Modal
+    document.querySelectorAll(".zoomable-photo").forEach(img => {
+      img.addEventListener("click", () => {
+        const modal = document.createElement("div");
+        modal.style.position = "fixed";
+        modal.style.top = "0";
+        modal.style.left = "0";
+        modal.style.width = "100vw";
+        modal.style.height = "100vh";
+        modal.style.backgroundColor = "rgba(0,0,0,0.8)";
+        modal.style.display = "flex";
+        modal.style.alignItems = "center";
+        modal.style.justifyContent = "center";
+        modal.style.zIndex = "9999";
+        modal.innerHTML = `<img src="${img.src}" style="max-width: 90%; max-height: 90%; border: 2px solid white;">`;
+
+        modal.addEventListener("click", () => {
+          document.body.removeChild(modal);
+        });
+
+        document.body.appendChild(modal);
+      });
+    });
   });
 }
+
 
 function resetAllMisterXRollen() {
   //firebase.database().ref("roles").once("value").then(snapshot => {
