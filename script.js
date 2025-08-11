@@ -480,55 +480,6 @@ async function sendLocationWithPhoto() {
 
 
 
-function saveLocation(lat, lon, description) {
-  const title = document.getElementById("locationTitle").value;
-  const file = document.getElementById("photoInput").files[0];
-  const timestamp = Date.now();
-
-  // Standortdaten zusammenbauen
-  const locationData = {
-    title,
-    timestamp
-  };
-  if (lat != null && lon != null) {
-    locationData.lat = lat;
-    locationData.lon = lon;
-  }
-  if (description && description !== "") {
-    locationData.description = description;
-  }
-
-  // In Firebase speichern
-  //const newRef = firebase.database().ref("locations").push(locationData);
-  const newRef = push(ref(rtdb,"locations"), locationData);
-
-  // Benachrichtigung senden
-  let notificationText = title;
-  if (description && description !== "") {
-    notificationText += " - " + description;
-  } else if (lat && lon) {
-    notificationText;
-  }
-  sendNotificationToRoles("Mister X hat sich gezeigt!", notificationText, "agent");
-
-  // Bild im Hintergrund hochladen
-  if (file) {
-    uploadToCloudinary(file, ({ url }) => {
-      //newRef.update({ photoURL: url });
-      update(newRef, { photoURL: url }); // Foto-URL aktualisieren
-    });
-  }
-
-  // Reset UI
-  document.getElementById("locationTitle").value = "";
-  document.getElementById("photoInput").value = "";
-  document.getElementById("manualLocationDescription").value = "";
-  document.getElementById("manualLocationContainer").style.display = "none";
-  document.getElementById("status").innerText = "✅ Standort/Foto erfolgreich gesendet!";
-
-  startTimer();
-}
-
 
 function showLocationHistory() {
   onValue(ref(rtdb, "locations"), (snapshot) => {
@@ -739,17 +690,6 @@ function reattachUserLocationOnMap() {
 // ====== Posten-Funktionen ======
 
 
-function styleForMisterX(colorName){
-  const base = COLOR_MAP[colorName] || "#666";
-  return {
-    radius: 6,
-    color: base,
-    fillColor: base,
-    fillOpacity: 0.9,
-    opacity: 1,
-    weight: 2
-  }
-}
 
 // Style je nach aktiv/visited
 function styleForPosten(colorName, isActiveColor, visited) {
@@ -857,7 +797,7 @@ function renderPostenMarkersFromCache() {
           m.getPopup().setContent(makePostenPopupHTML(color, key, loc, isActiveColor));
         }
       } else {
-        const m = L.cycleMarker([lat, lon], style)
+        const m = L.circleMarker([lat, lon], style)
           .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor))
           .on("click", () => {
             // Optional: bei Klick Karte zentrieren
