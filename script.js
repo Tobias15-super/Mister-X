@@ -616,7 +616,7 @@ function startUserLocationTracking() {
       const markerStyle = {
         radius: 7,
         color: "#007AFF",         // iOS-Blau
-        fillColor: "#007AFF",
+        fillColor: "#ffffffff",
         fillOpacity: 0.8,
         opacity: 1,
         weight: 2
