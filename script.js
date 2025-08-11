@@ -813,9 +813,9 @@ function renderPostenMarkersFromCache() {
     if (!group || typeof group !== "object") return;
 
     const isActiveColor = !!group.active;
+    const posts = group.posts || {};
 
-    Object.entries(group).forEach(([key, loc]) => {
-      if (key === "active") return;
+    Object.entries(posts).forEach(([key, loc]) => {
       if (!loc || typeof loc !== "object") return;
 
       const { lat, lon } = extractLatLon(loc);
@@ -1002,7 +1002,6 @@ async function listNearest(count = 5) {
 }
 
 async function initPostenListener() {
-  log ("🔄 Initialisiere Posten-Listener…");
   const postenRef = ref(rtdb, "posten");
   onValue(postenRef, (snap) => {
     const raw = snap.val() || {};
