@@ -747,6 +747,7 @@ function extractLatLon(loc) {
     null;
   const lon =
     loc.lon ??
+    loc.lng ??
     loc.longitude ??
     null;
   return { lat, lon };
