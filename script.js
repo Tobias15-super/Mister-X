@@ -567,7 +567,7 @@ function showLocationHistory() {
       historyMarkers = [];
 
       validEntries.forEach(loc => {
-        const m = L.circleMarker([loc.lat, loc.lon], styleForMisterX(loc.color)).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
+        const m = L.marker([loc.lat, loc.lon]).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
         historyMarkers.push(m);
       });
 
@@ -663,7 +663,7 @@ function startUserLocationTracking() {
       if (!map) return;
 
       const markerStyle = {
-        radius: 6,
+        radius: 7,
         color: "#007AFF",         // iOS-Blau
         fillColor: "#007AFF",
         fillOpacity: 0.8,
@@ -756,7 +756,7 @@ function styleForPosten(colorName, isActiveColor, visited) {
   const base = COLOR_MAP[colorName] || "#666";
   if (visited) {
     return {
-      radius: 8,
+      radius: 10,
       color: base,
       fillColor: base,
       fillOpacity: 0.9,
@@ -766,7 +766,7 @@ function styleForPosten(colorName, isActiveColor, visited) {
   }
   if (isActiveColor === false) {
     return {
-      radius: 5,
+      radius: 6,
       color: base,
       fillColor: base,
       fillOpacity: 0.25,
@@ -775,7 +775,7 @@ function styleForPosten(colorName, isActiveColor, visited) {
     };
   }
   return {
-    radius: 6,
+    radius: 9,
     color: base,
     fillColor: base,
     fillOpacity: 0.7,
@@ -857,7 +857,7 @@ function renderPostenMarkersFromCache() {
           m.getPopup().setContent(makePostenPopupHTML(color, key, loc, isActiveColor));
         }
       } else {
-        const m = L.marker([lat, lon], style)
+        const m = L.cycleMarker([lat, lon], style)
           .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor))
           .on("click", () => {
             // Optional: bei Klick Karte zentrieren
