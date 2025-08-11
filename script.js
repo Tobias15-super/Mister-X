@@ -777,7 +777,7 @@ function renderPostenMarkersFromCache() {
     if (!group || typeof group !== "object") return;
 
     const isActiveColor = !!group.active;
-    const posts = group.posts || {};
+    const posts = Object.fromEntries(Object.entries(group).filter(([k]) => k !== "active"));
 
     Object.entries(posts).forEach(([key, loc]) => {
       if (!loc || typeof loc !== "object") return;
