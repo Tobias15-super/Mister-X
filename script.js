@@ -1041,6 +1041,7 @@ function wireSearchUI() {
   nearbyBtn.addEventListener("click", async () => {
     const nearest = await listNearest(20);
     if (nearest.length === 0) {
+      renderSuggestions(nearest);
       document.getElementById("status").innerText =
         "Keine nahegelegenen Posten gefunden (oder Standort unbekannt).";
         return;
