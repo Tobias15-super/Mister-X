@@ -567,10 +567,7 @@ function showLocationHistory() {
       historyMarkers = [];
 
       validEntries.forEach(loc => {
-        const m = L.circleMarker([loc.lat, loc.lon], {
-          radius: 5,
-          color: "blue"
-        }).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
+        const m = L.circleMarker([loc.lat, loc.lon], styleForMisterX(loc.color)).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
         historyMarkers.push(m);
       });
 
@@ -665,9 +662,27 @@ function startUserLocationTracking() {
       const { latitude, longitude, accuracy } = pos.coords;
       if (!map) return;
 
-      // Marker/Circle anlegen oder aktualisieren
+      const markerStyle = {
+        radius: 6,
+        color: "#007AFF",         // iOS-Blau
+        fillColor: "#007AFF",
+        fillOpacity: 0.8,
+        opacity: 1,
+        weight: 2
+      };
+
+      const accuracyStyle = {
+        radius: accuracy,
+        color: "#007AFF",
+        fillColor: "#007AFF",
+        fillOpacity: 0.2,
+        weight: 1,
+        opacity: 0.4
+      };
+
+      // Marker anlegen oder aktualisieren
       if (!userMarker) {
-        userMarker = L.marker([latitude, longitude], { icon: meIcon })
+        userMarker = L.circleMarker([latitude, longitude], markerStyle)
           .bindPopup(`<strong>Dein Standort</strong><br>Genauigkeit: ±${Math.round(accuracy)} m`)
           .addTo(map);
       } else {
@@ -677,14 +692,9 @@ function startUserLocationTracking() {
         }
       }
 
+      // Genauigkeitskreis anlegen oder aktualisieren
       if (!userAccuracyCircle) {
-        userAccuracyCircle = L.circle([latitude, longitude], {
-          radius: accuracy,
-          color: '#136aec',
-          fillColor: '#136aec',
-          fillOpacity: 0.15,
-          weight: 1
-        }).addTo(map);
+        userAccuracyCircle = L.circle([latitude, longitude], accuracyStyle).addTo(map);
       } else {
         userAccuracyCircle.setLatLng([latitude, longitude]);
         userAccuracyCircle.setRadius(accuracy);
@@ -695,7 +705,6 @@ function startUserLocationTracking() {
         const targetZoom = Math.max(map.getZoom(), 16);
         map.setView([latitude, longitude], targetZoom, { animate: true });
       }
-
     },
     (err) => {
       console.warn('Geolocation-Fehler:', err);
@@ -705,6 +714,7 @@ function startUserLocationTracking() {
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
   );
 }
+
 
 function stopUserLocationTracking() {
   if (userWatchId != null) {
@@ -727,6 +737,19 @@ function reattachUserLocationOnMap() {
 
 
 // ====== Posten-Funktionen ======
+
+
+function styleForMisterX(colorName){
+  const base = COLOR_MAP[colorName] || "#666";
+  return {
+    radius: 6,
+    color: base,
+    fillColor: base,
+    fillOpacity: 0.9,
+    opacity: 1,
+    weight: 2
+  }
+}
 
 // Style je nach aktiv/visited
 function styleForPosten(colorName, isActiveColor, visited) {
@@ -834,7 +857,7 @@ function renderPostenMarkersFromCache() {
           m.getPopup().setContent(makePostenPopupHTML(color, key, loc, isActiveColor));
         }
       } else {
-        const m = L.circleMarker([lat, lon], style)
+        const m = L.marker([lat, lon], style)
           .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor))
           .on("click", () => {
             // Optional: bei Klick Karte zentrieren
