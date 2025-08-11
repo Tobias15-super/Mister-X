@@ -1670,9 +1670,9 @@ async function startScript() {
     }
 
     // (D) Dein bestehendes App-Setup ohne Push:
-    const savedView = localStorage.getItem('activeView');
+    const savedView = localStorage.getItem('activeView') || 'start';
     listenAndRenderPosten();
-    if (savedView !== 'start'){switchView(savedView);}
+    if (savedView !=='start'){switchView(savedView);}
     showLocationHistory();
     listenToTimer();
     setTimerInputFromFirebase();
