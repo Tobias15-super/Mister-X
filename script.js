@@ -1670,13 +1670,14 @@ async function startScript() {
 
     // (D) Dein bestehendes App-Setup ohne Push:
     const savedView = localStorage.getItem('activeView');
+    listenAndRenderPosten();
     if (savedView !== 'start'){switchView(savedView);}
     showLocationHistory();
     listenToTimer();
     setTimerInputFromFirebase();
     showButtons();
     refreshTokenIfPermitted(); // <- diese Funktion sollte intern checken, ob Messaging/Token existiert
-    listenAndRenderPosten();
+    
 
     // Event-Handler für Karte
     document.getElementById('toggleTracking')?.addEventListener('change', (e) => {
