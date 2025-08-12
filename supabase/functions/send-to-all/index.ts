@@ -50,8 +50,8 @@ async function getAccessToken() {
     exp: now + 3600,
   };
 
-  const encoder = new TextEncoder();
-  const pkcs8 = await importPKCS8(SERVICE_ACCOUNT.private_key, "RS256");
+  const rawKey = SERVICE_ACCOUNT.private_key.replace(/\\n/g, "\n");
+  const pkcs8 = await importPKCS8(rawKey, "RS256");
   const jwt = await new SignJWT(payload)
     .setProtectedHeader({ alg: "RS256" })
     .sign(pkcs8);
@@ -87,7 +87,7 @@ serve(async (req) => {
   try {
     const { title, body, tokens: providedTokens, sender = "Admin" } = await req.json();
 
-    tokenList: string[] = [];
+    let tokenList: string[] = [];
     if (Array.isArray(providedTokens) && providedTokens.length > 0) {
       tokenList = providedTokens;
     } else {
