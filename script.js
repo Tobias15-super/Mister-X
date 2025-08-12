@@ -549,7 +549,7 @@ function showLocationHistory() {
     entries.forEach((loc, index) => {
       const entryTitle = loc.title ? loc.title : "Automatischer Standort";
       const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
-      const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" class="zoomable-photo" style="max-width: 100%; height: auto; border: 1px solid #ccc; margin-top: 5px; cursor: zoom-in;" data-index="${index}">` : "";
+      const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" class="zoomable-photo" style="max-width: 100%; max-height:50%; border: 1px solid #ccc; margin-top: 5px; cursor: zoom-in;" data-index="${index}">` : "";
 
       const entryDiv = document.createElement("div");
       entryDiv.style.marginBottom = "1em";
