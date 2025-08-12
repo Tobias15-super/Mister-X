@@ -166,11 +166,40 @@ async function requestPermission() {
     const btn = document.getElementById('permissionButton');
     if (btn) btn.style.display = 'none';
 
+    // 7) Speichern in IndexedDB
+    saveDeviceName(deviceId)
+    .then(() => {
     alert('✅ Benachrichtigungen aktiviert!');
+    })  
   } catch (error) {
     log('Fehler bei Berechtigung/Registrierung/Token:', error);
     alert('❌ Fehler: ' + (error?.message ?? String(error)));
   }
+}
+
+// Speichert den Device-Namen in IndexedDB
+async function saveDeviceName(deviceName) {
+  return new Promise((resolve, reject) => {
+    const openReq = indexedDB.open('app-db', 1);
+
+    openReq.onupgradeneeded = () => {
+      const db = openReq.result;
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings');
+      }
+    };
+
+    openReq.onsuccess = () => {
+      const db = openReq.result;
+      const tx = db.transaction('settings', 'readwrite');
+      const store = tx.objectStore('settings');
+      store.put(deviceName, 'deviceName');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+    };
+
+    openReq.onerror = () => reject(openReq.error);
+  });
 }
 
 
