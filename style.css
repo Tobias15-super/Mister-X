@@ -5,6 +5,14 @@ body {
   background-color: #f0f0f0;
 }
 
+
+:root {
+  --notif-bar-h: 40px;          /* Höhe der Kopfzeile im Collapsed-Zustand */
+  --notif-pad-x: 10px;
+  --notif-gap: .5rem;
+}
+
+
 h1 {
   color: #333;
 }
@@ -49,38 +57,54 @@ input[type="file"] {
   .dropdown .item:hover { background:#f5f5f5; }
   .tag { display:inline-block; font-size:.8em; padding:0 .35em; border-radius:.35em; background:#eee; margin-left:.35em; }
 
-/* Kopfzeile: Sticky-Bar */
+
+/* Sticky-Bar ganz oben */
 .notif-header {
   position: sticky;
   top: 0;
   z-index: 1000;
-  display: flex;
-  align-items: flex-start;
-  gap: .5rem;
   background: #fff;
-  border-bottom: 1px solid #ddd;
-  padding: .5rem .75rem;
+  border-bottom: 1px solid #e5e5e5;
+  padding: 0 var(--notif-pad-x);
 }
 
-/* Toggle-Button links */
+/* Einzeilig im collapsed Zustand */
+.notif-header.collapsed {
+  height: var(--notif-bar-h);
+  overflow: hidden; /* verhindert zweite Zeile */
+}
+
+/* Expanded darf wachsen */
+.notif-header.expanded {
+  padding-bottom: .5rem;
+}
+
+/* Der Pfeil-Button links – sichtbar & klickbar */
 .notif-toggle {
-  border: none;
-  background: transparent;
-  font-size: 1rem;
+  align-self: center;
+  border: 1px solid #ddd;
+  background: #f7f7f7;
+  border-radius: 6px;
+  font-size: 16px;
   line-height: 1;
   cursor: pointer;
   padding: .25rem .5rem;
+  margin: .25rem .5rem .25rem 0;
 }
 
-/* Zusammenfassung: eine Zeile */
+.notif-toggle:focus {
+  outline: 2px solid #6aa9ff;
+}
+
+/* Zusammenfassung: IMMER eine Zeile */
 .notif-summary {
   display: flex;
   align-items: center;
-  gap: .5rem;
-  flex-wrap: nowrap;
+  gap: var(--notif-gap);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  height: var(--notif-bar-h);
 }
 
 /* Farbiges Status-Lämpchen */
@@ -92,12 +116,30 @@ input[type="file"] {
   background: #bbb; /* default */
 }
 
-/* Details-Bereich */
+/* Uhrzeit im Header */
+.notif-summary .time {
+  color: #333;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Titel + Body: Body etwas abgetönt + abgeschnitten */
+#notifTitle {
+  font-weight: 600;
+}
+
+#notifBody {
+  color: #555;
+  max-width: min(55vw, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Details */
 .notif-details {
   margin-top: .5rem;
   padding-top: .5rem;
   border-top: 1px dashed #ddd;
-  width: 100%;
 }
 
 .notif-meta {
@@ -136,14 +178,5 @@ input[type="file"] {
   display: inline-block;
 }
 
-.recipient-chip.ok .dot { background: #4caf50; }
+.recipient-chip.ok  .dot { background: #4caf50; }
 .recipient-chip.wait .dot { background: #ff9800; }
-
-/* Titel + Body im Header: Body etwas abgetönt + abgeschnitten */
-#notifBody {
-  color: #555;
-  max-width: min(60vw, 600px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}

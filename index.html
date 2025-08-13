@@ -17,13 +17,12 @@
 <body>
   <h1>Mister X Spiel</h1>
 
-  <!-- Kopfzeile: Letzte Nachricht -->
-<div id="notifHeader" class="notif-header" style="display:none;">
-  <button id="notifHeaderToggle" class="notif-toggle" aria-expanded="false" title="Auf-/Zuklappen">
-    ▾
-  </button>
-  <div class="notif-summary">
-    <span id="notifStatusDot" class="status-dot"></span>
+<!-- Kopfzeile: Letzte Nachricht (direkt unter <body>) -->
+<div id="notifHeader" class="notif-header collapsed" style="display:none;">
+  <button id="notifHeaderToggle" class="notif-toggle" aria-expanded="false" title="Details anzeigen">▾</button>
+  <div class="notif-summary" id="notifSummary">
+    <span id="notifStatusDot" class="status-dot" aria-hidden="true"></span>
+    <span id="notifTimeShort" class="time">[--:--]</span>
     <strong id="notifTitle">-</strong>
     <span id="notifBody">-</span>
   </div>
@@ -37,6 +36,7 @@
     <div id="recipientList" class="recipient-list"></div>
   </div>
 </div>
+
 
 
 

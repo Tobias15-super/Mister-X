@@ -1060,42 +1060,102 @@ function wireSearchUI() {
 
 
 // Elemente referenzieren
-const notifHeaderEl = document.getElementById('notifHeader');
-const notifToggleEl = document.getElementById('notifHeaderToggle');
+
+const notifHeaderEl  = document.getElementById('notifHeader');
+const notifToggleEl  = document.getElementById('notifHeaderToggle');
+const notifSummaryEl = document.getElementById('notifSummary');
 const notifDetailsEl = document.getElementById('notifDetails');
+
 const notifStatusDot = document.getElementById('notifStatusDot');
-const notifTitle = document.getElementById('notifTitle');
-const notifBody = document.getElementById('notifBody');
-const notifSender = document.getElementById('notifSender');
-const notifTime = document.getElementById('notifTime');
-const notifId = document.getElementById('notifId');
-const recipientList = document.getElementById('recipientList');
-const toggleNotifHeaderCb = document.getElementById('toggleNotifHeader');
+const notifTimeShort = document.getElementById('notifTimeShort');
+const notifTitle     = document.getElementById('notifTitle');
+const notifBody      = document.getElementById('notifBody');
+const notifSender    = document.getElementById('notifSender');
+const notifTime      = document.getElementById('notifTime');
+const notifId        = document.getElementById('notifId');
+const recipientList  = document.getElementById('recipientList');
+const notifCountEl   = document.getElementById('notifCount');
+
 
 let lastNotifListenerUnsub = null; // um Listener zu entfernen, wenn Header deaktiviert wird
+
 
 function setHeaderVisible(visible) {
   notifHeaderEl.style.display = visible ? 'block' : 'none';
   if (!visible && typeof lastNotifListenerUnsub === 'function') {
-    lastNotifListenerUnsub();
-    lastNotifListenerUnsub = null;
+    lastNotifListenerUnsub(); lastNotifListenerUnsub = null;
   }
 }
 
-// Toggle-UI -> localStorage speichern
-if (toggleNotifHeaderCb) {
-  // initialer Zustand
-  const saved = localStorage.getItem(LS_SHOW_HEADER);
-  const show = saved ? saved === '1' : false;
-  toggleNotifHeaderCb.checked = show;
-  setHeaderVisible(show);
-  if (show) startLatestNotifListener();
+// Toggle Logik (Pfeil + gesamte Leiste klickbar)
+function setCollapsed(collapsed) {
+  notifHeaderEl.classList.toggle('collapsed', collapsed);
+  notifHeaderEl.classList.toggle('expanded', !collapsed);
+  notifDetailsEl.hidden = collapsed;
+  notifToggleEl.setAttribute('aria-expanded', String(!collapsed));
+  notifToggleEl.textContent = collapsed ? '▾' : '▴';
+}
 
-  toggleNotifHeaderCb.addEventListener('change', () => {
-    const enable = toggleNotifHeaderCb.checked;
-    localStorage.setItem(LS_SHOW_HEADER, enable ? '1' : '0');
-    setHeaderVisible(enable);
-    if (enable) startLatestNotifListener();
+// Pfeil sichtbar & klickbar
+notifToggleEl?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isCollapsed = notifHeaderEl.classList.contains('collapsed');
+  setCollapsed(!isCollapsed);
+});
+
+// Auch Klick auf die Leiste klappt auf/zu
+notifSummaryEl?.addEventListener('click', () => {
+  const isCollapsed = notifHeaderEl.classList.contains('collapsed');
+  setCollapsed(!isCollapsed);
+});
+
+// Uhrzeit-Formatter (HH:MM)
+function formatTimeHHMM(ms) {
+  const d = new Date(ms);
+  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Render-Funktion (wird von deinem RTDB-Listener aufgerufen)
+function renderNotif(n) {
+  if (!n) {
+    notifTitle.textContent = '-';
+    notifBody.textContent  = '-';
+    notifSender.textContent = '-';
+    notifTime.textContent = '-';
+    notifTimeShort.textContent = '[--:--]';
+    notifId.textContent = '-';
+    recipientList.innerHTML = '';
+    notifStatusDot.style.background = '#bbb';
+    return;
+  }
+
+  const ts = typeof n.timestamp === 'number' ? n.timestamp : Date.now();
+  const timeShort = formatTimeHHMM(ts);
+
+  notifTitle.textContent = n.title || 'Ohne Titel';
+  notifBody.textContent  = n.body || '';
+  notifSender.textContent = n.sender || 'Unbekannt';
+  notifTime.textContent = new Date(ts).toLocaleString('de-DE');
+  notifTimeShort.textContent = `[${timeShort}]`;
+  notifId.textContent = n.id;
+
+  const rec = n.recipients || {};
+  const names = Object.keys(rec);
+  const okCount = names.filter(k => rec[k] === true).length;
+  const total = names.length;
+
+  // Status-Lampe: grün wenn alle true, sonst gelb
+  notifStatusDot.style.background = (total > 0 && okCount === total) ? '#4caf50' : '#ff9800';
+  if (notifCountEl) notifCountEl.textContent = `${okCount}/${total} bestätigt`;
+
+  // Empfänger-Liste rendern (nur in Details sichtbar)
+  recipientList.innerHTML = '';
+  names.sort((a,b)=>a.localeCompare(b)).forEach(name => {
+    const ok = rec[name] === true;
+    const div = document.createElement('div');
+    div.className = `recipient-chip ${ok ? 'ok' : 'wait'}`;
+    div.innerHTML = `<span class="dot"></span><span>${name}</span><span>${ok ? '✅' : '⏳'}</span>`;
+    recipientList.appendChild(div);
   });
 }
 
@@ -1140,46 +1200,6 @@ function startLatestNotifListener() {
 
 
 
-function renderNotif(n) {
-  if (!n) {
-    notifTitle.textContent = '-';
-    notifBody.textContent = '-';
-    notifSender.textContent = '-';
-    notifTime.textContent = '-';
-    notifId.textContent = '-';
-    recipientList.innerHTML = '';
-    notifStatusDot.style.background = '#bbb';
-    return;
-  }
-
-  notifTitle.textContent = n.title || 'Ohne Titel';
-  notifBody.textContent = n.body || '';
-  notifSender.textContent = n.sender || 'Unbekannt';
-  notifId.textContent = n.id;
-
-  const dt = n.timestamp ? new Date(n.timestamp) : null;
-  notifTime.textContent = dt ? dt.toLocaleString() : '-';
-
-  const rec = n.recipients || {};
-  const names = Object.keys(rec);
-  const okCount = names.filter(k => rec[k] === true).length;
-  const total = names.length;
-
-  // Status-Lampe: grün wenn alle true, sonst gelb
-  notifStatusDot.style.background = (total > 0 && okCount === total) ? '#4caf50' : '#ff9800';
-  const notifCount = document.getElementById('notifCount');
-  if (notifCount) notifCount.textContent = `${okCount}/${total} bestätigt`;
-
-  // Liste rendern
-  recipientList.innerHTML = '';
-  names.sort((a,b)=>a.localeCompare(b)).forEach(name => {
-    const ok = rec[name] === true;
-    const div = document.createElement('div');
-    div.className = `recipient-chip ${ok ? 'ok' : 'wait'}`;
-    div.innerHTML = `<span class="dot"></span><span>${name}</span><span>${ok ? '✅' : '⏳'}</span>`;
-    recipientList.appendChild(div);
-  });
-}
 
 
 
@@ -1823,6 +1843,7 @@ async function startScript() {
       startLatestNotifListener();
       toggleNotifHeaderCb.checked = true; 
     }
+    setCollapsed(true);
     
 
     // Event-Handler für Karte
