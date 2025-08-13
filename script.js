@@ -17,7 +17,6 @@ let userAccuracyCircle = null;
 let followMe = false;  // optional: Karte folgt der Position
 
 const LS_SHOW_HEADER = "showNotifHeader";
-const RT_NOTIFICATIONS_PATH = "notifications";
 
 // Optional: ein eigenes Icon für "ich" (sonst Leaflet-Default)
 const meIcon = L.icon({
@@ -1170,7 +1169,7 @@ function startLatestNotifListener() {
 
   // Firebase: query(...) + onValue(...)
   const q = query(
-    ref(rtdb, RT_NOTIFICATIONS_PATH),
+    ref(rtdb, "notifications"),
     orderByChild('timestamp'),
     limitToLast(1)
   );
