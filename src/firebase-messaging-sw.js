@@ -23,6 +23,8 @@ const messaging = getMessaging(app);
 
 onBackgroundMessage(messaging, async (payload) => {
   console.log('[SW] Nachricht empfangen:', payload);
+  console.log("DeviceName:", deviceName, "MessageId:", messageId);
+
 
   const title = payload.data.title ?? 'Neue Nachricht';
   const messageId = payload.data.messageId;
