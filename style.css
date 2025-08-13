@@ -86,6 +86,7 @@ input[type="file"] {
   background: #f7f7f7;
   border-radius: 6px;
   font-size: 16px;
+  color: #333;
   line-height: 1;
   cursor: pointer;
   padding: .25rem .5rem;
