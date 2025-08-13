@@ -1076,18 +1076,19 @@ const notifId        = document.getElementById('notifId');
 const recipientList  = document.getElementById('recipientList');
 const notifCountEl   = document.getElementById('notifCount');
 
+const toggleNotifHeaderCb = document.getElementById('toggleNotifHeader');
 
-let lastNotifListenerUnsub = null; // um Listener zu entfernen, wenn Header deaktiviert wird
-
+let lastNotifListenerUnsub = null; // Listener abmelden, wenn Header deaktiviert wird
 
 function setHeaderVisible(visible) {
   notifHeaderEl.style.display = visible ? 'block' : 'none';
   if (!visible && typeof lastNotifListenerUnsub === 'function') {
-    lastNotifListenerUnsub(); lastNotifListenerUnsub = null;
+    lastNotifListenerUnsub();
+    lastNotifListenerUnsub = null;
   }
 }
 
-// Toggle Logik (Pfeil + gesamte Leiste klickbar)
+// Single Source of Truth für Auf-/Zuklappen
 function setCollapsed(collapsed) {
   notifHeaderEl.classList.toggle('collapsed', collapsed);
   notifHeaderEl.classList.toggle('expanded', !collapsed);
@@ -1096,7 +1097,7 @@ function setCollapsed(collapsed) {
   notifToggleEl.textContent = collapsed ? '▾' : '▴';
 }
 
-// Pfeil sichtbar & klickbar
+// Nur EIN Toggle-Handler (Pfeil)
 notifToggleEl?.addEventListener('click', (e) => {
   e.stopPropagation();
   const isCollapsed = notifHeaderEl.classList.contains('collapsed');
@@ -1115,7 +1116,7 @@ function formatTimeHHMM(ms) {
   return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-// Render-Funktion (wird von deinem RTDB-Listener aufgerufen)
+// Render-Funktion (vom RTDB-Listener aufgerufen)
 function renderNotif(n) {
   if (!n) {
     notifTitle.textContent = '-';
@@ -1126,6 +1127,7 @@ function renderNotif(n) {
     notifId.textContent = '-';
     recipientList.innerHTML = '';
     notifStatusDot.style.background = '#bbb';
+    if (notifCountEl) notifCountEl.textContent = '-';
     return;
   }
 
@@ -1137,7 +1139,7 @@ function renderNotif(n) {
   notifSender.textContent = n.sender || 'Unbekannt';
   notifTime.textContent = new Date(ts).toLocaleString('de-DE');
   notifTimeShort.textContent = `[${timeShort}]`;
-  notifId.textContent = n.id;
+  notifId.textContent = n.id ?? '-';
 
   const rec = n.recipients || {};
   const names = Object.keys(rec);
@@ -1159,18 +1161,6 @@ function renderNotif(n) {
   });
 }
 
-// Auf-/Zuklappen
-if (notifToggleEl && notifDetailsEl) {
-  notifToggleEl.addEventListener('click', () => {
-    const expanded = notifToggleEl.getAttribute('aria-expanded') === 'true';
-    notifToggleEl.setAttribute('aria-expanded', String(!expanded));
-    notifDetailsEl.hidden = expanded;
-    notifToggleEl.textContent = expanded ? '▾' : '▴';
-  });
-}
-
-
-
 function startLatestNotifListener() {
   // Existierende Listener entfernen
   if (typeof lastNotifListenerUnsub === 'function') {
@@ -1178,6 +1168,7 @@ function startLatestNotifListener() {
     lastNotifListenerUnsub = null;
   }
 
+  // Firebase: query(...) + onValue(...)
   const q = query(
     ref(rtdb, RT_NOTIFICATIONS_PATH),
     orderByChild('timestamp'),
@@ -1190,13 +1181,42 @@ function startLatestNotifListener() {
       renderNotif(null);
       return;
     }
-    // Da limitToLast(1) ein Objekt mit einem Key liefert:
+    // limitToLast(1) -> Objekt mit einem Key
     const [id, data] = Object.entries(obj)[0];
     renderNotif({ id, ...data });
   });
 
+  // In v9 liefert onValue eine Unsubscribe-Funktion zurück
   lastNotifListenerUnsub = () => off();
 }
+
+
+//Startup
+function startup_Header() {
+  const show = localStorage.getItem(LS_SHOW_HEADER) === '1';
+  setHeaderVisible(show);
+  if (show) startLatestNotifListener();
+  if (toggleNotifHeaderCb) toggleNotifHeaderCb.checked = show;
+
+  // Beim Start gern zusammengeklappt lassen
+  setCollapsed(true);
+
+  // Checkbox -> speichern & anwenden
+  toggleNotifHeaderCb?.addEventListener('change', (e) => {
+    const enabled = e.target.checked;
+    if (enabled) {
+      localStorage.setItem(LS_SHOW_HEADER, '1');
+      setHeaderVisible(true);
+      startLatestNotifListener();
+      // Optional: beim Aktivieren aufklappen:
+      // setCollapsed(false);
+    } else {
+      localStorage.removeItem(LS_SHOW_HEADER); // oder setItem(...,'0')
+      setHeaderVisible(false);
+      renderNotif(null);
+    }
+  });
+};
 
 
 
@@ -1838,12 +1858,7 @@ async function startScript() {
     setTimerInputFromFirebase();
     showButtons();
     refreshTokenIfPermitted(); // <- diese Funktion sollte intern checken, ob Messaging/Token existiert
-    if (LS_SHOW_HEADER === '1') {
-      setHeaderVisible(true);
-      startLatestNotifListener();
-      toggleNotifHeaderCb.checked = true; 
-    }
-    setCollapsed(true);
+    startup_Header();
     
 
     // Event-Handler für Karte
