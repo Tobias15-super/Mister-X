@@ -69,24 +69,27 @@ input[type="file"] {
   background: #fff;
   border-bottom: 1px solid #e5e5e5;
   padding: 0 var(--notif-pad-x);
+  flex-wrap: nowrap;          /* <-- explizit: kein Umbruch */
 }
+
 
 
 /* Einzeilig im collapsed Zustand */
 .notif-header.collapsed {
   height: var(--notif-bar-h);
-  overflow: hidden; /* verhindert zweite Zeile */
-  display: flex;
-  align-items: center;
+  overflow: hidden;
 }
+
 
 /* Expanded darf wachsen */
 .notif-header.expanded {
   padding-bottom: .5rem;
 }
 
-/* Der Pfeil-Button links – sichtbar & klickbar */
+
+/* Toggle-Button: feste Breite, nicht wachsen */
 .notif-toggle {
+  flex: 0 0 auto;             /* <-- nicht wachsen, nicht schrumpfen */
   align-self: center;
   border: 1px solid #ddd;
   background: #f7f7f7;
@@ -97,13 +100,19 @@ input[type="file"] {
   cursor: pointer;
   padding: .25rem .5rem;
   margin: .25rem .5rem .25rem 0;
+  width: auto;                /* <-- falls global Buttons 100% Breite bekommen */
+  display: inline-flex;       /* sauber vertikal zentriert */
+  align-items: center;
+  justify-content: center;
 }
+
 
 .notif-toggle:focus {
   outline: 2px solid #6aa9ff;
 }
 
-/* Zusammenfassung: IMMER eine Zeile */
+
+/* Zusammenfassung: darf schrumpfen und ellipsieren */
 .notif-summary {
   display: flex;
   align-items: center;
@@ -112,7 +121,10 @@ input[type="file"] {
   overflow: hidden;
   text-overflow: ellipsis;
   height: var(--notif-bar-h);
+  flex: 1 1 auto;             /* <-- nimmt den Rest des Platzes */
+  min-width: 0;               /* <-- WICHTIG: erlaubt Shrink + Ellipsis in Flex */
 }
+
 
 /* Farbiges Status-Lämpchen */
 .status-dot {
@@ -148,6 +160,12 @@ input[type="file"] {
   padding-top: .5rem;
   border-top: 1px dashed #ddd;
 }
+
+
+#notifDetails[hidden] {
+  display: none !important;
+}
+
 
 .notif-meta {
   display: grid;
