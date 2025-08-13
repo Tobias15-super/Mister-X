@@ -4249,7 +4249,7 @@ const ni = {
   measurementId: "G-W66SK677NG"
 }, ri = Ye(ni), si = Rs(ri);
 As(si, async (t) => {
-  console.log("[SW] Nachricht empfangen:", t);
+  console.log("[SW] Nachricht empfangen:", t), console.log("DeviceName:", deviceName, "MessageId:", n);
   const e = t.data.title ?? "Neue Nachricht", n = t.data.messageId, r = {
     body: t.data.body || "",
     icon: "icons/android-chrome-192x192.png",
