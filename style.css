@@ -126,14 +126,17 @@ input[type="file"] {
 }
 
 
-/* Farbiges Status-Lämpchen */
+
+/* Dot soll niemals schmaler werden */
 .status-dot {
   width: .75rem;
   height: .75rem;
   border-radius: 50%;
   display: inline-block;
-  background: #bbb; /* default */
+  background: #bbb;
+  flex: 0 0 auto;    /* oder: flex-shrink: 0; */
 }
+
 
 /* Uhrzeit im Header */
 .notif-summary .time {
@@ -146,13 +149,19 @@ input[type="file"] {
   font-weight: 600;
 }
 
+#notifTimeShort, #notifTitle, .status-dot {
+  flex: 0 0 auto;   /* feste Breite, kein Shrink */
+}
+
+
 #notifBody {
-  color: #555;
-  max-width: min(55vw, 520px);
+  flex: 1 1 auto;   /* nimmt Restbreite */
+  min-width: 0;     /* erlaubt Ellipsis in Flex */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 
 /* Details */
 .notif-details {
