@@ -305,13 +305,48 @@ function removeNotificationSetup() {
 }
 
 
+async function cleanupOldNotifications() {
+  const rtdbBase = "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
+  const cutoff = Date.now() - 5 * 60 * 1000; // 5 Minuten
+  const url = `${rtdbBase}/notifications.json?orderBy=${encodeURIComponent('"timestamp"')}&endAt=${cutoff}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn("Cleanup: read failed", res.status);
+      return;
+    }
+    const data = await res.json();
+    if (!data) return;
+
+    // Löschen per PATCH (null setzt Schlüssel auf delete)
+    const patch = {};
+    for (const id of Object.keys(data)) {
+      patch[id] = null;
+    }
+    if (Object.keys(patch).length > 0) {
+      await fetch(`${rtdbBase}/notifications.json`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+    }
+  } catch (e) {
+    console.warn("Cleanup error:", e);
+  }
+}
+
+
+
 async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, maxAttempts = 20) {
+  const senderName = getDeviceId();
+  await cleanupOldNotifications();
   const res = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ title, body, tokens })
+    body: JSON.stringify({ title, body, tokens, senderName })
   });
 
   const result = await res.json();
@@ -1612,6 +1647,18 @@ async function detectSupport() {
 }
 
 
+async function markDeliveredFromPage(messageId) {
+  const deviceName = getDeviceId();
+  if (!messageId || !deviceName) return;
+  const safeName = sanitizeKey(deviceName);
+  const rtdbBase = "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
+  await fetch(`${rtdbBase}/notifications/${messageId}/recipients/${safeName}.json`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(true),
+  });
+}
+
 
 
 // Beim Laden prüfen / initialisieren
@@ -1626,9 +1673,15 @@ async function startScript() {
 
       if (!messaging) messaging = getMessaging(app);
       onMessage(messaging, (payload) => {
+        const messageId = payload?.data?.messageId;
         log('Nachricht empfangen (foreground):', payload);
         const { title, body } = payload.data || {};
         if (title || body) alert(`${title ?? 'Nachricht'}\n${body ?? ''}`);
+        if (messageId) {
+          markDeliveredFromPage(messageId).catch(err => {
+            console.error('Fehler beim Markieren der Nachricht:', err);
+          });
+        }
       });
     }
 

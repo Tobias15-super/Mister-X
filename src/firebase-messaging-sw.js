@@ -1,10 +1,8 @@
-// src/firebase-messaging-sw.js
 import { initializeApp } from 'firebase/app';
 import { getMessaging, onBackgroundMessage } from 'firebase/messaging/sw';
 import { precacheAndRoute } from 'workbox-precaching';
 
 precacheAndRoute(self.__WB_MANIFEST);
-
 
 const firebaseConfig = {
   apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
@@ -20,36 +18,69 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const messaging = getMessaging(app);
 
+const RTDB_BASE = `${firebaseConfig.databaseURL}`;
+
+function sanitizeKey(key) {
+  return (key || "").replace(/[.#$/\[\]\/]/g, "_");
+}
+
+async function getDeviceName() {
+  return new Promise((resolve) => {
+    const openReq = indexedDB.open('app-db', 1);
+    openReq.onupgradeneeded = () => {
+      const db = openReq.result;
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings');
+      }
+    };
+    openReq.onsuccess = () => {
+      const db = openReq.result;
+      const tx = db.transaction('settings', 'readonly');
+      const store = tx.objectStore('settings');
+      const req = store.get('deviceName');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    };
+    openReq.onerror = () => resolve(null);
+  });
+}
+
+async function markDelivered(messageId, deviceName) {
+  if (!messageId || !deviceName) return;
+  const safeName = sanitizeKey(deviceName);
+  const url = `${RTDB_BASE}/notifications/${messageId}/recipients/${safeName}.json`;
+  try {
+    await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(true),
+    });
+  } catch (e) {
+    console.error("[SW] RTDB update failed:", e);
+  }
+}
 
 onBackgroundMessage(messaging, async (payload) => {
-  console.log('[SW] Nachricht empfangen:', payload);
-  console.log("DeviceName:", deviceName, "MessageId:", messageId);
+  const title = payload?.data?.title ?? 'Neue Nachricht';
+  const body = payload?.data?.body ?? '';
+  const url = payload?.data?.url ?? '/Mister-X/';
+  const messageId = payload?.data?.messageId ?? null;
 
+  // Log + Zustellung markieren
+  const deviceName = await getDeviceName();
+  console.log('[SW] BG-Nachricht empfangen', { messageId, deviceName, payload });
 
-  const title = payload.data.title ?? 'Neue Nachricht';
-  const messageId = payload.data.messageId;
-  const options = {
-    body: payload.data.body || '',
-    icon: 'icons/android-chrome-192x192.png',
-    badge: 'icons/android-chrome-192x192.png',
-    data: { url: payload.data.url || '/Mister-X/' }
-  };
-
-  // ✅ Status in RTDB auf true setzen
-  try {
-    const deviceName = await getDeviceName(); // Funktion, die du implementierst (z.B. aus IndexedDB)
-    if (messageId && deviceName) {
-      await fetch(`https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app/notifications/${messageId}/status/${deviceName}.json`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(true)
-      });
-    }
-  } catch (err) {
-    console.error("Fehler beim Update in RTDB:", err);
+  if (messageId && deviceName) {
+    await markDelivered(messageId, deviceName);
   }
 
-  self.registration.showNotification(title, options);
+  // Notification anzeigen
+  await self.registration.showNotification(title, {
+    body,
+    icon: 'icons/android-chrome-192x192.png',
+    badge: 'icons/android-chrome-192x192.png',
+    data: { url },
+  });
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -63,19 +94,3 @@ self.addEventListener('notificationclick', (event) => {
     if (clients.openWindow) return clients.openWindow(url);
   })());
 });
-
-// Hilfsfunktion: Device-Name aus IndexedDB oder localStorage holen
-async function getDeviceName() {
-  return new Promise((resolve) => {
-    const openReq = indexedDB.open('app-db', 1);
-    openReq.onsuccess = () => {
-      const db = openReq.result;
-      const tx = db.transaction('settings', 'readonly');
-      const store = tx.objectStore('settings');
-      const req = store.get('deviceName');
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-    };
-    openReq.onerror = () => resolve(null);
-  });
-}
