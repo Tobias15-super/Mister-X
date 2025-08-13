@@ -318,7 +318,7 @@ async function cleanupOldNotifications() {
   try {
     const res = await fetch(url);
     if (!res.ok) {
-      console.warn("Cleanup: read failed", res.status);
+      log("Cleanup: read failed", res.status);
       return;
     }
 
@@ -341,7 +341,7 @@ async function cleanupOldNotifications() {
       });
     }
   } catch (e) {
-    console.warn("Cleanup error:", e);
+    log("Cleanup error:", e);
   }
 }
 
@@ -499,7 +499,7 @@ async function sendLocationWithPhoto() {
     }
   } catch (e) {
     statusEl.innerText = "❌ Konnte Farbe nicht reservieren.";
-    console.error(e);
+    log(e);
     return;
   }
 
@@ -510,7 +510,7 @@ async function sendLocationWithPhoto() {
     });
   } catch (e) {
     statusEl.innerText = "❌ Konnte Posten nicht auf 'visited' setzen.";
-    console.error(e);
+    log(e);
     return;
   }
 
@@ -537,7 +537,7 @@ async function sendLocationWithPhoto() {
     try {
       await update(locRef, { photoURL: url });
     } catch (e) {
-      console.error("Foto-URL konnte nicht gesetzt werden", e);
+      log("Foto-URL konnte nicht gesetzt werden", e);
     }
   });
 
@@ -733,7 +733,7 @@ function startUserLocationTracking() {
       }
     },
     (err) => {
-      console.warn('Geolocation-Fehler:', err);
+      log('Geolocation-Fehler:', err);
       stopUserLocationTracking();
       alert('⚠️ Tracking gestoppt: ' + err.message);
     },
@@ -979,7 +979,7 @@ function renderSuggestions(items) {
       const postId = el.getAttribute("data-postid");
       const post = postenCache[color]?.posts?.[postId];
       if (!post) {
-        console.warn("Ausgewählter Posten nicht im Cache gefunden:", { color, postId });
+        log("Ausgewählter Posten nicht im Cache gefunden:", { color, postId });
         document.getElementById("status").innerText = "Dieser Posten ist nicht mehr verfügbar.";
         box.style.display = "none";
         return;
@@ -1506,7 +1506,7 @@ async function deleteAllLocations() {
     // Nach Reset neu rendern
     renderPostenMarkersFromCache();
   } catch (err) {
-    console.error(err);
+    log(err);
     alert("Fehler beim Löschen der Standorte.");
   }
 }
@@ -1688,7 +1688,7 @@ async function startScript() {
         if (title || body) alert(`${title ?? 'Nachricht'}\n${body ?? ''}`);
         if (messageId) {
           markDeliveredFromPage(messageId).catch(err => {
-            console.error('Fehler beim Markieren der Nachricht:', err);
+            log('Fehler beim Markieren der Nachricht:', err);
           });
         }
       });
