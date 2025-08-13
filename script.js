@@ -1807,14 +1807,14 @@ async function startScript() {
       if (!messaging) messaging = getMessaging(app);
       onMessage(messaging, (payload) => {
         const messageId = payload?.data?.messageId;
-        log('Nachricht empfangen (foreground):', payload);
-        const { title, body } = payload.data || {};
-        if (title || body) alert(`${title ?? 'Nachricht'}\n${body ?? ''}`);
         if (messageId) {
           markDeliveredFromPage(messageId).catch(err => {
             log('Fehler beim Markieren der Nachricht:', err);
           });
         }
+        log('Nachricht empfangen (foreground):', payload);
+        const { title, body } = payload.data || {};
+        if (title || body) alert(`${title ?? 'Nachricht'}\n${body ?? ''}`);
       });
     }
 
