@@ -593,7 +593,7 @@ function showLocationHistory() {
       historyMarkers = [];
 
       validEntries.forEach(loc => {
-        const m = L.marker([loc.lat, loc.lon]).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleString()}`);
+        const m = L.marker([loc.lat, loc.lon]).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toTimeString()}`);
         historyMarkers.push(m);
       });
 
