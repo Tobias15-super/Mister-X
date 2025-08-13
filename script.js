@@ -308,7 +308,12 @@ function removeNotificationSetup() {
 async function cleanupOldNotifications() {
   const rtdbBase = "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
   const cutoff = Date.now() - 5 * 60 * 1000; // 5 Minuten
-  const url = `${rtdbBase}/notifications.json?orderBy=${encodeURIComponent('"timestamp"')}&endAt=${cutoff}`;
+
+  const params = new URLSearchParams();
+  params.set('orderBy', JSON.stringify('timestamp')); // => "%22timestamp%22"
+  params.set('endAt', cutoff.toString());             // Zahl als String
+
+  const url = `${rtdbBase}/notifications.json?${params.toString()}`;
 
   try {
     const res = await fetch(url);
@@ -316,14 +321,18 @@ async function cleanupOldNotifications() {
       console.warn("Cleanup: read failed", res.status);
       return;
     }
-    const data = await res.json();
-    if (!data) return;
 
-    // Löschen per PATCH (null setzt Schlüssel auf delete)
+    const data = await res.json();
+    if (!data || typeof data !== 'object') return;
+
+    // Absichern: nur löschen, wenn timestamp <= cutoff
     const patch = {};
-    for (const id of Object.keys(data)) {
-      patch[id] = null;
+    for (const [id, node] of Object.entries(data)) {
+      const ts = Number(node?.timestamp);
+      if (!Number.isFinite(ts)) continue;
+      if (ts <= cutoff) patch[id] = null;
     }
+
     if (Object.keys(patch).length > 0) {
       await fetch(`${rtdbBase}/notifications.json`, {
         method: "PATCH",
@@ -335,6 +344,7 @@ async function cleanupOldNotifications() {
     console.warn("Cleanup error:", e);
   }
 }
+
 
 
 
@@ -1650,9 +1660,8 @@ async function detectSupport() {
 async function markDeliveredFromPage(messageId) {
   const deviceName = getDeviceId();
   if (!messageId || !deviceName) return;
-  const safeName = sanitizeKey(deviceName);
   const rtdbBase = "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
-  await fetch(`${rtdbBase}/notifications/${messageId}/recipients/${safeName}.json`, {
+  await fetch(`${rtdbBase}/notifications/${messageId}/recipients/${deviceName}.json`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(true),
