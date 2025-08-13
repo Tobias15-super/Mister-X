@@ -60,6 +60,9 @@ input[type="file"] {
 
 /* Sticky-Bar ganz oben */
 .notif-header {
+  display: flex;
+  align-items: center;
+  gap: var(--notif-gap);
   position: sticky;
   top: 0;
   z-index: 1000;
@@ -68,10 +71,13 @@ input[type="file"] {
   padding: 0 var(--notif-pad-x);
 }
 
+
 /* Einzeilig im collapsed Zustand */
 .notif-header.collapsed {
   height: var(--notif-bar-h);
   overflow: hidden; /* verhindert zweite Zeile */
+  display: flex;
+  align-items: center;
 }
 
 /* Expanded darf wachsen */
