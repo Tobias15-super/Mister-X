@@ -1118,7 +1118,7 @@ function startLatestNotifListener() {
   }
 
   const q = query(
-    ref(db, RT_NOTIFICATIONS_PATH),
+    ref(rtdb, RT_NOTIFICATIONS_PATH),
     orderByChild('timestamp'),
     limitToLast(1)
   );
@@ -1141,11 +1141,11 @@ function startLatestNotifListener() {
 
 function renderNotif(n) {
   if (!n) {
-    notifTitle.textContent = '–';
-    notifBody.textContent = '–';
-    notifSender.textContent = '–';
-    notifTime.textContent = '–';
-    notifId.textContent = '–';
+    notifTitle.textContent = '-';
+    notifBody.textContent = '-';
+    notifSender.textContent = '-';
+    notifTime.textContent = '-';
+    notifId.textContent = '-';
     recipientList.innerHTML = '';
     notifStatusDot.style.background = '#bbb';
     return;
@@ -1157,7 +1157,7 @@ function renderNotif(n) {
   notifId.textContent = n.id;
 
   const dt = n.timestamp ? new Date(n.timestamp) : null;
-  notifTime.textContent = dt ? dt.toLocaleString() : '–';
+  notifTime.textContent = dt ? dt.toLocaleString() : '-';
 
   const rec = n.recipients || {};
   const names = Object.keys(rec);
