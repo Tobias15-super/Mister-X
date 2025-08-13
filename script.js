@@ -16,6 +16,8 @@ let userMarker = null;
 let userAccuracyCircle = null;
 let followMe = false;  // optional: Karte folgt der Position
 
+const LS_SHOW_HEADER = "showNotifHeader";
+
 // Optional: ein eigenes Icon für "ich" (sonst Leaflet-Default)
 const meIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1/dist/images/marker-icon.png',
@@ -44,7 +46,7 @@ const COLOR_MAP = {
 import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
-import { ref, child, set, get, onValue, remove, runTransaction, push, update } from 'firebase/database';
+import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 
 
@@ -1053,6 +1055,131 @@ function wireSearchUI() {
 }
 
 
+//----Kopfzeile----
+
+
+// Elemente referenzieren
+const notifHeaderEl = document.getElementById('notifHeader');
+const notifToggleEl = document.getElementById('notifHeaderToggle');
+const notifDetailsEl = document.getElementById('notifDetails');
+const notifStatusDot = document.getElementById('notifStatusDot');
+const notifTitle = document.getElementById('notifTitle');
+const notifBody = document.getElementById('notifBody');
+const notifSender = document.getElementById('notifSender');
+const notifTime = document.getElementById('notifTime');
+const notifId = document.getElementById('notifId');
+const recipientList = document.getElementById('recipientList');
+const toggleNotifHeaderCb = document.getElementById('toggleNotifHeader');
+
+let lastNotifListenerUnsub = null; // um Listener zu entfernen, wenn Header deaktiviert wird
+
+function setHeaderVisible(visible) {
+  notifHeaderEl.style.display = visible ? 'block' : 'none';
+  if (!visible && typeof lastNotifListenerUnsub === 'function') {
+    lastNotifListenerUnsub();
+    lastNotifListenerUnsub = null;
+  }
+}
+
+// Toggle-UI -> localStorage speichern
+if (toggleNotifHeaderCb) {
+  // initialer Zustand
+  const saved = localStorage.getItem(LS_SHOW_HEADER);
+  const show = saved ? saved === '1' : false;
+  toggleNotifHeaderCb.checked = show;
+  setHeaderVisible(show);
+  if (show) startLatestNotifListener();
+
+  toggleNotifHeaderCb.addEventListener('change', () => {
+    const enable = toggleNotifHeaderCb.checked;
+    localStorage.setItem(LS_SHOW_HEADER, enable ? '1' : '0');
+    setHeaderVisible(enable);
+    if (enable) startLatestNotifListener();
+  });
+}
+
+// Auf-/Zuklappen
+if (notifToggleEl && notifDetailsEl) {
+  notifToggleEl.addEventListener('click', () => {
+    const expanded = notifToggleEl.getAttribute('aria-expanded') === 'true';
+    notifToggleEl.setAttribute('aria-expanded', String(!expanded));
+    notifDetailsEl.hidden = expanded;
+    notifToggleEl.textContent = expanded ? '▾' : '▴';
+  });
+}
+
+
+
+function startLatestNotifListener() {
+  // Existierende Listener entfernen
+  if (typeof lastNotifListenerUnsub === 'function') {
+    lastNotifListenerUnsub();
+    lastNotifListenerUnsub = null;
+  }
+
+  const q = query(
+    ref(db, RT_NOTIFICATIONS_PATH),
+    orderByChild('timestamp'),
+    limitToLast(1)
+  );
+
+  const off = onValue(q, (snap) => {
+    const obj = snap.val();
+    if (!obj) {
+      renderNotif(null);
+      return;
+    }
+    // Da limitToLast(1) ein Objekt mit einem Key liefert:
+    const [id, data] = Object.entries(obj)[0];
+    renderNotif({ id, ...data });
+  });
+
+  lastNotifListenerUnsub = () => off();
+}
+
+
+
+function renderNotif(n) {
+  if (!n) {
+    notifTitle.textContent = '–';
+    notifBody.textContent = '–';
+    notifSender.textContent = '–';
+    notifTime.textContent = '–';
+    notifId.textContent = '–';
+    recipientList.innerHTML = '';
+    notifStatusDot.style.background = '#bbb';
+    return;
+  }
+
+  notifTitle.textContent = n.title || 'Ohne Titel';
+  notifBody.textContent = n.body || '';
+  notifSender.textContent = n.sender || 'Unbekannt';
+  notifId.textContent = n.id;
+
+  const dt = n.timestamp ? new Date(n.timestamp) : null;
+  notifTime.textContent = dt ? dt.toLocaleString() : '–';
+
+  const rec = n.recipients || {};
+  const names = Object.keys(rec);
+  const okCount = names.filter(k => rec[k] === true).length;
+  const total = names.length;
+
+  // Status-Lampe: grün wenn alle true, sonst gelb
+  notifStatusDot.style.background = (total > 0 && okCount === total) ? '#4caf50' : '#ff9800';
+  const notifCount = document.getElementById('notifCount');
+  if (notifCount) notifCount.textContent = `${okCount}/${total} bestätigt`;
+
+  // Liste rendern
+  recipientList.innerHTML = '';
+  names.sort((a,b)=>a.localeCompare(b)).forEach(name => {
+    const ok = rec[name] === true;
+    const div = document.createElement('div');
+    div.className = `recipient-chip ${ok ? 'ok' : 'wait'}`;
+    div.innerHTML = `<span class="dot"></span><span>${name}</span><span>${ok ? '✅' : '⏳'}</span>`;
+    recipientList.appendChild(div);
+  });
+}
+
 
 
 
@@ -1690,6 +1817,11 @@ async function startScript() {
     setTimerInputFromFirebase();
     showButtons();
     refreshTokenIfPermitted(); // <- diese Funktion sollte intern checken, ob Messaging/Token existiert
+    if (LS_SHOW_HEADER === '1') {
+      setHeaderVisible(true);
+      startLatestNotifListener();
+      toggleNotifHeaderCb.checked = true; 
+    }
     
 
     // Event-Handler für Karte
