@@ -20,6 +20,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+// 🔧 RTDB-Basis-URL (außerhalb des Handlers, damit Helper darauf zugreifen können)
+const rtdbBase =
+  "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
+
 // 🔑 Access Token für FCM holen
 async function getAccessToken() {
   const now = Math.floor(Date.now() / 1000);
@@ -56,6 +60,65 @@ function sanitizeKey(key: string) {
   return key.replace(/[.#$/\[\]\/]/g, "_");
 }
 
+// 🧹 Cleanup: Alle /notifications älter als 5 Minuten löschen
+async function cleanupOldNotifications(maxAgeMs = 5 * 60 * 1000) {
+  const cutoff = Date.now() - maxAgeMs;
+
+  // RTDB-REST-Query: orderBy="timestamp"&endAt=<cutoff>
+  // Achtung: "timestamp" muss URL-quoted in Anführungszeichen stehen.
+  const listUrl =
+    `${rtdbBase}/notifications.json?orderBy=${encodeURIComponent('"timestamp"')}&endAt=${cutoff}`;
+  const res = await fetch(listUrl, { method: "GET" });
+
+  if (!res.ok) {
+    const txt = await res.text();
+    console.warn("Cleanup list failed:", txt);
+    return { deleted: 0, details: "list_failed" as const };
+  }
+
+  const oldItems = await res.json() as Record<string, { timestamp?: number }>|null;
+
+  if (!oldItems || typeof oldItems !== "object") {
+    return { deleted: 0, details: "nothing_to_delete" as const };
+  }
+
+  const deletions: Record<string, null> = {};
+  for (const id of Object.keys(oldItems)) {
+    deletions[id] = null; // PATCH mit null => löschen
+  }
+
+  const toDelete = Object.keys(deletions).length;
+  if (toDelete === 0) {
+    return { deleted: 0, details: "empty" as const };
+  }
+
+  const patchRes = await fetch(`${rtdbBase}/notifications.json`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(deletions),
+  });
+
+  if (!patchRes.ok) {
+    const txt = await patchRes.text();
+    console.warn("Cleanup delete failed:", txt);
+    return { deleted: 0, details: "delete_failed" as const };
+  }
+
+  return { deleted: toDelete, details: "ok" as const };
+}
+
+// (Optional) kleiner Helper um Cleanup nicht länger als X ms zu blockieren
+function withTimeout<T>(p: Promise<T>, ms: number, onTimeout?: () => void): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const t = setTimeout(() => {
+      try { onTimeout?.(); } catch {}
+      resolve(); // Zeit abgelaufen => nicht warten
+    }, ms);
+    p.then(() => { clearTimeout(t); resolve(); })
+     .catch(() => { clearTimeout(t); resolve(); });
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -80,6 +143,11 @@ serve(async (req) => {
     }
 
     if (tokenList.length === 0) {
+      // 🧹 Cleanup in Hintergrund (optional, blockiert nicht)
+      // Wir warten hier maximal 150 ms darauf, sonst geht's weiter
+      const cleanupPromise = cleanupOldNotifications().catch(console.error);
+      await withTimeout(cleanupPromise, 150);
+
       return new Response(JSON.stringify({ error: "No tokens found" }), {
         status: 200,
         headers: corsHeaders,
@@ -105,7 +173,6 @@ serve(async (req) => {
 
     // 4) messageId & RTDB-Eintrag
     const messageId = crypto.randomUUID();
-    const rtdbBase = "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
     const notif = {
       sender: senderName ?? "Unbekannt",
       recipients: recipientsMap,
@@ -123,6 +190,13 @@ serve(async (req) => {
       const txt = await putRes.text();
       console.error("RTDB write failed:", txt);
     }
+
+    // 🧹 Cleanup so früh wie möglich anstoßen, aber nicht auf Antwort warten
+    // - Best effort im Hintergrund
+    // - Optionaler kurzer Timeout, damit es bei schneller Ausführung mitgenommen wird
+    const cleanupPromise = cleanupOldNotifications().catch(console.error);
+    // Warte höchstens 150 ms auf Cleanup, um Latenz minimal zu halten:
+    await withTimeout(cleanupPromise, 150);
 
     // 5) Push senden
     const accessToken = await getAccessToken();
