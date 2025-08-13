@@ -287,6 +287,7 @@ function removeNotificationSetup() {
 
     // Lokale Einstellungen zurücksetzen
     localStorage.removeItem("nachrichtAktiv");
+    localStorage.setItem('serviceWorkerRegistered', 'false');
     document.getElementById("permissionButton").style.display = "block";
     document.getElementById("permissionButton2").style.display = "none";
   });
@@ -296,7 +297,7 @@ function removeNotificationSetup() {
     for (let registration of registrations) {
       registration.unregister().then((success) => {
         if (success) {
-          alert("Service Worker abgemeldet.");
+          alert("Benachrichtigungen deaktiviert.");
         }
       });
     }
