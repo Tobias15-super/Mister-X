@@ -806,39 +806,100 @@ function initRefreshButton() {
 
   btn.addEventListener('click', async () => {
     btn.classList.add('updating');
-
     try {
-      // 1) Falls registriert, explizit auf SW-Update prüfen
-      if ('serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.getRegistration();
-
-        if (reg) {
-          // Prüft auf neues SW-Skript
-          await reg.update();
-
-          // Falls ein neues SW bereits im 'waiting'-Zustand ist -> aktivieren
-          if (reg.waiting) {
-            await new Promise((resolve) => {
-              const onControllerChange = () => {
-                navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-                resolve();
-              };
-              navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-
-              // Dem (neuen) SW sagen, dass er sofort aktiv werden darf
-              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            });
-          }
-        }
-      }
-    } catch (e) {
-      // Nicht kritisch – wir laden gleich neu
-      console.warn('[Refresh] Update-Check/SkipWaiting fehlgeschlagen:', e);
+      await forceUpdateAndReload();
     } finally {
-      // 2) Seite neu laden (liefert neue Assets, sobald der neue SW aktiv ist)
+      // Falls es schief geht, laden wir trotzdem neu (Worst-Case: harter Reload)
       window.location.reload();
     }
   });
+}
+
+
+async function forceUpdateAndReload() {
+  if (!('serviceWorker' in navigator)) return;
+
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) return;
+
+  // 1) Update-Check anstoßen (lädt SW neu und installiert, wenn byte-different)
+  await reg.update(); // siehe MDN: update() versucht aktiv zu aktualisieren [3](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/update)
+
+  // Helper, um "installed" / "waiting" sauber zu behandeln
+  const ensureInstalled = (sw) => new Promise((resolve) => {
+    if (!sw) return resolve(null);
+    if (sw.state === 'installed' || sw.state === 'activated') return resolve(sw);
+    sw.addEventListener('statechange', () => {
+      if (sw.state === 'installed' || sw.state === 'activated') resolve(sw);
+    });
+  });
+
+  // 2) Fälle unterscheiden: installing / waiting / nichts gefunden
+  let sw = reg.installing || reg.waiting || null;
+  if (!sw) {
+    // Vielleicht ist beim update() gerade ein neuer SW gestartet:
+    sw = await new Promise((resolve) => {
+      const onUpdateFound = () => {
+        reg.removeEventListener('updatefound', onUpdateFound);
+        resolve(reg.installing || reg.waiting || null);
+      };
+      // Wenn innerhalb kurzer Zeit nichts passiert, fahren wir fort.
+      const t = setTimeout(() => {
+        reg.removeEventListener('updatefound', onUpdateFound);
+        resolve(null);
+      }, 1500);
+      reg.addEventListener('updatefound', () => { clearTimeout(t); onUpdateFound(); });
+    });
+  }
+
+  // 3) Falls eine neue Version installiert/wartend ist -> sofort aktivieren
+  if (sw) {
+    await ensureInstalled(sw); // bis "installed"
+    if (reg.waiting) {
+      // PostMessage -> der SW ruft self.skipWaiting() (siehe SW-Code unten)
+      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+  }
+
+  // 4) Warten, bis der NEUE SW diese Seite kontrolliert -> dann reload
+  await new Promise((resolve) => {
+    // controllerchange feuert, wenn ein neuer SW die Kontrolle übernimmt
+    const onChange = () => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+      resolve();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onChange);
+  }); // [6](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/controllerchange_event)
+
+  // Jetzt neu laden (neuer Precache greift)
+  window.location.reload();
+}
+
+
+function autoCheckUpdatesOnResume() {
+  let lastCheck = 0;
+  const MIN_INTERVAL = 15 * 1000; // 15s Throttle
+
+  const check = async () => {
+    if (!('serviceWorker' in navigator)) return;
+    const now = Date.now();
+    if (now - lastCheck < MIN_INTERVAL) return;
+    lastCheck = now;
+
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return;
+      await reg.update(); // explizit Update-Check anstoßen 
+      if (reg.waiting) {
+        // leise installieren, UI fragt erst beim Button nach Reload
+        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+    } catch { /* still */ }
+  };
+
+  // Sichtbar/fokussiert -> kurz prüfen (iOS PWAs wachen oft "eingefroren" auf)
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  window.addEventListener('focus', check);
 }
 
 
@@ -1987,6 +2048,7 @@ async function startScript() {
     refreshTokenIfPermitted(); // <- diese Funktion sollte intern checken, ob Messaging/Token existiert
     startup_Header();
     initRefreshButton();
+    autoCheckUpdatesOnResume();
     
 
     // Event-Handler für Karte
