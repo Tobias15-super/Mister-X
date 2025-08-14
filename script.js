@@ -286,49 +286,106 @@ async function openDbEnsureStore(dbName, storeName) {
 
 
 
-function removeNotificationSetup() {
-  // Token aus Firebase entfernen
-  getToken(messaging, {
-    vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
-  }).then((currentToken) => {
-    if (currentToken) {
-      const deviceId = getDeviceId();
-      //firebase.database().ref("tokens/" + deviceId).remove();
-      remove(ref(rtdb, "tokens/" + deviceId))
-      log("Token aus Firebase entfernt:", currentToken);
+
+async function removeNotificationSetup() {
+  try {
+    const supported = await isSupported().catch(() => false);
+    if (!messaging) messaging = getMessaging(app);
+
+    const deviceId = getDeviceId();
+    const oldToken = localStorage.getItem('fcmToken');
+
+    // 1) FCM-Token im Browser löschen (nicht getToken()!)
+    if (supported) {
+      try {
+        await deleteToken(messaging);
+        log('✅ deleteToken: lokaler FCM-Token invalidiert');
+      } catch (e) {
+        log('⚠️ deleteToken fehlgeschlagen:', e);
+      }
     }
 
-    // Token aus Supabase entfernen
-    supabaseClient
-      .from('fcm_tokens')
-      .delete()
-      .eq('token', currentToken)
-      .then(({ error }) => {
-        if (error) {
-          log("Fehler beim Löschen des Tokens aus Supabase:", error);
-        } else {
-          log("Token erfolgreich aus Supabase gelöscht.");
-        }
-      });
-
-    // Lokale Einstellungen zurücksetzen
-    localStorage.removeItem("nachrichtAktiv");
-    localStorage.setItem('serviceWorkerRegistered', 'false');
-    document.getElementById("permissionButton").style.display = "block";
-    document.getElementById("permissionButton2").style.display = "none";
-  });
-
-  // Service Worker abmelden
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (let registration of registrations) {
-      registration.unregister().then((success) => {
-        if (success) {
-          alert("Benachrichtigungen deaktiviert.");
-        }
-      });
+    // 2) Serverseitig aufräumen (RTDB + Supabase)
+    try {
+      await remove(ref(rtdb, `tokens/${deviceId}`));
+      log('✅ RTDB-Token entfernt für', deviceId);
+    } catch (e) {
+      log('⚠️ RTDB-Remove fehlgeschlagen:', e);
     }
-  });
+
+    try {
+      // nach device_name ODER token löschen, damit nichts liegen bleibt
+      const { error } = await supabaseClient
+        .from('fcm_tokens')
+        .delete()
+        .or(`device_name.eq.${deviceId}${oldToken ? `,token.eq.${oldToken}` : ''}`);
+      if (error) log('⚠️ Supabase-Delete Fehler:', error);
+      else log('✅ Supabase-Einträge entfernt');
+    } catch (e) {
+      log('⚠️ Supabase-Delete (catch):', e);
+    }
+
+    // 3) Push-Subscription kündigen & SW-Registrierungen abmelden
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        try {
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            await sub.unsubscribe();
+            log('✅ Push-Subscription gekündigt für', reg.scope);
+          }
+        } catch (e) {
+          log('⚠️ unsubscribe warn:', e);
+        }
+      }
+      await Promise.all(regs.map(r => r.unregister()));
+      log('✅ Alle Service Worker unregistriert');
+    }
+
+    // 4) Caches löschen (Workbox-Precache etc.)
+    try {
+      if (window.caches) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+        log('✅ Alle Caches gelöscht:', keys);
+      }
+    } catch (e) {
+      log('⚠️ Cache cleanup warn:', e);
+    }
+
+    // 5) IndexedDB löschen (falls du deviceName o. ä. speicherst)
+    try {
+      indexedDB.deleteDatabase('app-db');
+      log('✅ IndexedDB "app-db" gelöscht');
+    } catch (e) {
+      log('⚠️ IndexedDB delete warn:', e);
+    }
+
+    // 6) Lokale Flags bereinigen
+    localStorage.removeItem('fcmToken');
+    localStorage.removeItem('nachrichtAktiv');
+    localStorage.removeItem('serviceWorkerRegistered');
+
+    // 7) UI zurücksetzen
+    try {
+      const btn1 = document.getElementById('permissionButton');
+      const btn2 = document.getElementById('permissionButton2');
+      if (btn1) btn1.style.display = '';    // zeigen
+      if (btn2) btn2.style.display = 'none';// verstecken
+    } catch {}
+
+    // 8) Einmal reloaden, damit kein alter SW mehr "controlled"
+    setTimeout(() => {
+      alert('🔕 Benachrichtigungen deaktiviert. Die Seite wird neu geladen…');
+      location.reload();
+    }, 150);
+  } catch (e) {
+    console.error(e);
+    alert('❌ Deaktivieren fehlgeschlagen: ' + (e?.message ?? String(e)));
+  }
 }
+
 
 
 
