@@ -159,6 +159,7 @@ async function requestPermission() {
 
     // 5) Token speichern (RTDB + Supabase)
     const deviceId = getDeviceId();
+    localStorage.setItem('fcmToken', currentToken);
     log('Token:', currentToken);
     await set(ref(rtdb, `tokens/${deviceId}`), currentToken);
     await saveTokenToSupabase(currentToken);
