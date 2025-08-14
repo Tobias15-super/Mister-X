@@ -552,7 +552,7 @@ function showLocationHistory() {
       historyMarkers = [];
 
       validEntries.forEach(loc => {
-        const m = L.marker([loc.lat, loc.lon]).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toTimeString()}`);
+        const m = L.marker([loc.lat, loc.lon]).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
         historyMarkers.push(m);
       });
 
@@ -565,7 +565,7 @@ function showLocationHistory() {
           opacity: 0.7,
           smoothFactor: 1
         }).addTo(map);
-}
+      }
 
 
       document.getElementById("map").style.display = "block";
