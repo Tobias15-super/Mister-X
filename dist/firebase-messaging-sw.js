@@ -4301,13 +4301,15 @@ async function li(t, e) {
 }
 Ds(si, async (t) => {
   var a, o, l, c;
-  const e = ((a = t == null ? void 0 : t.data) == null ? void 0 : a.title) ?? "Neue Nachricht", n = ((o = t == null ? void 0 : t.data) == null ? void 0 : o.body) ?? "", r = ((l = t == null ? void 0 : t.data) == null ? void 0 : l.url) ?? "/Mister-X/", s = ((c = t == null ? void 0 : t.data) == null ? void 0 : c.messageId) ?? null, i = await oi();
-  console.log("[SW] BG-Nachricht empfangen", { messageId: s, deviceName: i, payload: t }), s && i && await li(s, i), await self.registration.showNotification(e, {
+  const e = ((a = t == null ? void 0 : t.data) == null ? void 0 : a.title) ?? "Neue Nachricht", n = ((o = t == null ? void 0 : t.data) == null ? void 0 : o.body) ?? "", r = ((l = t == null ? void 0 : t.data) == null ? void 0 : l.url) ?? "/Mister-X/", s = ((c = t == null ? void 0 : t.data) == null ? void 0 : c.messageId) ?? null;
+  await self.registration.showNotification(e, {
     body: n,
     icon: "icons/android-chrome-192x192.png",
     badge: "icons/android-chrome-192x192.png",
     data: { url: r }
   });
+  const i = await oi();
+  console.log("[SW] BG-Nachricht empfangen", { messageId: s, deviceName: i, payload: t }), s && i && await li(s, i);
 });
 self.addEventListener("notificationclick", (t) => {
   t.notification.close(), t.waitUntil((async () => {

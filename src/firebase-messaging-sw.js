@@ -95,6 +95,13 @@ onBackgroundMessage(messaging, async (payload) => {
   const url = payload?.data?.url ?? '/Mister-X/';
   const messageId = payload?.data?.messageId ?? null;
 
+  await self.registration.showNotification(title, {
+  body,
+  icon: 'icons/android-chrome-192x192.png',
+  badge: 'icons/android-chrome-192x192.png',
+  data: { url },
+});
+
   // Log + Zustellung markieren
   const deviceName = await getDeviceName();
   console.log('[SW] BG-Nachricht empfangen', { messageId, deviceName, payload });
@@ -104,12 +111,7 @@ onBackgroundMessage(messaging, async (payload) => {
   }
 
   // Notification anzeigen
-  await self.registration.showNotification(title, {
-    body,
-    icon: 'icons/android-chrome-192x192.png',
-    badge: 'icons/android-chrome-192x192.png',
-    data: { url },
-  });
+
 });
 
 self.addEventListener('notificationclick', (event) => {
