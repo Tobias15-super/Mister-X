@@ -125,3 +125,16 @@ self.addEventListener('notificationclick', (event) => {
     if (clients.openWindow) return clients.openWindow(url);
   })());
 });
+
+// a) Message-Handler, damit die Seite skipWaiting anstoßen kann
+self.addEventListener('message', (event) => {
+  if (event?.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting(); // neue SW sofort aktivieren
+  }
+});
+
+// b) Beim Aktivieren alle offenen Clients sofort übernehmen
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim()); // direkte Kontrolle der Seiten
+});
+
