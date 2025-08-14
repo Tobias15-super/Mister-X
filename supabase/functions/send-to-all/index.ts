@@ -131,14 +131,26 @@ async function getAccessTokenCached() {
 }
 
 // Utility: Name-Mapping für eine gegebene Tokenliste aus Supabase holen
+// Holt device_name für eine gegebene Tokenliste – robust mit IN-Filter
 async function fetchNamesForTokens(tokenList: string[]) {
   if (tokenList.length === 0) return {} as Record<string, string>;
 
-  // Supabase REST-Filter: OR-Filter vermeidet das knifflige IN()-Quoting
-  const or = tokenList.map(t => `token.eq.${t}`).join(',');
-  const url = `${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name&or=${encodeURIComponent(or)}`;
+  // Strings für IN() korrekt quoten und encoden
+  const quoted = tokenList
+    .map(t => `"${String(t).replace(/"/g, '""')}"`) // Quotes escapen
+    .join(',');
+
+  // Wert IN(...) als Ganzes URL-encoden (ohne "token=in.")
+  const inValues = encodeURIComponent(quoted);
+
+  const url = `${supabaseUrl}/rest/v1/fcm_tokens`
+            + `?select=token,device_name`
+            + `&token=in.(${inValues})`;
+
   const res = await fetch(url, { headers: { apikey: supabaseKey } });
-  if (!res.ok) throw new Error(`Supabase name fetch failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) {
+    throw new Error(`Supabase name fetch failed: ${res.status} ${await res.text()}`);
+  }
 
   const rows = await res.json() as Array<{ token: string; device_name: string | null }>;
   const map: Record<string, string> = {};
@@ -147,6 +159,7 @@ async function fetchNamesForTokens(tokenList: string[]) {
   }
   return map;
 }
+
 
 
 async function withBackoff<T>(fn: () => Promise<T>, max = 5) {
