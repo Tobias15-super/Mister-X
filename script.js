@@ -800,6 +800,7 @@ function reattachUserLocationOnMap() {
 }
 
 // --- Refresh-Button initialisieren ---
+
 function initRefreshButton() {
   const btn = document.getElementById('refreshBtn');
   if (!btn) return;
@@ -807,100 +808,143 @@ function initRefreshButton() {
   btn.addEventListener('click', async () => {
     btn.classList.add('updating');
     try {
-      await forceUpdateAndReload();
-    } finally {
-      // Falls es schief geht, laden wir trotzdem neu (Worst-Case: harter Reload)
+      await forceUpdateAndReload({ timeoutMs: 2500 }); // -> Timeout-Fallback
+    } catch (e) {
+      console.warn('[Refresh] Fehler im Update-Flow:', e);
+      // Im Worst-Case: trotzdem neu laden
       window.location.reload();
     }
   });
 }
 
 
-async function forceUpdateAndReload() {
-  if (!('serviceWorker' in navigator)) return;
+
+
+async function forceUpdateAndReload({ timeoutMs = 2500 } = {}) {
+  if (!('serviceWorker' in navigator)) {
+    window.location.reload();
+    return;
+  }
 
   const reg = await navigator.serviceWorker.getRegistration();
-  if (!reg) return;
+  if (!reg) {
+    console.info('[Refresh] Keine SW-Registration gefunden -> normaler Reload');
+    window.location.reload();
+    return;
+  }
 
-  // 1) Update-Check anstoßen (lädt SW neu und installiert, wenn byte-different)
-  await reg.update(); // siehe MDN: update() versucht aktiv zu aktualisieren [3](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/update)
+  console.info('[Refresh] Vor Update:', dumpReg(reg));
 
-  // Helper, um "installed" / "waiting" sauber zu behandeln
-  const ensureInstalled = (sw) => new Promise((resolve) => {
-    if (!sw) return resolve(null);
-    if (sw.state === 'installed' || sw.state === 'activated') return resolve(sw);
-    sw.addEventListener('statechange', () => {
-      if (sw.state === 'installed' || sw.state === 'activated') resolve(sw);
-    });
-  });
+  // 1) Explizit Update anstoßen (lädt SW neu & installiert, wenn byte-different)
+  await reg.update(); // MDN: versucht aktiv zu aktualisieren [3](https://stackoverflow.com/questions/57455849/chrome-autoplay-policy-chrome-76)
 
-  // 2) Fälle unterscheiden: installing / waiting / nichts gefunden
+  // 2) Installierende / wartende SW finden
   let sw = reg.installing || reg.waiting || null;
   if (!sw) {
-    // Vielleicht ist beim update() gerade ein neuer SW gestartet:
-    sw = await new Promise((resolve) => {
-      const onUpdateFound = () => {
-        reg.removeEventListener('updatefound', onUpdateFound);
-        resolve(reg.installing || reg.waiting || null);
-      };
-      // Wenn innerhalb kurzer Zeit nichts passiert, fahren wir fort.
-      const t = setTimeout(() => {
-        reg.removeEventListener('updatefound', onUpdateFound);
-        resolve(null);
-      }, 1500);
-      reg.addEventListener('updatefound', () => { clearTimeout(t); onUpdateFound(); });
-    });
+    // Fall: Update ist sehr schnell oder es gibt keines -> kurze Warte auf updatefound
+    sw = await waitUpdateFound(reg, 800);
   }
 
-  // 3) Falls eine neue Version installiert/wartend ist -> sofort aktivieren
+  // 3) Falls eine neue Version wartet/installiert -> sofort aktivieren
   if (sw) {
-    await ensureInstalled(sw); // bis "installed"
+    await waitInstalledOrActivated(sw);
     if (reg.waiting) {
-      // PostMessage -> der SW ruft self.skipWaiting() (siehe SW-Code unten)
+      console.info('[Refresh] Sende SKIP_WAITING an Waiting-SW');
       reg.waiting.postMessage({ type: 'SKIP_WAITING' });
     }
+  } else {
+    console.info('[Refresh] Keine neue SW gefunden -> normaler Reload');
   }
 
-  // 4) Warten, bis der NEUE SW diese Seite kontrolliert -> dann reload
-  await new Promise((resolve) => {
-    // controllerchange feuert, wenn ein neuer SW die Kontrolle übernimmt
-    const onChange = () => {
-      navigator.serviceWorker.removeEventListener('controllerchange', onChange);
-      resolve();
-    };
-    navigator.serviceWorker.addEventListener('controllerchange', onChange);
-  }); // [6](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerContainer/controllerchange_event)
-
-  // Jetzt neu laden (neuer Precache greift)
+  // 4) Auf controllerchange ODER Timeout warten, dann reloaden
+  await waitControllerChangeOrTimeout(timeoutMs); // MDN: controllerchange-Event [4](https://developer.mozilla.org/en-US/docs/Web/API/Notification)
   window.location.reload();
 }
 
 
+function waitUpdateFound(reg, ms) {
+  return new Promise(resolve => {
+    let t;
+    const onUF = () => {
+      reg.removeEventListener('updatefound', onUF);
+      clearTimeout(t);
+      resolve(reg.installing || reg.waiting || null);
+    };
+    reg.addEventListener('updatefound', onUF);
+    t = setTimeout(() => {
+      reg.removeEventListener('updatefound', onUF);
+      resolve(null);
+    }, ms);
+  });
+}
+
+
+function waitInstalledOrActivated(sw) {
+  return new Promise(resolve => {
+    if (sw.state === 'installed' || sw.state === 'activated') return resolve();
+    sw.addEventListener('statechange', () => {
+      if (sw.state === 'installed' || sw.state === 'activated') resolve();
+    });
+  });
+}
+
+
+function waitControllerChangeOrTimeout(ms) {
+  return new Promise(resolve => {
+    let resolved = false;
+    const done = () => {
+      if (!resolved) {
+        resolved = true;
+        navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+        resolve();
+      }
+    };
+    const onChange = () => {
+      console.info('[Refresh] controllerchange empfangen');
+      done();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onChange);
+    setTimeout(() => {
+      console.warn('[Refresh] controllerchange-Timeout, lade dennoch neu');
+      done();
+    }, ms);
+  });
+}
+
+function dumpReg(reg) {
+  const s = o => (o ? o.state : '—');
+  return {
+    scope: reg.scope,
+    active: s(reg.active),
+    installing: s(reg.installing),
+    waiting: s(reg.waiting),
+    controlled: !!navigator.serviceWorker.controller
+  };
+}
+
+
+
+
 function autoCheckUpdatesOnResume() {
   let lastCheck = 0;
-  const MIN_INTERVAL = 15 * 1000; // 15s Throttle
+  const MIN = 15000; // 15s Throttle
 
   const check = async () => {
-    if (!('serviceWorker' in navigator)) return;
     const now = Date.now();
-    if (now - lastCheck < MIN_INTERVAL) return;
+    if (now - lastCheck < MIN) return;
     lastCheck = now;
-
     try {
       const reg = await navigator.serviceWorker.getRegistration();
       if (!reg) return;
-      await reg.update(); // explizit Update-Check anstoßen 
-      if (reg.waiting) {
-        // leise installieren, UI fragt erst beim Button nach Reload
-        reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
-    } catch { /* still */ }
+      await reg.update(); // aktiver Check [3](https://stackoverflow.com/questions/57455849/chrome-autoplay-policy-chrome-76)
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } catch {}
   };
 
-  // Sichtbar/fokussiert -> kurz prüfen (iOS PWAs wachen oft "eingefroren" auf)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
   window.addEventListener('focus', check);
 }
+
 
 
 
