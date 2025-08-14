@@ -49,7 +49,6 @@ button {
 
 /* Kleiner, schwebender Button oben rechts */
 .refresh-btn {
-  position: fixed;
   top: .5rem;
   right: .5rem;
   z-index: 10000;            /* über Header/Map */
