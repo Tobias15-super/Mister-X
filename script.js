@@ -381,7 +381,7 @@ async function removeNotificationSetup() {
       location.reload();
     }, 150);
   } catch (e) {
-    console.error(e);
+    log(e);
     alert('❌ Deaktivieren fehlgeschlagen: ' + (e?.message ?? String(e)));
   }
 }
@@ -810,7 +810,7 @@ function initRefreshButton() {
     try {
       await forceUpdateAndReload({ timeoutMs: 2500 }); // -> Timeout-Fallback
     } catch (e) {
-      console.warn('[Refresh] Fehler im Update-Flow:', e);
+      log('[Refresh] Fehler im Update-Flow:', e);
       // Im Worst-Case: trotzdem neu laden
       window.location.reload();
     }
@@ -828,12 +828,12 @@ async function forceUpdateAndReload({ timeoutMs = 2500 } = {}) {
 
   const reg = await navigator.serviceWorker.getRegistration();
   if (!reg) {
-    console.info('[Refresh] Keine SW-Registration gefunden -> normaler Reload');
+    log('[Refresh] Keine SW-Registration gefunden -> normaler Reload');
     window.location.reload();
     return;
   }
 
-  console.info('[Refresh] Vor Update:', dumpReg(reg));
+  log('[Refresh] Vor Update:', dumpReg(reg));
 
   // 1) Explizit Update anstoßen (lädt SW neu & installiert, wenn byte-different)
   await reg.update(); // MDN: versucht aktiv zu aktualisieren [3](https://stackoverflow.com/questions/57455849/chrome-autoplay-policy-chrome-76)
@@ -849,11 +849,11 @@ async function forceUpdateAndReload({ timeoutMs = 2500 } = {}) {
   if (sw) {
     await waitInstalledOrActivated(sw);
     if (reg.waiting) {
-      console.info('[Refresh] Sende SKIP_WAITING an Waiting-SW');
+      log('[Refresh] Sende SKIP_WAITING an Waiting-SW');
       reg.waiting.postMessage({ type: 'SKIP_WAITING' });
     }
   } else {
-    console.info('[Refresh] Keine neue SW gefunden -> normaler Reload');
+    log('[Refresh] Keine neue SW gefunden -> normaler Reload');
   }
 
   // 4) Auf controllerchange ODER Timeout warten, dann reloaden
@@ -900,12 +900,12 @@ function waitControllerChangeOrTimeout(ms) {
       }
     };
     const onChange = () => {
-      console.info('[Refresh] controllerchange empfangen');
+      log('[Refresh] controllerchange empfangen');
       done();
     };
     navigator.serviceWorker.addEventListener('controllerchange', onChange);
     setTimeout(() => {
-      console.warn('[Refresh] controllerchange-Timeout, lade dennoch neu');
+      log('[Refresh] controllerchange-Timeout, lade dennoch neu');
       done();
     }, ms);
   });
