@@ -119,6 +119,134 @@ function withTimeout<T>(p: Promise<T>, ms: number, onTimeout?: () => void): Prom
   });
 }
 
+// ===== Modulweite Utilities & Cache (persistiert über "warme" Edge-Invocations) =====
+let cachedToken: { token: string; exp: number } | null = null;
+
+async function getAccessTokenCached() {
+  const now = Date.now();
+  if (cachedToken && now < cachedToken.exp) return cachedToken.token;
+  const token = await getAccessToken();               // <- dein vorhandener Flow
+  cachedToken = { token, exp: now + 55 * 60 * 1000 }; // ~55 Min Cache
+  return token;
+}
+
+// Utility: Name-Mapping für eine gegebene Tokenliste aus Supabase holen
+async function fetchNamesForTokens(tokenList: string[]) {
+  if (tokenList.length === 0) return {} as Record<string, string>;
+
+  // Supabase REST-Filter: OR-Filter vermeidet das knifflige IN()-Quoting
+  const or = tokenList.map(t => `token.eq.${t}`).join(',');
+  const url = `${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name&or=${encodeURIComponent(or)}`;
+  const res = await fetch(url, { headers: { apikey: supabaseKey } });
+  if (!res.ok) throw new Error(`Supabase name fetch failed: ${res.status} ${await res.text()}`);
+
+  const rows = await res.json() as Array<{ token: string; device_name: string | null }>;
+  const map: Record<string, string> = {};
+  for (const r of rows) {
+    if (r.token && r.device_name) map[r.token] = r.device_name;
+  }
+  return map;
+}
+
+
+async function withBackoff<T>(fn: () => Promise<T>, max = 5) {
+  let delay = 250;
+  for (let i = 0; i < max; i++) {
+    try { return await fn(); }
+    catch (e) {
+      if (i === max - 1) throw e;
+      await new Promise(r => setTimeout(r, delay));
+      delay = Math.min(delay * 2, 5000);
+    }
+  }
+  throw new Error("unreachable");
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (x: T) => Promise<R>
+) {
+  const ret: R[] = [];
+  let i = 0;
+  const run = async () => {
+    while (i < items.length) {
+      const idx = i++;
+      ret[idx] = await worker(items[idx]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+  return ret;
+}
+
+type FcmV1Error = { error?: { status?: string; message?: string } };
+
+// ===== Ein Sender für genau EIN Token mit Fehlerauswertung + Token-Cleanup =====
+async function sendToToken(
+  token: string,
+  accessToken: string,
+  payload: {
+    title: string;
+    body: string;
+    messageId: string;
+    senderName: string;
+    link: string;
+  },
+  supabaseUrl: string,
+  supabaseKey: string,
+  projectId: string
+) {
+  const res = await fetch(
+    `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: {
+          token,
+          data: {
+            title: payload.title,
+            body: payload.body,
+            url: payload.link,
+            messageId: payload.messageId,
+            senderName: payload.senderName,
+            timestamp: String(Date.now()),
+          },
+          android: { priority: "high", ttl: "60s" },
+          webpush: {
+            headers: { Urgency: "high", TTL: "60" },
+            fcm_options: { link: payload.link }
+            // Optionaler Fail-Open-Pfad (nur aktivieren, wenn du im SW Duplikate verhinderst):
+            // notification: { icon: "/icons/android-chrome-192x192.png", badge: "/icons/android-chrome-192x192.png" }
+          },
+          apns: { headers: { "apns-priority": "10" } },
+        },
+      }),
+    }
+  );
+
+  const bodyText = await res.text();
+  let err: FcmV1Error | null = null;
+  try { err = JSON.parse(bodyText); } catch {}
+
+  if (!res.ok) {
+    const status = err?.error?.status || "";
+    // Ungültige / verwaiste Tokens säubern
+    if (["UNREGISTERED", "INVALID_ARGUMENT", "SENDER_ID_MISMATCH"].includes(status)) {
+      await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?token=eq.${encodeURIComponent(token)}`, {
+        method: "DELETE",
+        headers: { apikey: supabaseKey },
+      });
+    }
+  }
+
+  return { token, status: res.status, success: res.ok, body: bodyText };
+}
+
+// ====== Dein HTTP-Handler ======
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -130,48 +258,43 @@ serve(async (req) => {
   try {
     const { title, body, tokens: providedTokens, senderName } = await req.json();
 
-    // 1) Tokenliste
-    let tokenList: string[] = [];
-    if (Array.isArray(providedTokens) && providedTokens.length > 0) {
-      tokenList = providedTokens;
-    } else {
-      const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens`, {
-        headers: { apikey: supabaseKey },
-      });
-      const tokens = await tokensRes.json();
-      tokenList = (tokens as any[]).map((t) => t.token).filter(Boolean);
-    }
+    // 1) Tokenliste + (optional) Gerätenamen in EINEM Request holen
 
-    if (tokenList.length === 0) {
-      // 🧹 Cleanup in Hintergrund (optional, blockiert nicht)
-      // Wir warten hier maximal 150 ms darauf, sonst geht's weiter
-      const cleanupPromise = cleanupOldNotifications().catch(console.error);
-      await withTimeout(cleanupPromise, 150);
+let tokenList: string[] = [];
+if (Array.isArray(providedTokens) && providedTokens.length > 0) {
+  tokenList = [...new Set(providedTokens)].filter(Boolean);
+} else {
+  const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name`, {
+    headers: { apikey: supabaseKey },
+  });
+  if (!tokensRes.ok) throw new Error(`Token fetch failed: ${tokensRes.status} ${await tokensRes.text()}`);
+  const rows = await tokensRes.json() as Array<{ token: string; device_name?: string | null }>;
+  tokenList = [...new Set(rows.map(r => r.token).filter(Boolean))];
+}
 
-      return new Response(JSON.stringify({ error: "No tokens found" }), {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
 
-    // 2) Token -> Gerätename (via Supabase-Tabelle fcm_tokens)
-    const mapRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens`, {
-      headers: { apikey: supabaseKey },
-    });
-    const tokensData = await mapRes.json() as any[];
-    const nameMap: Record<string, string> = {};
-    tokensData.forEach((t) => {
-      if (t.token && t.device_name) nameMap[t.token] = t.device_name;
-    });
+    // 2) Token -> Gerätename Map (falls vorhanden)
+const nameMap = await fetchNamesForTokens(tokenList);
 
-    // 3) Empfänger-Map aufbauen (name -> false)
-    const recipientsMap: Record<string, boolean> = {};
-    for (const token of tokenList) {
-      const name = nameMap[token] ?? token; // Fallback: Token als Name (sollte selten sein)
-      recipientsMap[sanitizeKey(name)] = false;
-    }
 
-    // 4) messageId & RTDB-Eintrag
+const orphanTokens = tokenList.filter(t => !nameMap[t]);
+if (orphanTokens.length) {
+  // Option A (empfohlen): diese Tokens überspringen und melden
+  console.warn("⚠️ Tokens ohne device_name werden übersprungen:", orphanTokens.length);
+  // Wenn du sie dennoch anschreiben willst, kannst du sie getrennt senden,
+  // aber nicht in recipients map aufnehmen (sonst Markierung schlägt fehl).
+}
+
+// 3) recipientsMap ausschließlich mit Device-Names
+const recipientsMap: Record<string, boolean> = {};
+for (const token of tokenList) {
+  const deviceName = nameMap[token];
+  if (!deviceName) continue; // siehe orphanTokens
+  recipientsMap[sanitizeKey(deviceName)] = false;
+}
+
+
+    // 4) RTDB-Eintrag anlegen
     const messageId = crypto.randomUUID();
     const notif = {
       sender: senderName ?? "Unbekannt",
@@ -189,55 +312,29 @@ serve(async (req) => {
     if (!putRes.ok) {
       const txt = await putRes.text();
       console.error("RTDB write failed:", txt);
+      // bewusst kein Abbruch: Push trotzdem versuchen
     }
 
-    // 🧹 Cleanup so früh wie möglich anstoßen, aber nicht auf Antwort warten
-    // - Best effort im Hintergrund
-    // - Optionaler kurzer Timeout, damit es bei schneller Ausführung mitgenommen wird
+    // 5) Cleanup früh anstoßen (non-blocking, max. 150ms warten)
     const cleanupPromise = cleanupOldNotifications().catch(console.error);
-    // Warte höchstens 150 ms auf Cleanup, um Latenz minimal zu halten:
     await withTimeout(cleanupPromise, 150);
 
-    // 5) Push senden
-    const accessToken = await getAccessToken();
-    const results = await Promise.all(
-      tokenList.map(async (token) => {
-        const res = await fetch(
-          `https://fcm.googleapis.com/v1/projects/${SERVICE_ACCOUNT.project_id}/messages:send`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              message: {
-                data: {
-                  title,
-                  body,
-                  url: "https://tobias15-super.github.io/Mister-X/",
-                  messageId,
-                  senderName: senderName ?? "Unbekannt",
-                },
-                token,
-                webpush: {
-                  fcm_options: { link: "https://tobias15-super.github.io/Mister-X/" },
-                  headers: { Urgency: "high" },
-                },
-                android: { priority: "high" },
-                apns: { headers: { "apns-priority": "10" } },
-              },
-            }),
-          }
-        );
+    // 6) Push senden (Concurrency + Backoff)
+    const accessToken = await getAccessTokenCached();
+    const payload = {
+      title,
+      body,
+      messageId,
+      senderName: senderName ?? "Unbekannt",
+      link: "https://tobias15-super.github.io/Mister-X/",
+    };
 
-        return {
-          token,
-          status: res.status,
-          success: res.ok,
-          body: await res.text(),
-        };
-      })
+    const results = await mapWithConcurrency(
+      tokenList,
+      32, // Concurrency-Limit
+      (t) => withBackoff(() =>
+        sendToToken(t, accessToken, payload, supabaseUrl, supabaseKey, SERVICE_ACCOUNT.project_id)
+      )
     );
 
     const failedTokens = results.filter((r) => !r.success).map((r) => r.token);
@@ -248,9 +345,9 @@ serve(async (req) => {
     });
   } catch (err) {
     console.error("❌ Fehler:", err);
-    return new Response(JSON.stringify({ error: "Internal Server Error", details: String(err) }), {
-      status: 500,
-      headers: corsHeaders,
-    });
+    return new Response(
+      JSON.stringify({ error: "Internal Server Error", details: String(err) }),
+      { status: 500, headers: corsHeaders }
+    );
   }
 });
