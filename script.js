@@ -182,28 +182,16 @@ async function requestPermission() {
 
 // Speichert den Device-Namen in IndexedDB
 async function saveDeviceName(deviceName) {
+  const db = await openDbEnsureStore('app-db', 'settings');
   return new Promise((resolve, reject) => {
-    const openReq = indexedDB.open('app-db', 1);
-
-    openReq.onupgradeneeded = () => {
-      const db = openReq.result;
-      if (!db.objectStoreNames.contains('settings')) {
-        db.createObjectStore('settings');
-      }
-    };
-
-    openReq.onsuccess = () => {
-      const db = openReq.result;
-      const tx = db.transaction('settings', 'readwrite');
-      const store = tx.objectStore('settings');
-      store.put(deviceName, 'deviceName');
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => reject(tx.error);
-    };
-
-    openReq.onerror = () => reject(openReq.error);
+    const tx = db.transaction('settings', 'readwrite');
+    const store = tx.objectStore('settings');
+    store.put(deviceName, 'deviceName');
+    tx.oncomplete = () => { db.close(); resolve(true); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
   });
 }
+
 
 
 async function refreshTokenIfPermitted() {
@@ -261,6 +249,41 @@ async function refreshTokenIfPermitted() {
     log("❌ Fehler beim Token-Refresh:", err);
   }
 }
+
+// Einmalig definieren (Window & SW gleich)
+async function openDbEnsureStore(dbName, storeName) {
+  return new Promise((resolve, reject) => {
+    // 1) Erst ohne Versionsangabe öffnen
+    const openReq = indexedDB.open(dbName);
+    openReq.onupgradeneeded = () => {
+      // Falls die DB noch nicht existierte, legen wir den Store direkt an
+      const db = openReq.result;
+      if (!db.objectStoreNames.contains(storeName)) {
+        db.createObjectStore(storeName);
+      }
+    };
+    openReq.onsuccess = () => {
+      const db = openReq.result;
+      if (db.objectStoreNames.contains(storeName)) {
+        return resolve(db);
+      }
+      // 2) Store fehlt -> DB schließen und Upgrade mit +1 fahren
+      const newVersion = db.version + 1;
+      db.close();
+      const upgradeReq = indexedDB.open(dbName, newVersion);
+      upgradeReq.onupgradeneeded = () => {
+        const udb = upgradeReq.result;
+        if (!udb.objectStoreNames.contains(storeName)) {
+          udb.createObjectStore(storeName);
+        }
+      };
+      upgradeReq.onsuccess = () => resolve(upgradeReq.result);
+      upgradeReq.onerror = () => reject(upgradeReq.error);
+    };
+    openReq.onerror = () => reject(openReq.error);
+  });
+}
+
 
 
 function removeNotificationSetup() {
@@ -1748,14 +1771,19 @@ async function ensureSWRegistration() {
     throw new Error('Service Worker wird vom Browser nicht unterstützt.');
   }
 
+  const scope = import.meta.env.BASE_URL || '/';
   // Falls bereits registriert, wiederverwenden:
-  const existing = await navigator.serviceWorker.getRegistration();
+  const existing = await navigator.serviceWorker.getRegistration(scope);
   if (existing) return existing;
 
-  // Sonst neu registrieren – mit BASE_URL und **deinem** Dateinamen aus Variante B:
-  const swUrl = `${import.meta.env.BASE_URL}firebase-messaging-sw.js`;
-  return navigator.serviceWorker.register(swUrl);
+  const swUrl = `${scope}firebase-messaging-sw.js`;
+  // Wenn nicht via Build gebundled, SW als Module registrieren:
+  return navigator.serviceWorker.register(swUrl, {
+    scope,
+    type: 'module', // <— wichtig bei ESM
+  });
 }
+
 
 
 function isStandalonePWA() {

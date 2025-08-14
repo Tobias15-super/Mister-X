@@ -25,25 +25,54 @@ function sanitizeKey(key) {
 }
 
 async function getDeviceName() {
-  return new Promise((resolve) => {
-    const openReq = indexedDB.open('app-db', 1);
+  try {
+    const db = await openDbEnsureStore('app-db', 'settings');
+    return await new Promise((resolve) => {
+      const tx = db.transaction('settings', 'readonly');
+      const store = tx.objectStore('settings');
+      const req = store.get('deviceName');
+      req.onsuccess = () => { db.close(); resolve(req.result || null); };
+      req.onerror = () => { db.close(); resolve(null); };
+    });
+  } catch {
+    return null; // Fallback: SW darf hier nicht crashen
+  }
+}
+
+// Einmalig definieren (Window & SW gleich)
+async function openDbEnsureStore(dbName, storeName) {
+  return new Promise((resolve, reject) => {
+    // 1) Erst ohne Versionsangabe öffnen
+    const openReq = indexedDB.open(dbName);
     openReq.onupgradeneeded = () => {
+      // Falls die DB noch nicht existierte, legen wir den Store direkt an
       const db = openReq.result;
-      if (!db.objectStoreNames.contains('settings')) {
-        db.createObjectStore('settings');
+      if (!db.objectStoreNames.contains(storeName)) {
+        db.createObjectStore(storeName);
       }
     };
     openReq.onsuccess = () => {
       const db = openReq.result;
-      const tx = db.transaction('settings', 'readonly');
-      const store = tx.objectStore('settings');
-      const req = store.get('deviceName');
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
+      if (db.objectStoreNames.contains(storeName)) {
+        return resolve(db);
+      }
+      // 2) Store fehlt -> DB schließen und Upgrade mit +1 fahren
+      const newVersion = db.version + 1;
+      db.close();
+      const upgradeReq = indexedDB.open(dbName, newVersion);
+      upgradeReq.onupgradeneeded = () => {
+        const udb = upgradeReq.result;
+        if (!udb.objectStoreNames.contains(storeName)) {
+          udb.createObjectStore(storeName);
+        }
+      };
+      upgradeReq.onsuccess = () => resolve(upgradeReq.result);
+      upgradeReq.onerror = () => reject(upgradeReq.error);
     };
-    openReq.onerror = () => resolve(null);
+    openReq.onerror = () => reject(openReq.error);
   });
 }
+
 
 async function markDelivered(messageId, deviceName) {
   if (!messageId || !deviceName) return;
