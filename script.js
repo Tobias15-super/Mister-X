@@ -799,6 +799,48 @@ function reattachUserLocationOnMap() {
   if (userAccuracyCircle && !map.hasLayer(userAccuracyCircle)) userAccuracyCircle.addTo(map);
 }
 
+// --- Refresh-Button initialisieren ---
+function initRefreshButton() {
+  const btn = document.getElementById('refreshBtn');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    btn.classList.add('updating');
+
+    try {
+      // 1) Falls registriert, explizit auf SW-Update prüfen
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+
+        if (reg) {
+          // Prüft auf neues SW-Skript
+          await reg.update();
+
+          // Falls ein neues SW bereits im 'waiting'-Zustand ist -> aktivieren
+          if (reg.waiting) {
+            await new Promise((resolve) => {
+              const onControllerChange = () => {
+                navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+                resolve();
+              };
+              navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+
+              // Dem (neuen) SW sagen, dass er sofort aktiv werden darf
+              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // Nicht kritisch – wir laden gleich neu
+      console.warn('[Refresh] Update-Check/SkipWaiting fehlgeschlagen:', e);
+    } finally {
+      // 2) Seite neu laden (liefert neue Assets, sobald der neue SW aktiv ist)
+      window.location.reload();
+    }
+  });
+}
+
 
 
 
@@ -1944,6 +1986,7 @@ async function startScript() {
     showButtons();
     refreshTokenIfPermitted(); // <- diese Funktion sollte intern checken, ob Messaging/Token existiert
     startup_Header();
+    initRefreshButton();
     
 
     // Event-Handler für Karte

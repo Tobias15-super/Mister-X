@@ -47,6 +47,27 @@ button {
 }
 
 
+/* Kleiner, schwebender Button oben rechts */
+.refresh-btn {
+  position: fixed;
+  top: .5rem;
+  right: .5rem;
+  z-index: 10000;            /* über Header/Map */
+  opacity: 0.95;
+  line-height: 1;            /* kompakt */
+}
+
+/* Optional: kleiner Spin, solange aktualisiert wird */
+.refresh-btn.updating {
+  animation: refresh-spin 900ms linear infinite;
+}
+@keyframes refresh-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+
+
 input[type="file"] {
   margin-top: 1em;
 }
