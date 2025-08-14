@@ -103,8 +103,8 @@ const He = function(t) {
     const n = e ? this.byteToCharMapWebSafe_ : this.byteToCharMap_, r = [];
     for (let s = 0; s < t.length; s += 3) {
       const i = t[s], a = s + 1 < t.length, o = a ? t[s + 1] : 0, l = s + 2 < t.length, c = l ? t[s + 2] : 0, p = i >> 2, h = (i & 3) << 4 | o >> 4;
-      let E = (o & 15) << 2 | c >> 6, P = c & 63;
-      l || (P = 64, a || (E = 64)), r.push(n[p], n[h], n[E], n[P]);
+      let E = (o & 15) << 2 | c >> 6, B = c & 63;
+      l || (B = 64, a || (E = 64)), r.push(n[p], n[h], n[E], n[B]);
     }
     return r.join("");
   },
@@ -158,8 +158,8 @@ const He = function(t) {
         throw new Dt();
       const E = i << 2 | o >> 4;
       if (r.push(E), c !== 64) {
-        const P = o << 4 & 240 | c >> 2;
-        if (r.push(P), h !== 64) {
+        const B = o << 4 & 240 | c >> 2;
+        if (r.push(B), h !== 64) {
           const Tt = c << 6 & 192 | h;
           r.push(Tt);
         }
@@ -245,7 +245,7 @@ const Ot = () => Nt().__FIREBASE_DEFAULTS__, Mt = () => {
   const t = process.env.__FIREBASE_DEFAULTS__;
   if (t)
     return JSON.parse(t);
-}, Bt = () => {
+}, Lt = () => {
   if (typeof document > "u")
     return;
   let t;
@@ -256,16 +256,16 @@ const Ot = () => Nt().__FIREBASE_DEFAULTS__, Mt = () => {
   }
   const e = t && vt(t[1]);
   return e && JSON.parse(e);
-}, Lt = () => {
+}, Pt = () => {
   try {
-    return Rt() || Ot() || Mt() || Bt();
+    return Rt() || Ot() || Mt() || Lt();
   } catch (t) {
     console.info(`Unable to get __FIREBASE_DEFAULTS__ due to: ${t}`);
     return;
   }
 }, Ve = () => {
   var t;
-  return (t = Lt()) == null ? void 0 : t.config;
+  return (t = Pt()) == null ? void 0 : t.config;
 };
 /**
  * @license
@@ -283,7 +283,7 @@ const Ot = () => Nt().__FIREBASE_DEFAULTS__, Mt = () => {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-let Pt = class {
+let Bt = class {
   constructor() {
     this.reject = () => {
     }, this.resolve = () => {
@@ -355,17 +355,17 @@ class j {
     this.service = e, this.serviceName = n, this.errors = r;
   }
   create(e, ...n) {
-    const r = n[0] || {}, s = `${this.service}/${e}`, i = this.errors[e], a = i ? $t(i, r) : "Error", o = `${this.serviceName}: ${a} (${s}).`;
+    const r = n[0] || {}, s = `${this.service}/${e}`, i = this.errors[e], a = i ? Ut(i, r) : "Error", o = `${this.serviceName}: ${a} (${s}).`;
     return new N(s, o, r);
   }
 }
-function $t(t, e) {
-  return t.replace(Ut, (n, r) => {
+function Ut(t, e) {
+  return t.replace($t, (n, r) => {
     const s = e[r];
     return s != null ? String(s) : `<${r}?>`;
   });
 }
-const Ut = /\{\$([^}]+)}/g;
+const $t = /\{\$([^}]+)}/g;
 function ie(t, e) {
   if (t === e)
     return !0;
@@ -446,7 +446,7 @@ class T {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const C = "[DEFAULT]";
+const S = "[DEFAULT]";
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -474,7 +474,7 @@ class Ft {
   get(e) {
     const n = this.normalizeInstanceIdentifier(e);
     if (!this.instancesDeferred.has(n)) {
-      const r = new Pt();
+      const r = new Bt();
       if (this.instancesDeferred.set(n, r), this.isInitialized(n) || this.shouldAutoInitialize())
         try {
           const s = this.getOrInitializeService({
@@ -515,7 +515,7 @@ class Ft {
     if (this.component = e, !!this.shouldAutoInitialize()) {
       if (Kt(e))
         try {
-          this.getOrInitializeService({ instanceIdentifier: C });
+          this.getOrInitializeService({ instanceIdentifier: S });
         } catch {
         }
       for (const [n, r] of this.instancesDeferred.entries()) {
@@ -530,7 +530,7 @@ class Ft {
       }
     }
   }
-  clearInstance(e = C) {
+  clearInstance(e = S) {
     this.instancesDeferred.delete(e), this.instancesOptions.delete(e), this.instances.delete(e);
   }
   // app.delete() will call this method on every provider to delete the services
@@ -545,10 +545,10 @@ class Ft {
   isComponentSet() {
     return this.component != null;
   }
-  isInitialized(e = C) {
+  isInitialized(e = S) {
     return this.instances.has(e);
   }
-  getOptions(e = C) {
+  getOptions(e = S) {
     return this.instancesOptions.get(e) || {};
   }
   initialize(e = {}) {
@@ -608,15 +608,15 @@ class Ft {
       }
     return r || null;
   }
-  normalizeInstanceIdentifier(e = C) {
-    return this.component ? this.component.multipleInstances ? e : C : e;
+  normalizeInstanceIdentifier(e = S) {
+    return this.component ? this.component.multipleInstances ? e : S : e;
   }
   shouldAutoInitialize() {
     return !!this.component && this.component.instantiationMode !== "EXPLICIT";
   }
 }
 function Ht(t) {
-  return t === C ? void 0 : t;
+  return t === S ? void 0 : t;
 }
 function Kt(t) {
   return t.instantiationMode === "EAGER";
@@ -970,7 +970,7 @@ const ce = "@firebase/app", ke = "0.14.1";
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const w = new Gt("@firebase/app"), cn = "@firebase/app-compat", ln = "@firebase/analytics-compat", un = "@firebase/analytics", hn = "@firebase/app-check-compat", fn = "@firebase/app-check", dn = "@firebase/auth", pn = "@firebase/auth-compat", gn = "@firebase/database", mn = "@firebase/data-connect", bn = "@firebase/database-compat", wn = "@firebase/functions", yn = "@firebase/functions-compat", _n = "@firebase/installations", In = "@firebase/installations-compat", En = "@firebase/messaging", Cn = "@firebase/messaging-compat", Sn = "@firebase/performance", Tn = "@firebase/performance-compat", Rn = "@firebase/remote-config", An = "@firebase/remote-config-compat", Dn = "@firebase/storage", kn = "@firebase/storage-compat", vn = "@firebase/firestore", Nn = "@firebase/ai", On = "@firebase/firestore-compat", Mn = "firebase";
+const w = new Gt("@firebase/app"), cn = "@firebase/app-compat", ln = "@firebase/analytics-compat", un = "@firebase/analytics", hn = "@firebase/app-check-compat", fn = "@firebase/app-check", dn = "@firebase/auth", pn = "@firebase/auth-compat", gn = "@firebase/database", mn = "@firebase/data-connect", bn = "@firebase/database-compat", wn = "@firebase/functions", yn = "@firebase/functions-compat", _n = "@firebase/installations", In = "@firebase/installations-compat", En = "@firebase/messaging", Sn = "@firebase/messaging-compat", Cn = "@firebase/performance", Tn = "@firebase/performance-compat", Rn = "@firebase/remote-config", An = "@firebase/remote-config-compat", Dn = "@firebase/storage", kn = "@firebase/storage-compat", vn = "@firebase/firestore", Nn = "@firebase/ai", On = "@firebase/firestore-compat", Mn = "firebase";
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -987,7 +987,7 @@ const w = new Gt("@firebase/app"), cn = "@firebase/app-compat", ln = "@firebase/
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const le = "[DEFAULT]", Bn = {
+const le = "[DEFAULT]", Ln = {
   [ce]: "fire-core",
   [cn]: "fire-core-compat",
   [un]: "fire-analytics",
@@ -1004,8 +1004,8 @@ const le = "[DEFAULT]", Bn = {
   [_n]: "fire-iid",
   [In]: "fire-iid-compat",
   [En]: "fire-fcm",
-  [Cn]: "fire-fcm-compat",
-  [Sn]: "fire-perf",
+  [Sn]: "fire-fcm-compat",
+  [Cn]: "fire-perf",
   [Tn]: "fire-perf-compat",
   [Rn]: "fire-rc",
   [An]: "fire-rc-compat",
@@ -1034,7 +1034,7 @@ const le = "[DEFAULT]", Bn = {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const $ = /* @__PURE__ */ new Map(), Ln = /* @__PURE__ */ new Map(), ue = /* @__PURE__ */ new Map();
+const U = /* @__PURE__ */ new Map(), Pn = /* @__PURE__ */ new Map(), ue = /* @__PURE__ */ new Map();
 function ve(t, e) {
   try {
     t.container.addComponent(e);
@@ -1047,9 +1047,9 @@ function v(t) {
   if (ue.has(e))
     return w.debug(`There were multiple attempts to register component ${e}.`), !1;
   ue.set(e, t);
-  for (const n of $.values())
+  for (const n of U.values())
     ve(n, t);
-  for (const n of Ln.values())
+  for (const n of Pn.values())
     ve(n, t);
   return !0;
 }
@@ -1073,7 +1073,7 @@ function de(t, e) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const Pn = {
+const Bn = {
   "no-app": "No Firebase App '{$appName}' has been created - call initializeApp() first",
   "bad-app-name": "Illegal App name: '{$appName}'",
   "duplicate-app": "Firebase App named '{$appName}' already exists with different options or config",
@@ -1088,7 +1088,7 @@ const Pn = {
   "idb-delete": "Error thrown when deleting from IndexedDB. Original error: {$originalErrorMessage}.",
   "finalization-registry-not-supported": "FirebaseServerApp deleteOnDeref field defined but the JS runtime does not support FinalizationRegistry.",
   "invalid-server-app-environment": "FirebaseServerApp is not for use in browser environments."
-}, I = new j("app", "Firebase", Pn);
+}, I = new j("app", "Firebase", Bn);
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -1164,7 +1164,7 @@ function Ye(t, e = {}) {
       "no-options"
       /* AppError.NO_OPTIONS */
     );
-  const i = $.get(s);
+  const i = U.get(s);
   if (i) {
     if (ie(n, i.options) && ie(r, i.config))
       return i;
@@ -1174,10 +1174,10 @@ function Ye(t, e = {}) {
   for (const l of ue.values())
     a.addComponent(l);
   const o = new xn(n, r, a);
-  return $.set(s, o), o;
+  return U.set(s, o), o;
 }
-function $n(t = le) {
-  const e = $.get(t);
+function Un(t = le) {
+  const e = U.get(t);
   if (!e && t === le && Ve())
     return Ye();
   if (!e)
@@ -1185,7 +1185,7 @@ function $n(t = le) {
   return e;
 }
 function k(t, e, n) {
-  let r = Bn[t] ?? t;
+  let r = Ln[t] ?? t;
   n && (r += `-${n}`);
   const s = r.match(/\s|\//), i = e.match(/\s|\//);
   if (s || i) {
@@ -1218,15 +1218,15 @@ function k(t, e, n) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const Un = "firebase-heartbeat-database", Fn = 1, L = "firebase-heartbeat-store";
+const $n = "firebase-heartbeat-database", Fn = 1, P = "firebase-heartbeat-store";
 let X = null;
 function Xe() {
-  return X || (X = V(Un, Fn, {
+  return X || (X = V($n, Fn, {
     upgrade: (t, e) => {
       switch (e) {
         case 0:
           try {
-            t.createObjectStore(L);
+            t.createObjectStore(P);
           } catch (n) {
             console.warn(n);
           }
@@ -1240,7 +1240,7 @@ function Xe() {
 }
 async function Hn(t) {
   try {
-    const n = (await Xe()).transaction(L), r = await n.objectStore(L).get(Qe(t));
+    const n = (await Xe()).transaction(P), r = await n.objectStore(P).get(Qe(t));
     return await n.done, r;
   } catch (e) {
     if (e instanceof N)
@@ -1255,8 +1255,8 @@ async function Hn(t) {
 }
 async function Ne(t, e) {
   try {
-    const r = (await Xe()).transaction(L, "readwrite");
-    await r.objectStore(L).put(e, Qe(t)), await r.done;
+    const r = (await Xe()).transaction(P, "readwrite");
+    await r.objectStore(P).put(e, Qe(t)), await r.done;
   } catch (n) {
     if (n instanceof N)
       w.warn(n.message);
@@ -1737,14 +1737,14 @@ function ur(t, e) {
   const n = hr();
   n && n.postMessage({ key: t, fid: e }), fr();
 }
-let S = null;
+let C = null;
 function hr() {
-  return !S && "BroadcastChannel" in self && (S = new BroadcastChannel("[Firebase] FID Change"), S.onmessage = (t) => {
+  return !C && "BroadcastChannel" in self && (C = new BroadcastChannel("[Firebase] FID Change"), C.onmessage = (t) => {
     ft(t.data.key, t.data.fid);
-  }), S;
+  }), C;
 }
 function fr() {
-  ut.size === 0 && S && (S.close(), S = null);
+  ut.size === 0 && C && (C.close(), C = null);
 }
 /**
  * @license
@@ -1774,7 +1774,7 @@ function ge() {
     }
   })), Q;
 }
-async function U(t, e) {
+async function $(t, e) {
   const n = W(t), s = (await ge()).transaction(A, "readwrite"), i = s.objectStore(A), a = await i.get(n);
   return await i.put(e, n), await s.done, (!a || a.fid !== e.fid) && ht(t, e.fid), e;
 }
@@ -1847,9 +1847,9 @@ function mr(t, e) {
 async function br(t, e) {
   try {
     const n = await ir(t, e);
-    return U(t.appConfig, n);
+    return $(t.appConfig, n);
   } catch (n) {
-    throw rt(n) && n.customData.serverCode === 409 ? await dt(t.appConfig) : await U(t.appConfig, {
+    throw rt(n) && n.customData.serverCode === 409 ? await dt(t.appConfig) : await $(t.appConfig, {
       fid: e.fid,
       registrationStatus: 0
       /* RequestStatus.NOT_STARTED */
@@ -1857,16 +1857,16 @@ async function br(t, e) {
   }
 }
 async function wr(t) {
-  let e = await Be(t.appConfig);
+  let e = await Le(t.appConfig);
   for (; e.registrationStatus === 1; )
-    await lt(100), e = await Be(t.appConfig);
+    await lt(100), e = await Le(t.appConfig);
   if (e.registrationStatus === 0) {
     const { installationEntry: n, registrationPromise: r } = await me(t);
     return r || n;
   }
   return e;
 }
-function Be(t) {
+function Le(t) {
   return q(t, (e) => {
     if (!e)
       throw R.create(
@@ -1954,7 +1954,7 @@ async function be(t, e = !1) {
         /* ErrorCode.NOT_REGISTERED */
       );
     const a = i.authToken;
-    if (!e && Sr(a))
+    if (!e && Cr(a))
       return i;
     if (a.requestStatus === 1)
       return n = Er(t, e), i;
@@ -1965,19 +1965,19 @@ async function be(t, e = !1) {
           /* ErrorCode.APP_OFFLINE */
         );
       const o = Rr(i);
-      return n = Cr(t, o), o;
+      return n = Sr(t, o), o;
     }
   });
   return n ? await n : r.authToken;
 }
 async function Er(t, e) {
-  let n = await Le(t.appConfig);
+  let n = await Pe(t.appConfig);
   for (; n.authToken.requestStatus === 1; )
-    await lt(100), n = await Le(t.appConfig);
+    await lt(100), n = await Pe(t.appConfig);
   const r = n.authToken;
   return r.requestStatus === 0 ? be(t, e) : r;
 }
-function Le(t) {
+function Pe(t) {
   return q(t, (e) => {
     if (!gt(e))
       throw R.create(
@@ -1994,13 +1994,13 @@ function Le(t) {
     } : e;
   });
 }
-async function Cr(t, e) {
+async function Sr(t, e) {
   try {
     const n = await _r(t, e), r = {
       ...e,
       authToken: n
     };
-    return await U(t.appConfig, r), n;
+    return await $(t.appConfig, r), n;
   } catch (n) {
     if (rt(n) && (n.customData.serverCode === 401 || n.customData.serverCode === 404))
       await dt(t.appConfig);
@@ -2012,7 +2012,7 @@ async function Cr(t, e) {
           /* RequestStatus.NOT_STARTED */
         }
       };
-      await U(t.appConfig, r);
+      await $(t.appConfig, r);
     }
     throw n;
   }
@@ -2020,7 +2020,7 @@ async function Cr(t, e) {
 function gt(t) {
   return t !== void 0 && t.registrationStatus === 2;
 }
-function Sr(t) {
+function Cr(t) {
   return t.requestStatus === 2 && !Tr(t);
 }
 function Tr(t) {
@@ -2149,14 +2149,14 @@ const mt = "installations", Or = "installations-internal", Mr = (t) => {
     heartbeatServiceProvider: r,
     _delete: () => Promise.resolve()
   };
-}, Br = (t) => {
+}, Lr = (t) => {
   const e = t.getProvider("app").getImmediate(), n = de(e, mt).getImmediate();
   return {
     getId: () => Dr(n),
     getToken: (s) => kr(n, s)
   };
 };
-function Lr() {
+function Pr() {
   v(new T(
     mt,
     Mr,
@@ -2164,12 +2164,12 @@ function Lr() {
     /* ComponentType.PUBLIC */
   )), v(new T(
     Or,
-    Br,
+    Lr,
     "PRIVATE"
     /* ComponentType.PRIVATE */
   ));
 }
-Lr();
+Pr();
 k(Ze, pe);
 k(Ze, pe, "esm2020");
 /**
@@ -2188,7 +2188,7 @@ k(Ze, pe, "esm2020");
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const bt = "BDOU99-h67HcA6JeFXHbSNMu7e2yNNu3RzoMj8TM4W88jITfq7ZmPvIM1Iv-4_l2LxQcYwhqby2xGpWwzjfAnG4", Pr = "https://fcmregistrations.googleapis.com/v1", wt = "FCM_MSG", xr = "google.c.a.c_id", $r = 3, Ur = 1;
+const bt = "BDOU99-h67HcA6JeFXHbSNMu7e2yNNu3RzoMj8TM4W88jITfq7ZmPvIM1Iv-4_l2LxQcYwhqby2xGpWwzjfAnG4", Br = "https://fcmregistrations.googleapis.com/v1", wt = "FCM_MSG", xr = "google.c.a.c_id", Ur = 3, $r = 1;
 var F;
 (function(t) {
   t[t.DATA_MESSAGE = 1] = "DATA_MESSAGE", t[t.DISPLAY_NOTIFICATION = 3] = "DISPLAY_NOTIFICATION";
@@ -2253,16 +2253,16 @@ function Fr(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const ee = "fcm_token_details_db", Hr = 5, Pe = "fcm_token_object_Store";
+const ee = "fcm_token_details_db", Hr = 5, Be = "fcm_token_object_Store";
 async function Kr(t) {
   if ("databases" in indexedDB && !(await indexedDB.databases()).map((i) => i.name).includes(ee))
     return null;
   let e = null;
   return (await V(ee, Hr, {
     upgrade: async (r, s, i, a) => {
-      if (s < 2 || !r.objectStoreNames.contains(Pe))
+      if (s < 2 || !r.objectStoreNames.contains(Be))
         return;
-      const o = a.objectStore(Pe), l = await o.index("fcmSenderId").get(t);
+      const o = a.objectStore(Be), l = await o.index("fcmSenderId").get(t);
       if (await o.clear(), !!l) {
         if (s === 2) {
           const c = l;
@@ -2418,7 +2418,7 @@ const zr = {
  * limitations under the License.
  */
 async function Gr(t, e) {
-  const n = await Ce(t), r = _t(e), s = {
+  const n = await Se(t), r = _t(e), s = {
     method: "POST",
     headers: n,
     body: JSON.stringify(r)
@@ -2445,7 +2445,7 @@ async function Gr(t, e) {
   return i.token;
 }
 async function Jr(t, e) {
-  const n = await Ce(t), r = _t(e.subscriptionOptions), s = {
+  const n = await Se(t), r = _t(e.subscriptionOptions), s = {
     method: "PATCH",
     headers: n,
     body: JSON.stringify(r)
@@ -2474,7 +2474,7 @@ async function Jr(t, e) {
 async function yt(t, e) {
   const r = {
     method: "DELETE",
-    headers: await Ce(t)
+    headers: await Se(t)
   };
   try {
     const i = await (await fetch(`${Ee(t.appConfig)}/${e}`, r)).json();
@@ -2491,9 +2491,9 @@ async function yt(t, e) {
   }
 }
 function Ee({ projectId: t }) {
-  return `${Pr}/projects/${t}/registrations`;
+  return `${Br}/projects/${t}/registrations`;
 }
-async function Ce({ appConfig: t, installations: e }) {
+async function Se({ appConfig: t, installations: e }) {
   const n = await e.getToken();
   return new Headers({
     "Content-Type": "application/json",
@@ -2549,8 +2549,8 @@ async function Xr(t) {
     } catch (s) {
       console.warn(s);
     }
-    return $e(t.firebaseDependencies, n);
-  } else return $e(t.firebaseDependencies, n);
+    return Ue(t.firebaseDependencies, n);
+  } else return Ue(t.firebaseDependencies, n);
 }
 async function xe(t) {
   const e = await ye(t.firebaseDependencies);
@@ -2570,7 +2570,7 @@ async function Qr(t, e) {
     throw n;
   }
 }
-async function $e(t, e) {
+async function Ue(t, e) {
   const r = {
     token: await Gr(t, e),
     createTime: Date.now(),
@@ -2690,7 +2690,7 @@ async function os(t, e) {
 function cs(t, e) {
   var r, s;
   const n = {};
-  return t.from && (n.project_number = t.from), t.fcmMessageId && (n.message_id = t.fcmMessageId), n.instance_id = e, t.notification ? n.message_type = F.DISPLAY_NOTIFICATION.toString() : n.message_type = F.DATA_MESSAGE.toString(), n.sdk_platform = $r.toString(), n.package_name = self.origin.replace(/(^\w+:|^)\/\//, ""), t.collapse_key && (n.collapse_key = t.collapse_key), n.event = Ur.toString(), (r = t.fcmOptions) != null && r.analytics_label && (n.analytics_label = (s = t.fcmOptions) == null ? void 0 : s.analytics_label), n;
+  return t.from && (n.project_number = t.from), t.fcmMessageId && (n.message_id = t.fcmMessageId), n.instance_id = e, t.notification ? n.message_type = F.DISPLAY_NOTIFICATION.toString() : n.message_type = F.DATA_MESSAGE.toString(), n.sdk_platform = Ur.toString(), n.package_name = self.origin.replace(/(^\w+:|^)\/\//, ""), t.collapse_key && (n.collapse_key = t.collapse_key), n.event = $r.toString(), (r = t.fcmOptions) != null && r.analytics_label && (n.analytics_label = (s = t.fcmOptions) == null ? void 0 : s.analytics_label), n;
 }
 function ls(t, e, n) {
   const r = {};
@@ -2910,7 +2910,7 @@ class Es {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const Cs = (t) => {
+const Ss = (t) => {
   const e = new Es(t.getProvider("app").getImmediate(), t.getProvider("installations-internal").getImmediate(), t.getProvider("analytics-internal"));
   return self.addEventListener("push", (n) => {
     n.waitUntil(fs(n, e));
@@ -2920,10 +2920,10 @@ const Cs = (t) => {
     n.waitUntil(ds(n));
   }), e;
 };
-function Ss() {
+function Cs() {
   v(new T(
     "messaging-sw",
-    Cs,
+    Ss,
     "PUBLIC"
     /* ComponentType.PUBLIC */
   ));
@@ -2989,7 +2989,7 @@ function Rs(t, e) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-function As(t = $n()) {
+function As(t = Un()) {
   return Ts().then((e) => {
     if (!e)
       throw d.create(
@@ -3022,7 +3022,7 @@ function Ds(t, e) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-Ss();
+Cs();
 try {
   self["workbox:core:7.2.0"] && _();
 } catch {
@@ -3054,7 +3054,7 @@ const m = {
 }, re = (t) => [m.prefix, t, m.suffix].filter((e) => e && e.length > 0).join("-"), Ns = (t) => {
   for (const e of Object.keys(m))
     t(e);
-}, Se = {
+}, Ce = {
   updateDetails: (t) => {
     Ns((e) => {
       typeof t[e] == "string" && (m[e] = t[e]);
@@ -3066,7 +3066,7 @@ const m = {
   getRuntimeName: (t) => t || re(m.runtime),
   getSuffix: () => m.suffix
 };
-function Ue(t, e) {
+function $e(t, e) {
   const n = e();
   return t.waitUntil(n), n;
 }
@@ -3101,7 +3101,7 @@ function Ms(t) {
     url: s.href
   };
 }
-class Bs {
+class Ls {
   constructor() {
     this.updatedURLs = [], this.notUpdatedURLs = [], this.handlerWillStart = async ({ request: e, state: n }) => {
       n && (n.originalRequest = e);
@@ -3114,7 +3114,7 @@ class Bs {
     };
   }
 }
-class Ls {
+class Ps {
   constructor({ precacheController: e }) {
     this.cacheKeyWillBeUsed = async ({ request: n, params: r }) => {
       const s = (r == null ? void 0 : r.cacheKey) || this._precacheController.getCacheKeyForURL(n.url);
@@ -3123,7 +3123,7 @@ class Ls {
   }
 }
 let O;
-function Ps() {
+function Bs() {
   if (O === void 0) {
     const t = new Response("");
     if ("body" in t)
@@ -3144,17 +3144,17 @@ async function xs(t, e) {
     headers: new Headers(r.headers),
     status: r.status,
     statusText: r.statusText
-  }, a = Ps() ? r.body : await r.blob();
+  }, a = Bs() ? r.body : await r.blob();
   return new Response(a, i);
 }
-const $s = (t) => new URL(String(t), location.href).href.replace(new RegExp(`^${location.origin}`), "");
+const Us = (t) => new URL(String(t), location.href).href.replace(new RegExp(`^${location.origin}`), "");
 function Fe(t, e) {
   const n = new URL(t);
   for (const r of e)
     n.searchParams.delete(r);
   return n.href;
 }
-async function Us(t, e, n, r) {
+async function $s(t, e, n, r) {
   const s = Fe(e.url, n);
   if (e.url === s)
     return t.match(e, r);
@@ -3326,12 +3326,12 @@ class Vs {
     const s = await this.getCacheKey(r, "write");
     if (!n)
       throw new f("cache-put-with-no-response", {
-        url: $s(s.url)
+        url: Us(s.url)
       });
     const i = await this._ensureResponseSafeToCache(n);
     if (!i)
       return !1;
-    const { cacheName: a, matchOptions: o } = this._strategy, l = await self.caches.open(a), c = this.hasCallback("cacheDidUpdate"), p = c ? await Us(
+    const { cacheName: a, matchOptions: o } = this._strategy, l = await self.caches.open(a), c = this.hasCallback("cacheDidUpdate"), p = c ? await $s(
       // TODO(philipwalton): the `__WB_REVISION__` param is a precaching
       // feature. Consider into ways to only add this behavior if using
       // precaching.
@@ -3520,7 +3520,7 @@ class Ws {
    * for any `cache.match()` or `cache.put()` calls made by this strategy.
    */
   constructor(e = {}) {
-    this.cacheName = Se.getRuntimeName(e.cacheName), this.plugins = e.plugins || [], this.fetchOptions = e.fetchOptions, this.matchOptions = e.matchOptions;
+    this.cacheName = Ce.getRuntimeName(e.cacheName), this.plugins = e.plugins || [], this.fetchOptions = e.fetchOptions, this.matchOptions = e.matchOptions;
   }
   /**
    * Perform a request strategy and returns a `Promise` that will resolve with
@@ -3637,7 +3637,7 @@ class y extends Ws {
    * get the response from the network if there's a precache miss.
    */
   constructor(e = {}) {
-    e.cacheName = Se.getPrecacheName(e.cacheName), super(e), this._fallbackToNetwork = e.fallbackToNetwork !== !1, this.plugins.push(y.copyRedirectedCacheableResponsesPlugin);
+    e.cacheName = Ce.getPrecacheName(e.cacheName), super(e), this._fallbackToNetwork = e.fallbackToNetwork !== !1, this.plugins.push(y.copyRedirectedCacheableResponsesPlugin);
   }
   /**
    * @private
@@ -3732,10 +3732,10 @@ class qs {
    */
   constructor({ cacheName: e, plugins: n = [], fallbackToNetwork: r = !0 } = {}) {
     this._urlsToCacheKeys = /* @__PURE__ */ new Map(), this._urlsToCacheModes = /* @__PURE__ */ new Map(), this._cacheKeysToIntegrities = /* @__PURE__ */ new Map(), this._strategy = new y({
-      cacheName: Se.getPrecacheName(e),
+      cacheName: Ce.getPrecacheName(e),
       plugins: [
         ...n,
-        new Ls({ precacheController: this })
+        new Ps({ precacheController: this })
       ],
       fallbackToNetwork: r
     }), this.install = this.install.bind(this), this.activate = this.activate.bind(this);
@@ -3802,8 +3802,8 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`;
    * @return {Promise<workbox-precaching.InstallResult>}
    */
   install(e) {
-    return Ue(e, async () => {
-      const n = new Bs();
+    return $e(e, async () => {
+      const n = new Ls();
       this.strategy.plugins.push(n);
       for (const [i, a] of this._urlsToCacheKeys) {
         const o = this._cacheKeysToIntegrities.get(a), l = this._urlsToCacheModes.get(i), c = new Request(i, {
@@ -3832,7 +3832,7 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`;
    * @return {Promise<workbox-precaching.CleanupResult>}
    */
   activate(e) {
-    return Ue(e, async () => {
+    return $e(e, async () => {
       const n = await self.caches.open(this.strategy.cacheName), r = await n.keys(), s = new Set(this._urlsToCacheKeys.values()), i = [];
       for (const a of r)
         s.has(a.url) || (await n.delete(a), i.push(a.url));
@@ -3922,8 +3922,8 @@ try {
   self["workbox:routing:7.2.0"] && _();
 } catch {
 }
-const Ct = "GET", K = (t) => t && typeof t == "object" ? t : { handle: t };
-class B {
+const St = "GET", K = (t) => t && typeof t == "object" ? t : { handle: t };
+class L {
   /**
    * Constructor for Route class.
    *
@@ -3935,7 +3935,7 @@ class B {
    * @param {string} [method='GET'] The HTTP method to match the Route
    * against.
    */
-  constructor(e, n, r = Ct) {
+  constructor(e, n, r = St) {
     this.handler = K(n), this.match = e, this.method = r;
   }
   /**
@@ -3947,7 +3947,7 @@ class B {
     this.catchHandler = K(e);
   }
 }
-class zs extends B {
+class zs extends L {
   /**
    * If the regular expression contains
    * [capture groups]{@link https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/RegExp#grouping-back-references},
@@ -4114,7 +4114,7 @@ class Gs {
    * @param {string} [method='GET'] The HTTP method to associate with this
    * default handler. Each method has its own default.
    */
-  setDefaultHandler(e, n = Ct) {
+  setDefaultHandler(e, n = St) {
     this._defaultHandlerMap.set(n, K(e));
   }
   /**
@@ -4158,12 +4158,12 @@ function Ys(t, e, n) {
   let r;
   if (typeof t == "string") {
     const i = new URL(t, location.href), a = ({ url: o }) => o.href === i.href;
-    r = new B(a, e, n);
+    r = new L(a, e, n);
   } else if (t instanceof RegExp)
     r = new zs(t, e, n);
   else if (typeof t == "function")
-    r = new B(t, e, n);
-  else if (t instanceof B)
+    r = new L(t, e, n);
+  else if (t instanceof L)
     r = t;
   else
     throw new f("unsupported-route-type", {
@@ -4196,7 +4196,7 @@ function* Qs(t, { ignoreURLParametersMatching: e = [/^utm_/, /^fbclid$/], direct
       yield l.href;
   }
 }
-class Zs extends B {
+class Zs extends L {
   /**
    * @param {PrecacheController} precacheController A `PrecacheController`
    * instance used to both match requests and respond to fetch events.
@@ -4237,8 +4237,8 @@ function ti(t) {
 function ni(t, e) {
   ti(t), ei(e);
 }
-ni([{"revision":null,"url":"assets/index-cl6eknRC.js"},{"revision":null,"url":"assets/index-D1lGNWYe.css"},{"revision":"50bbb9e99a5246b381294af1ee1df637","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}]);
-const St = {
+ni([{"revision":null,"url":"assets/index-KQWN_y24.css"},{"revision":null,"url":"assets/index-m8MyTMr8.js"},{"revision":"14d9493f0bb063a1a503a39a03f17c9b","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}]);
+const Ct = {
   apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
   authDomain: "mister-x-d6b59.firebaseapp.com",
   databaseURL: "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app",
@@ -4247,7 +4247,7 @@ const St = {
   messagingSenderId: "616391598963",
   appId: "1:616391598963:web:da07882b0f481d3000db06",
   measurementId: "G-W66SK677NG"
-}, ri = Ye(St), si = As(ri), ii = `${St.databaseURL}`;
+}, ri = Ye(Ct), si = As(ri), ii = `${Ct.databaseURL}`;
 function ai(t) {
   return (t || "").replace(/[.#$/\[\]\/]/g, "_");
 }
@@ -4319,4 +4319,11 @@ self.addEventListener("notificationclick", (t) => {
       if ("focus" in s && s.url.includes("/Mister-X/")) return s.focus();
     if (clients.openWindow) return clients.openWindow(e);
   })());
+});
+self.addEventListener("message", (t) => {
+  var e;
+  ((e = t == null ? void 0 : t.data) == null ? void 0 : e.type) === "SKIP_WAITING" && self.skipWaiting();
+});
+self.addEventListener("activate", (t) => {
+  t.waitUntil(self.clients.claim());
 });
