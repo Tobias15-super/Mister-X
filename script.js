@@ -6,6 +6,15 @@ async function testBadgeUrl() {
 }
 testBadgeUrl();
 
+(async () => {
+  const reg = await navigator.serviceWorker.ready;
+  // neue SW-Version sofort aktivieren (optional, falls du gerade neu gebaut hast)
+  reg.active?.postMessage({ type: 'SKIP_WAITING' });
+
+  // den eigentlichen Badge-Test triggern
+  reg.active?.postMessage({ type: 'TEST_BADGE' });
+})();
+
 
 let countdown;
 let timerListenerRegistered = false;
