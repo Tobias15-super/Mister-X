@@ -97,7 +97,7 @@ onBackgroundMessage(messaging, async (payload) => {
 
   await self.registration.showNotification(title, {
   body,
-  icon: 'icons/android-chrome-192x192.png',
+  icon: 'icons/Mister_X_Badge.png',
   badge: 'icons/android-chrome-192x192.png',
   data: { url },
 });
