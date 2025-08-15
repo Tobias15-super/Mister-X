@@ -263,7 +263,7 @@ const Ot = () => Nt().__FIREBASE_DEFAULTS__, Mt = () => {
     console.info(`Unable to get __FIREBASE_DEFAULTS__ due to: ${t}`);
     return;
   }
-}, We = () => {
+}, Ve = () => {
   var t;
   return (t = Bt()) == null ? void 0 : t.config;
 };
@@ -303,7 +303,7 @@ let Pt = class {
     };
   }
 };
-function Ve() {
+function We() {
   try {
     return typeof indexedDB == "object";
   } catch {
@@ -696,14 +696,14 @@ var u;
 (function(t) {
   t[t.DEBUG = 0] = "DEBUG", t[t.VERBOSE = 1] = "VERBOSE", t[t.INFO = 2] = "INFO", t[t.WARN = 3] = "WARN", t[t.ERROR = 4] = "ERROR", t[t.SILENT = 5] = "SILENT";
 })(u || (u = {}));
-const Wt = {
+const Vt = {
   debug: u.DEBUG,
   verbose: u.VERBOSE,
   info: u.INFO,
   warn: u.WARN,
   error: u.ERROR,
   silent: u.SILENT
-}, Vt = u.INFO, qt = {
+}, Wt = u.INFO, qt = {
   [u.DEBUG]: "log",
   [u.VERBOSE]: "log",
   [u.INFO]: "info",
@@ -726,7 +726,7 @@ class Gt {
    * @param name The name that the logs will be associated with
    */
   constructor(e) {
-    this.name = e, this._logLevel = Vt, this._logHandler = zt, this._userLogHandler = null;
+    this.name = e, this._logLevel = Wt, this._logHandler = zt, this._userLogHandler = null;
   }
   get logLevel() {
     return this._logLevel;
@@ -738,7 +738,7 @@ class Gt {
   }
   // Workaround for setter/getter having to be the same type.
   setLogLevel(e) {
-    this._logLevel = typeof e == "string" ? Wt[e] : e;
+    this._logLevel = typeof e == "string" ? Vt[e] : e;
   }
   get logHandler() {
     return this._logHandler;
@@ -867,7 +867,7 @@ function b(t) {
   return e !== t && (z.set(t, e), fe.set(e, t)), e;
 }
 const G = (t) => fe.get(t);
-function W(t, e, { blocked: n, upgrade: r, blocking: s, terminated: i } = {}) {
+function V(t, e, { blocked: n, upgrade: r, blocking: s, terminated: i } = {}) {
   const a = indexedDB.open(t, e), o = b(a);
   return r && a.addEventListener("upgradeneeded", (l) => {
     r(b(a.result), l.oldVersion, l.newVersion, b(a.transaction), l);
@@ -1159,7 +1159,7 @@ function Ye(t, e = {}) {
     throw I.create("bad-app-name", {
       appName: String(s)
     });
-  if (n || (n = We()), !n)
+  if (n || (n = Ve()), !n)
     throw I.create(
       "no-options"
       /* AppError.NO_OPTIONS */
@@ -1178,7 +1178,7 @@ function Ye(t, e = {}) {
 }
 function Un(t = le) {
   const e = U.get(t);
-  if (!e && t === le && We())
+  if (!e && t === le && Ve())
     return Ye();
   if (!e)
     throw I.create("no-app", { appName: t });
@@ -1221,7 +1221,7 @@ function k(t, e, n) {
 const $n = "firebase-heartbeat-database", Fn = 1, B = "firebase-heartbeat-store";
 let X = null;
 function Xe() {
-  return X || (X = W($n, Fn, {
+  return X || (X = V($n, Fn, {
     upgrade: (t, e) => {
       switch (e) {
         case 0:
@@ -1288,7 +1288,7 @@ function Qe(t) {
  * limitations under the License.
  */
 const Kn = 1024, jn = 30;
-class Wn {
+class Vn {
   constructor(e) {
     this.container = e, this._heartbeatsCache = null;
     const n = this.container.getProvider("app").getImmediate();
@@ -1328,7 +1328,7 @@ class Wn {
     try {
       if (this._heartbeatsCache === null && await this._heartbeatsCachePromise, ((e = this._heartbeatsCache) == null ? void 0 : e.heartbeats) == null || this._heartbeatsCache.heartbeats.length === 0)
         return "";
-      const n = Oe(), { heartbeatsToSend: r, unsentEntries: s } = Vn(this._heartbeatsCache.heartbeats), i = je(JSON.stringify({ version: 2, heartbeats: r }));
+      const n = Oe(), { heartbeatsToSend: r, unsentEntries: s } = Wn(this._heartbeatsCache.heartbeats), i = je(JSON.stringify({ version: 2, heartbeats: r }));
       return this._heartbeatsCache.lastSentHeartbeatDate = n, s.length > 0 ? (this._heartbeatsCache.heartbeats = s, await this._storage.overwrite(this._heartbeatsCache)) : (this._heartbeatsCache.heartbeats = [], this._storage.overwrite(this._heartbeatsCache)), i;
     } catch (n) {
       return w.warn(n), "";
@@ -1338,7 +1338,7 @@ class Wn {
 function Oe() {
   return (/* @__PURE__ */ new Date()).toISOString().substring(0, 10);
 }
-function Vn(t, e = Kn) {
+function Wn(t, e = Kn) {
   const n = [];
   let r = t.slice();
   for (const s of t) {
@@ -1367,7 +1367,7 @@ class qn {
     this.app = e, this._canUseIndexedDBPromise = this.runIndexedDBEnvironmentCheck();
   }
   async runIndexedDBEnvironmentCheck() {
-    return Ve() ? qe().then(() => !0).catch(() => !1) : !1;
+    return We() ? qe().then(() => !0).catch(() => !1) : !1;
   }
   /**
    * Read all heartbeats.
@@ -1443,7 +1443,7 @@ function Gn(t) {
     /* ComponentType.PRIVATE */
   )), v(new T(
     "heartbeat",
-    (e) => new Wn(e),
+    (e) => new Vn(e),
     "PRIVATE"
     /* ComponentType.PRIVATE */
   )), k(ce, ke, t), k(ce, ke, "esm2020"), k("fire-js", "");
@@ -1703,7 +1703,7 @@ function lr(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-function V(t) {
+function W(t) {
   return `${t.appName}!${t.appId}`;
 }
 /**
@@ -1724,7 +1724,7 @@ function V(t) {
  */
 const ut = /* @__PURE__ */ new Map();
 function ht(t, e) {
-  const n = V(t);
+  const n = W(t);
   ft(n, e), ur(n, e);
 }
 function ft(t, e) {
@@ -1765,7 +1765,7 @@ function fr() {
 const dr = "firebase-installations-database", pr = 1, A = "firebase-installations-store";
 let Q = null;
 function ge() {
-  return Q || (Q = W(dr, pr, {
+  return Q || (Q = V(dr, pr, {
     upgrade: (t, e) => {
       switch (e) {
         case 0:
@@ -1775,15 +1775,15 @@ function ge() {
   })), Q;
 }
 async function $(t, e) {
-  const n = V(t), s = (await ge()).transaction(A, "readwrite"), i = s.objectStore(A), a = await i.get(n);
+  const n = W(t), s = (await ge()).transaction(A, "readwrite"), i = s.objectStore(A), a = await i.get(n);
   return await i.put(e, n), await s.done, (!a || a.fid !== e.fid) && ht(t, e.fid), e;
 }
 async function dt(t) {
-  const e = V(t), r = (await ge()).transaction(A, "readwrite");
+  const e = W(t), r = (await ge()).transaction(A, "readwrite");
   await r.objectStore(A).delete(e), await r.done;
 }
 async function q(t, e) {
-  const n = V(t), s = (await ge()).transaction(A, "readwrite"), i = s.objectStore(A), a = await i.get(n), o = e(a);
+  const n = W(t), s = (await ge()).transaction(A, "readwrite"), i = s.objectStore(A), a = await i.get(n), o = e(a);
   return o === void 0 ? await i.delete(n) : await i.put(o, n), await s.done, o && (!a || a.fid !== o.fid) && ht(t, o.fid), o;
 }
 /**
@@ -2258,7 +2258,7 @@ async function Kr(t) {
   if ("databases" in indexedDB && !(await indexedDB.databases()).map((i) => i.name).includes(ee))
     return null;
   let e = null;
-  return (await W(ee, Hr, {
+  return (await V(ee, Hr, {
     upgrade: async (r, s, i, a) => {
       if (s < 2 || !r.objectStoreNames.contains(Pe))
         return;
@@ -2332,10 +2332,10 @@ function jr(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const Wr = "firebase-messaging-database", Vr = 1, D = "firebase-messaging-store";
+const Vr = "firebase-messaging-database", Wr = 1, D = "firebase-messaging-store";
 let te = null;
 function we() {
-  return te || (te = W(Wr, Vr, {
+  return te || (te = V(Vr, Wr, {
     upgrade: (t, e) => {
       switch (e) {
         case 0:
@@ -2945,7 +2945,7 @@ function Cs() {
  * limitations under the License.
  */
 async function Ts() {
-  return Ve() && await qe() && "PushManager" in self && "Notification" in self && ServiceWorkerRegistration.prototype.hasOwnProperty("showNotification") && PushSubscription.prototype.hasOwnProperty("getKey");
+  return We() && await qe() && "PushManager" in self && "Notification" in self && ServiceWorkerRegistration.prototype.hasOwnProperty("showNotification") && PushSubscription.prototype.hasOwnProperty("getKey");
 }
 /**
  * @license
@@ -3190,7 +3190,7 @@ try {
 function x(t) {
   return typeof t == "string" ? new Request(t) : t;
 }
-class Ws {
+class Vs {
   /**
    * Creates a new instance associated with the passed strategy and event
    * that's handling the request.
@@ -3496,7 +3496,7 @@ class Ws {
     return r || n && n.status !== 200 && (n = void 0), n;
   }
 }
-class Vs {
+class Ws {
   /**
    * Creates a new instance of the strategy and sets all documented option
    * properties as public instance properties.
@@ -3572,7 +3572,7 @@ class Vs {
       event: e,
       request: e.request
     });
-    const n = e.event, r = typeof e.request == "string" ? new Request(e.request) : e.request, s = "params" in e ? e.params : void 0, i = new Ws(this, { event: n, request: r, params: s }), a = this._getResponse(i, r, n), o = this._awaitComplete(a, i, r, n);
+    const n = e.event, r = typeof e.request == "string" ? new Request(e.request) : e.request, s = "params" in e ? e.params : void 0, i = new Vs(this, { event: n, request: r, params: s }), a = this._getResponse(i, r, n), o = this._awaitComplete(a, i, r, n);
     return [a, o];
   }
   async _getResponse(e, n, r) {
@@ -3618,7 +3618,7 @@ class Vs {
       throw a;
   }
 }
-class y extends Vs {
+class y extends Ws {
   /**
    *
    * @param {Object} [options]
@@ -4237,7 +4237,7 @@ function ti(t) {
 function ni(t, e) {
   ti(t), ei(e);
 }
-ni([{"revision":null,"url":"assets/index-B-MkzqQl.css"},{"revision":null,"url":"assets/index-DwtjhkZO.js"},{"revision":"4ea718ce76151e1594ad09d0aae4176d","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}]);
+ni([{"revision":null,"url":"assets/index-B-MkzqQl.css"},{"revision":null,"url":"assets/index-B9EKP14x.js"},{"revision":"472f9b284ef4dea02e679a7c9f66aeb7","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}]);
 const Ct = {
   apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
   authDomain: "mister-x-d6b59.firebaseapp.com",
@@ -4299,20 +4299,6 @@ async function li(t, e) {
     console.error("[SW] RTDB update failed:", s);
   }
 }
-async function ui() {
-  try {
-    const t = new URL("./icons/android-chrome-192x192.png", self.registration.scope).href, e = new URL("./icons/Mister_X_Badge.png", self.registration.scope);
-    e.searchParams.set("v", Date.now().toString());
-    const n = await fetch(e.href, { method: "HEAD", cache: "no-store" });
-    console.log("[SW][TEST] badge HEAD:", n.ok, n.status, n.url, n.headers.get("content-type")), await self.registration.showNotification("Badge‑Test (SW)", {
-      body: "Direkt aus dem Service Worker",
-      icon: t,
-      badge: e.href
-    });
-  } catch (t) {
-    console.error("[SW][TEST] Fehler:", t);
-  }
-}
 Ds(si, async (t) => {
   var l, c, d, h;
   const e = ((l = t == null ? void 0 : t.data) == null ? void 0 : l.title) ?? "Neue Nachricht", n = ((c = t == null ? void 0 : t.data) == null ? void 0 : c.body) ?? "", r = ((d = t == null ? void 0 : t.data) == null ? void 0 : d.url) ?? "/Mister-X/", s = ((h = t == null ? void 0 : t.data) == null ? void 0 : h.messageId) ?? null, i = new URL("./icons/Mister_X_Badge.png", self.registration.scope).href, a = new URL("./icons/android-chrome-192x192.png", self.registration.scope).href;
@@ -4335,8 +4321,8 @@ self.addEventListener("notificationclick", (t) => {
   })());
 });
 self.addEventListener("message", (t) => {
-  var e, n;
-  ((e = t == null ? void 0 : t.data) == null ? void 0 : e.type) === "SKIP_WAITING" && self.skipWaiting(), ((n = t == null ? void 0 : t.data) == null ? void 0 : n.type) === "TEST_BADGE" && t.waitUntil(ui());
+  var e;
+  ((e = t == null ? void 0 : t.data) == null ? void 0 : e.type) === "SKIP_WAITING" && self.skipWaiting();
 });
 self.addEventListener("activate", (t) => {
   t.waitUntil(self.clients.claim());
