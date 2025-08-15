@@ -705,12 +705,32 @@ function showLocationHistory() {
       }
 
       map = L.map('map').setView([lat, lon], 15);
+
+      // Karten-Layer definieren
+      const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      });
+
+      const cartoLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© CartoDB'
+      });
+
+      const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{x}/{y}', {
+        attribution: 'Tiles © Esri'
+      });
+
+      const baseMaps = {
+        "Standard": osm,
+        "Hell & reduziert": cartoLight,
+        "Satellit": satellite
+      };
+
+      osm.addTo(map); // Standard aktivieren
+      L.control.layers(baseMaps).addTo(map); // Umschaltmenü
+
       ensurePostenLayer();
       renderPostenMarkersFromCache();
       reattachUserLocationOnMap();
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap',
-      }).addTo(map);
 
       historyMarkers.forEach(marker => map.removeLayer(marker));
       historyMarkers = [];
@@ -720,7 +740,6 @@ function showLocationHistory() {
         historyMarkers.push(m);
       });
 
-      // Linie zwischen den Standorten zeichnen
       const pathCoordinates = validEntries.map(loc => [loc.lat, loc.lon]);
       if (pathCoordinates.length > 1) {
         const pathLine = L.polyline(pathCoordinates, {
@@ -731,8 +750,10 @@ function showLocationHistory() {
         }).addTo(map);
       }
 
-      mask.addTo(map);
-
+      // Sperrgebietsmaske hinzufügen (falls definiert)
+      if (typeof mask !== 'undefined') {
+        mask.addTo(map);
+      }
 
       document.getElementById("map").style.display = "block";
     } else {
@@ -761,7 +782,6 @@ function showLocationHistory() {
       feed.appendChild(entryDiv);
     });
 
-    // Titel-Klick → Karte zentrieren
     document.querySelectorAll(".location-title").forEach(el => {
       el.addEventListener("click", () => {
         const lat = parseFloat(el.dataset.lat);
@@ -772,7 +792,6 @@ function showLocationHistory() {
       });
     });
 
-    // Bild-Klick → Zoom/Modal
     document.querySelectorAll(".zoomable-photo").forEach(img => {
       img.addEventListener("click", () => {
         const modal = document.createElement("div");
@@ -797,6 +816,7 @@ function showLocationHistory() {
     });
   });
 }
+
 
 function startUserLocationTracking() {
   if (!navigator.geolocation) {
