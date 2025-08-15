@@ -1,7 +1,8 @@
 
 async function test(){
-const r1 = await fetch('/icons/Mister_X_Badge.png');
-console.log('badge ok?', r1.ok, r1.headers.get('content-type')); // sollte image/png sein
+  const testBadge = new URL('./icons/Mister_X_Badge.png', self.registration.scope).href;
+const r = await fetch(testBadge, { method: 'HEAD' });
+console.log('badge ok?', r.ok, r.status, r.url, r.headers.get('content-type'));
 }
 test();
 

@@ -94,11 +94,14 @@ onBackgroundMessage(messaging, async (payload) => {
   const body = payload?.data?.body ?? '';
   const url = payload?.data?.url ?? '/Mister-X/';
   const messageId = payload?.data?.messageId ?? null;
+  const badgeURL = new URL('./icons/Mister_X_Badge.png', self.registration.scope).href;
+  const iconURL  = new URL('./icons/android-chrome-192x192.png', self.registration.scope).href
+
 
   await self.registration.showNotification(title, {
   body,
-  icon: '/icons/android-chrome-192x192.png',
-  badge: '/icons/Mister_X_Badge.png',
+  icon: iconURL,
+  badge: badgeURL,
   data: { url },
 });
 

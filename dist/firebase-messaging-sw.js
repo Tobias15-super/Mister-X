@@ -102,9 +102,9 @@ const He = function(t) {
     this.init_();
     const n = e ? this.byteToCharMapWebSafe_ : this.byteToCharMap_, r = [];
     for (let s = 0; s < t.length; s += 3) {
-      const i = t[s], a = s + 1 < t.length, o = a ? t[s + 1] : 0, l = s + 2 < t.length, c = l ? t[s + 2] : 0, p = i >> 2, h = (i & 3) << 4 | o >> 4;
+      const i = t[s], a = s + 1 < t.length, o = a ? t[s + 1] : 0, l = s + 2 < t.length, c = l ? t[s + 2] : 0, d = i >> 2, h = (i & 3) << 4 | o >> 4;
       let E = (o & 15) << 2 | c >> 6, P = c & 63;
-      l || (P = 64, a || (E = 64)), r.push(n[p], n[h], n[E], n[P]);
+      l || (P = 64, a || (E = 64)), r.push(n[d], n[h], n[E], n[P]);
     }
     return r.join("");
   },
@@ -2400,7 +2400,7 @@ const zr = {
   "invalid-bg-handler": "The input to setBackgroundMessageHandler() must be a function.",
   "invalid-vapid-key": "The public VAPID key must be a string.",
   "use-vapid-key-after-get-token": "The usePublicVapidKey() method may only be called once and must be called before calling getToken() to ensure your VAPID key is used."
-}, d = new j("messaging", "Messaging", zr);
+}, p = new j("messaging", "Messaging", zr);
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -2427,18 +2427,18 @@ async function Gr(t, e) {
   try {
     i = await (await fetch(Ee(t.appConfig), s)).json();
   } catch (a) {
-    throw d.create("token-subscribe-failed", {
+    throw p.create("token-subscribe-failed", {
       errorInfo: a == null ? void 0 : a.toString()
     });
   }
   if (i.error) {
     const a = i.error.message;
-    throw d.create("token-subscribe-failed", {
+    throw p.create("token-subscribe-failed", {
       errorInfo: a
     });
   }
   if (!i.token)
-    throw d.create(
+    throw p.create(
       "token-subscribe-no-token"
       /* ErrorCode.TOKEN_SUBSCRIBE_NO_TOKEN */
     );
@@ -2454,18 +2454,18 @@ async function Jr(t, e) {
   try {
     i = await (await fetch(`${Ee(t.appConfig)}/${e.token}`, s)).json();
   } catch (a) {
-    throw d.create("token-update-failed", {
+    throw p.create("token-update-failed", {
       errorInfo: a == null ? void 0 : a.toString()
     });
   }
   if (i.error) {
     const a = i.error.message;
-    throw d.create("token-update-failed", {
+    throw p.create("token-update-failed", {
       errorInfo: a
     });
   }
   if (!i.token)
-    throw d.create(
+    throw p.create(
       "token-update-no-token"
       /* ErrorCode.TOKEN_UPDATE_NO_TOKEN */
     );
@@ -2480,12 +2480,12 @@ async function yt(t, e) {
     const i = await (await fetch(`${Ee(t.appConfig)}/${e}`, r)).json();
     if (i.error) {
       const a = i.error.message;
-      throw d.create("token-unsubscribe-failed", {
+      throw p.create("token-unsubscribe-failed", {
         errorInfo: a
       });
     }
   } catch (s) {
-    throw d.create("token-unsubscribe-failed", {
+    throw p.create("token-unsubscribe-failed", {
       errorInfo: s == null ? void 0 : s.toString()
     });
   }
@@ -2859,7 +2859,7 @@ function Is(t) {
   };
 }
 function ne(t) {
-  return d.create("missing-app-config-values", {
+  return p.create("missing-app-config-values", {
     valueName: t
   });
 }
@@ -2965,7 +2965,7 @@ async function Ts() {
  */
 function Rs(t, e) {
   if (self.document !== void 0)
-    throw d.create(
+    throw p.create(
       "only-available-in-sw"
       /* ErrorCode.AVAILABLE_IN_SW */
     );
@@ -2992,12 +2992,12 @@ function Rs(t, e) {
 function As(t = Un()) {
   return Ts().then((e) => {
     if (!e)
-      throw d.create(
+      throw p.create(
         "unsupported-browser"
         /* ErrorCode.UNSUPPORTED_BROWSER */
       );
   }, (e) => {
-    throw d.create(
+    throw p.create(
       "indexed-db-unsupported"
       /* ErrorCode.INDEXED_DB_UNSUPPORTED */
     );
@@ -3331,7 +3331,7 @@ class Vs {
     const i = await this._ensureResponseSafeToCache(n);
     if (!i)
       return !1;
-    const { cacheName: a, matchOptions: o } = this._strategy, l = await self.caches.open(a), c = this.hasCallback("cacheDidUpdate"), p = c ? await $s(
+    const { cacheName: a, matchOptions: o } = this._strategy, l = await self.caches.open(a), c = this.hasCallback("cacheDidUpdate"), d = c ? await $s(
       // TODO(philipwalton): the `__WB_REVISION__` param is a precaching
       // feature. Consider into ways to only add this behavior if using
       // precaching.
@@ -3349,7 +3349,7 @@ class Vs {
     for (const h of this.iterateCallbacks("cacheDidUpdate"))
       await h({
         cacheName: a,
-        oldResponse: p,
+        oldResponse: d,
         newResponse: i.clone(),
         request: s,
         event: this.event
@@ -4061,11 +4061,11 @@ class Gs {
     } catch (h) {
       c = Promise.reject(h);
     }
-    const p = a && a.catchHandler;
-    return c instanceof Promise && (this._catchHandler || p) && (c = c.catch(async (h) => {
-      if (p)
+    const d = a && a.catchHandler;
+    return c instanceof Promise && (this._catchHandler || d) && (c = c.catch(async (h) => {
+      if (d)
         try {
-          return await p.handle({ url: r, request: e, event: n, params: i });
+          return await d.handle({ url: r, request: e, event: n, params: i });
         } catch (E) {
           E instanceof Error && (h = E);
         }
@@ -4237,7 +4237,7 @@ function ti(t) {
 function ni(t, e) {
   ti(t), ei(e);
 }
-ni([{"revision":null,"url":"assets/index-ATDoIa-9.js"},{"revision":null,"url":"assets/index-B-MkzqQl.css"},{"revision":"0cdfd97d5a78acabaa0e20c539a59e3a","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}]);
+ni([{"revision":null,"url":"assets/index-B-MkzqQl.css"},{"revision":null,"url":"assets/index-BWhshh8j.js"},{"revision":"9291daa629f71ae5f03db131e8e008b8","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}]);
 const Ct = {
   apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
   authDomain: "mister-x-d6b59.firebaseapp.com",
@@ -4300,16 +4300,16 @@ async function li(t, e) {
   }
 }
 Ds(si, async (t) => {
-  var a, o, l, c;
-  const e = ((a = t == null ? void 0 : t.data) == null ? void 0 : a.title) ?? "Neue Nachricht", n = ((o = t == null ? void 0 : t.data) == null ? void 0 : o.body) ?? "", r = ((l = t == null ? void 0 : t.data) == null ? void 0 : l.url) ?? "/Mister-X/", s = ((c = t == null ? void 0 : t.data) == null ? void 0 : c.messageId) ?? null;
+  var l, c, d, h;
+  const e = ((l = t == null ? void 0 : t.data) == null ? void 0 : l.title) ?? "Neue Nachricht", n = ((c = t == null ? void 0 : t.data) == null ? void 0 : c.body) ?? "", r = ((d = t == null ? void 0 : t.data) == null ? void 0 : d.url) ?? "/Mister-X/", s = ((h = t == null ? void 0 : t.data) == null ? void 0 : h.messageId) ?? null, i = new URL("./icons/Mister_X_Badge.png", self.registration.scope).href, a = new URL("./icons/android-chrome-192x192.png", self.registration.scope).href;
   await self.registration.showNotification(e, {
     body: n,
-    icon: "/icons/android-chrome-192x192.png",
-    badge: "/icons/Mister_X_Badge.png",
+    icon: a,
+    badge: i,
     data: { url: r }
   });
-  const i = await oi();
-  console.log("[SW] BG-Nachricht empfangen", { messageId: s, deviceName: i, payload: t }), s && i && await li(s, i);
+  const o = await oi();
+  console.log("[SW] BG-Nachricht empfangen", { messageId: s, deviceName: o, payload: t }), s && o && await li(s, o);
 });
 self.addEventListener("notificationclick", (t) => {
   t.notification.close(), t.waitUntil((async () => {
