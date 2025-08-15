@@ -4304,8 +4304,8 @@ Ds(si, async (t) => {
   const e = ((a = t == null ? void 0 : t.data) == null ? void 0 : a.title) ?? "Neue Nachricht", n = ((o = t == null ? void 0 : t.data) == null ? void 0 : o.body) ?? "", r = ((l = t == null ? void 0 : t.data) == null ? void 0 : l.url) ?? "/Mister-X/", s = ((c = t == null ? void 0 : t.data) == null ? void 0 : c.messageId) ?? null;
   await self.registration.showNotification(e, {
     body: n,
-    icon: "icons/Mister_X_Badge.png",
-    badge: "icons/android-chrome-192x192.png",
+    icon: "icons/android-chrome-192x192.png",
+    badge: "icons/Mister_X_Badge.png",
     data: { url: r }
   });
   const i = await oi();
