@@ -36,11 +36,12 @@ button {
 
 
 .header-bar {
-  display: flex;
-  justify-content: space-between; /* Titel links, Button rechts */
-  align-items: center;
+  position: relative;
+  text-align: center;
   margin-bottom: 0.5rem;
+  padding: 0.5rem 2.5rem; /* Platz für Button rechts */
 }
+
 
 /* Dein bestehender Stil für small-button bleibt */
 .small-button {
@@ -55,8 +56,12 @@ button {
   vertical-align: middle;
 }
 
-/* Refresh-spezifische Extras (kein fixed mehr!) */
+
 .refresh-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
   opacity: 0.95;
   line-height: 1;
 }
@@ -65,10 +70,12 @@ button {
 .refresh-btn.updating {
   animation: refresh-spin 900ms linear infinite;
 }
+
 @keyframes refresh-spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
 
 
 
