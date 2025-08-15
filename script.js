@@ -716,14 +716,26 @@ function showLocationHistory() {
         attribution: '© CartoDB'
       });
 
-      const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{x}/{y}', {
+      const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         attribution: 'Tiles © Esri'
       });
 
+      const TopPlusOpen_Color = L.tileLayer('http://sgx.geodatenzentrum.de/wmts_topplus_open/tile/1.0.0/web/default/WEBMERCATOR/{z}/{y}/{x}.png', {
+        maxZoom: 18,
+        attribution: 'TopPlus Open © GeoBasis-DE / BKG',
+      });
+
+      const jawgStreet = L.tileLayer('https://tile.jawg.io/jawg-streets/{z}/{x}/{y}{r}.png?access-token=sxLNDIsEdS0kt8fQKhSLB1Z7wVp3ZkV78F5HhvIElZWKDuahhvgWnCZkOceLTzYS', {
+        attribution: '© Jawg',
+      })
+
+
       const baseMaps = {
         "Standard": osm,
+        "Jawg Street": jawgStreet,
         "Hell & reduziert": cartoLight,
-        "Satellit": satellite
+        "Satellit": satellite,
+        "TopPlus Open": TopPlusOpen_Color,
       };
 
       osm.addTo(map); // Standard aktivieren
