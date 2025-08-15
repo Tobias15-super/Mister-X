@@ -1,10 +1,11 @@
-
-async function test(){
-  const testBadge = new URL('./icons/Mister_X_Badge.png', self.registration.scope).href;
-const r = await fetch(testBadge, { method: 'HEAD' });
-console.log('badge ok?', r.ok, r.status, r.url, r.headers.get('content-type'));
+async function testBadgeUrl() {
+  const reg = await navigator.serviceWorker.ready;
+  const testBadge = new URL('./icons/Mister_X_Badge.png', reg.scope).href;
+  const r = await fetch(testBadge, { method: 'HEAD' });
+  console.log('badge ok?', r.ok, r.status, r.url, r.headers.get('content-type'));
 }
-test();
+testBadgeUrl();
+
 
 let countdown;
 let timerListenerRegistered = false;
