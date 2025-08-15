@@ -90,32 +90,6 @@ async function markDelivered(messageId, deviceName) {
 }
 
 
-// --- TEST: Badge-URL prüfen & Test-Notification anzeigen ---
-async function __testBadge() {
-  try {
-    // 1) URLs wie in deiner Notification erzeugen (Scope-sicher)
-    const iconURL  = new URL('./icons/android-chrome-192x192.png', self.registration.scope).href;
-    // Cache-Busting dranhängen, damit wir keine alte 404 o.ä. sehen:
-    const badgeURL = new URL('./icons/Mister_X_Badge.png', self.registration.scope);
-    badgeURL.searchParams.set('v', Date.now().toString());
-
-    // 2) HEAD-Request im SW-Kontext
-    const resp = await fetch(badgeURL.href, { method: 'HEAD', cache: 'no-store' });
-    console.log('[SW][TEST] badge HEAD:', resp.ok, resp.status, resp.url, resp.headers.get('content-type'));
-
-    // 3) Test-Notification aus dem SW (ohne FCM)
-    await self.registration.showNotification('Badge‑Test (SW)', {
-      body: 'Direkt aus dem Service Worker',
-      icon: iconURL,
-      badge: badgeURL.href
-    });
-
-  } catch (e) {
-    console.error('[SW][TEST] Fehler:', e);
-  }
-}
-
-
 onBackgroundMessage(messaging, async (payload) => {
   const title = payload?.data?.title ?? 'Neue Nachricht';
   const body = payload?.data?.body ?? '';
@@ -160,9 +134,6 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('message', (event) => {
   if (event?.data?.type === 'SKIP_WAITING') {
     self.skipWaiting(); // neue SW sofort aktivieren
-  }
-  if (event?.data?.type === 'TEST_BADGE') {
-    event.waitUntil(__testBadge());
   }
 });
 

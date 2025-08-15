@@ -1,21 +1,3 @@
-async function testBadgeUrl() {
-  const reg = await navigator.serviceWorker.ready;
-  const testBadge = new URL('./icons/Mister_X_Badge.png', reg.scope).href;
-  const r = await fetch(testBadge, { method: 'HEAD' });
-  console.log('badge ok?', r.ok, r.status, r.url, r.headers.get('content-type'));
-}
-testBadgeUrl();
-
-(async () => {
-  const reg = await navigator.serviceWorker.ready;
-  // neue SW-Version sofort aktivieren (optional, falls du gerade neu gebaut hast)
-  reg.active?.postMessage({ type: 'SKIP_WAITING' });
-
-  // den eigentlichen Badge-Test triggern
-  reg.active?.postMessage({ type: 'TEST_BADGE' });
-})();
-
-
 let countdown;
 let timerListenerRegistered = false;
 let map;
