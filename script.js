@@ -415,29 +415,26 @@ async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, m
 }
 
 async function sendNotificationToRoles(title, body, roles) {
-  //const rolesSnapshot = await firebase.database().ref("roles").once("value");
   const rolesSnapshot = await get(ref(rtdb, "roles"));
-  //const tokensSnapshot = await firebase.database().ref("tokens").once("value");
-  const tokensSnapshot = await get(ref(rtdb,"tokens"));
+  const tokensSnapshot = await get(ref(rtdb, "tokens"));
 
   const rolesData = rolesSnapshot.val();
   const tokensData = tokensSnapshot.val();
 
   const matchingTokens = new Set();
 
-  // Wenn "all" übergeben wurde, alle Tokens nehmen
-  if (roles === "all" || (Array.isArray(roles) && roles.includes("all"))) {
-    for (const userId in tokensData) {
-      matchingTokens.add(tokensData[userId]);
-    }
-  } else {
-    const roleList = Array.isArray(roles) ? roles : [roles];
+  const roleList = Array.isArray(roles) ? roles : [roles];
 
-    for (const userId in rolesData) {
-      const userRole = rolesData[userId]?.role;
-      if (roleList.includes(userRole) && tokensData[userId]) {
-        matchingTokens.add(tokensData[userId]);
-      }
+  for (const userId in tokensData) {
+    const userRole = rolesData[userId]?.role;
+    const notificationEnabled = rolesData[userId]?.notification;
+
+    const shouldSend = 
+      (roles === "all" || roleList.includes(userRole)) &&
+      (notificationEnabled !== false); // true if undefined or true
+
+    if (shouldSend) {
+      matchingTokens.add(tokensData[userId]);
     }
   }
 
@@ -448,6 +445,7 @@ async function sendNotificationToRoles(title, body, roles) {
 
   sendNotificationToTokens(title, body, Array.from(matchingTokens));
 }
+
 
 
 function uploadToCloudinary(file, callback) {
