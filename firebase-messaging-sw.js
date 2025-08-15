@@ -103,8 +103,8 @@ const He = function(t) {
     const n = e ? this.byteToCharMapWebSafe_ : this.byteToCharMap_, r = [];
     for (let s = 0; s < t.length; s += 3) {
       const i = t[s], a = s + 1 < t.length, o = a ? t[s + 1] : 0, l = s + 2 < t.length, c = l ? t[s + 2] : 0, p = i >> 2, h = (i & 3) << 4 | o >> 4;
-      let E = (o & 15) << 2 | c >> 6, B = c & 63;
-      l || (B = 64, a || (E = 64)), r.push(n[p], n[h], n[E], n[B]);
+      let E = (o & 15) << 2 | c >> 6, P = c & 63;
+      l || (P = 64, a || (E = 64)), r.push(n[p], n[h], n[E], n[P]);
     }
     return r.join("");
   },
@@ -158,8 +158,8 @@ const He = function(t) {
         throw new Dt();
       const E = i << 2 | o >> 4;
       if (r.push(E), c !== 64) {
-        const B = o << 4 & 240 | c >> 2;
-        if (r.push(B), h !== 64) {
+        const P = o << 4 & 240 | c >> 2;
+        if (r.push(P), h !== 64) {
           const Tt = c << 6 & 192 | h;
           r.push(Tt);
         }
@@ -256,7 +256,7 @@ const Ot = () => Nt().__FIREBASE_DEFAULTS__, Mt = () => {
   }
   const e = t && vt(t[1]);
   return e && JSON.parse(e);
-}, Pt = () => {
+}, Bt = () => {
   try {
     return Rt() || Ot() || Mt() || Lt();
   } catch (t) {
@@ -265,7 +265,7 @@ const Ot = () => Nt().__FIREBASE_DEFAULTS__, Mt = () => {
   }
 }, Ve = () => {
   var t;
-  return (t = Pt()) == null ? void 0 : t.config;
+  return (t = Bt()) == null ? void 0 : t.config;
 };
 /**
  * @license
@@ -283,7 +283,7 @@ const Ot = () => Nt().__FIREBASE_DEFAULTS__, Mt = () => {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-let Bt = class {
+let Pt = class {
   constructor() {
     this.reject = () => {
     }, this.resolve = () => {
@@ -474,7 +474,7 @@ class Ft {
   get(e) {
     const n = this.normalizeInstanceIdentifier(e);
     if (!this.instancesDeferred.has(n)) {
-      const r = new Bt();
+      const r = new Pt();
       if (this.instancesDeferred.set(n, r), this.isInitialized(n) || this.shouldAutoInitialize())
         try {
           const s = this.getOrInitializeService({
@@ -1034,7 +1034,7 @@ const le = "[DEFAULT]", Ln = {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const U = /* @__PURE__ */ new Map(), Pn = /* @__PURE__ */ new Map(), ue = /* @__PURE__ */ new Map();
+const U = /* @__PURE__ */ new Map(), Bn = /* @__PURE__ */ new Map(), ue = /* @__PURE__ */ new Map();
 function ve(t, e) {
   try {
     t.container.addComponent(e);
@@ -1049,7 +1049,7 @@ function v(t) {
   ue.set(e, t);
   for (const n of U.values())
     ve(n, t);
-  for (const n of Pn.values())
+  for (const n of Bn.values())
     ve(n, t);
   return !0;
 }
@@ -1073,7 +1073,7 @@ function de(t, e) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const Bn = {
+const Pn = {
   "no-app": "No Firebase App '{$appName}' has been created - call initializeApp() first",
   "bad-app-name": "Illegal App name: '{$appName}'",
   "duplicate-app": "Firebase App named '{$appName}' already exists with different options or config",
@@ -1088,7 +1088,7 @@ const Bn = {
   "idb-delete": "Error thrown when deleting from IndexedDB. Original error: {$originalErrorMessage}.",
   "finalization-registry-not-supported": "FirebaseServerApp deleteOnDeref field defined but the JS runtime does not support FinalizationRegistry.",
   "invalid-server-app-environment": "FirebaseServerApp is not for use in browser environments."
-}, I = new j("app", "Firebase", Bn);
+}, I = new j("app", "Firebase", Pn);
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -1218,7 +1218,7 @@ function k(t, e, n) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const $n = "firebase-heartbeat-database", Fn = 1, P = "firebase-heartbeat-store";
+const $n = "firebase-heartbeat-database", Fn = 1, B = "firebase-heartbeat-store";
 let X = null;
 function Xe() {
   return X || (X = V($n, Fn, {
@@ -1226,7 +1226,7 @@ function Xe() {
       switch (e) {
         case 0:
           try {
-            t.createObjectStore(P);
+            t.createObjectStore(B);
           } catch (n) {
             console.warn(n);
           }
@@ -1240,7 +1240,7 @@ function Xe() {
 }
 async function Hn(t) {
   try {
-    const n = (await Xe()).transaction(P), r = await n.objectStore(P).get(Qe(t));
+    const n = (await Xe()).transaction(B), r = await n.objectStore(B).get(Qe(t));
     return await n.done, r;
   } catch (e) {
     if (e instanceof N)
@@ -1255,8 +1255,8 @@ async function Hn(t) {
 }
 async function Ne(t, e) {
   try {
-    const r = (await Xe()).transaction(P, "readwrite");
-    await r.objectStore(P).put(e, Qe(t)), await r.done;
+    const r = (await Xe()).transaction(B, "readwrite");
+    await r.objectStore(B).put(e, Qe(t)), await r.done;
   } catch (n) {
     if (n instanceof N)
       w.warn(n.message);
@@ -1971,13 +1971,13 @@ async function be(t, e = !1) {
   return n ? await n : r.authToken;
 }
 async function Er(t, e) {
-  let n = await Pe(t.appConfig);
+  let n = await Be(t.appConfig);
   for (; n.authToken.requestStatus === 1; )
-    await lt(100), n = await Pe(t.appConfig);
+    await lt(100), n = await Be(t.appConfig);
   const r = n.authToken;
   return r.requestStatus === 0 ? be(t, e) : r;
 }
-function Pe(t) {
+function Be(t) {
   return q(t, (e) => {
     if (!gt(e))
       throw R.create(
@@ -2156,7 +2156,7 @@ const mt = "installations", Or = "installations-internal", Mr = (t) => {
     getToken: (s) => kr(n, s)
   };
 };
-function Pr() {
+function Br() {
   v(new T(
     mt,
     Mr,
@@ -2169,7 +2169,7 @@ function Pr() {
     /* ComponentType.PRIVATE */
   ));
 }
-Pr();
+Br();
 k(Ze, pe);
 k(Ze, pe, "esm2020");
 /**
@@ -2188,7 +2188,7 @@ k(Ze, pe, "esm2020");
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const bt = "BDOU99-h67HcA6JeFXHbSNMu7e2yNNu3RzoMj8TM4W88jITfq7ZmPvIM1Iv-4_l2LxQcYwhqby2xGpWwzjfAnG4", Br = "https://fcmregistrations.googleapis.com/v1", wt = "FCM_MSG", xr = "google.c.a.c_id", Ur = 3, $r = 1;
+const bt = "BDOU99-h67HcA6JeFXHbSNMu7e2yNNu3RzoMj8TM4W88jITfq7ZmPvIM1Iv-4_l2LxQcYwhqby2xGpWwzjfAnG4", Pr = "https://fcmregistrations.googleapis.com/v1", wt = "FCM_MSG", xr = "google.c.a.c_id", Ur = 3, $r = 1;
 var F;
 (function(t) {
   t[t.DATA_MESSAGE = 1] = "DATA_MESSAGE", t[t.DISPLAY_NOTIFICATION = 3] = "DISPLAY_NOTIFICATION";
@@ -2253,16 +2253,16 @@ function Fr(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const ee = "fcm_token_details_db", Hr = 5, Be = "fcm_token_object_Store";
+const ee = "fcm_token_details_db", Hr = 5, Pe = "fcm_token_object_Store";
 async function Kr(t) {
   if ("databases" in indexedDB && !(await indexedDB.databases()).map((i) => i.name).includes(ee))
     return null;
   let e = null;
   return (await V(ee, Hr, {
     upgrade: async (r, s, i, a) => {
-      if (s < 2 || !r.objectStoreNames.contains(Be))
+      if (s < 2 || !r.objectStoreNames.contains(Pe))
         return;
-      const o = a.objectStore(Be), l = await o.index("fcmSenderId").get(t);
+      const o = a.objectStore(Pe), l = await o.index("fcmSenderId").get(t);
       if (await o.clear(), !!l) {
         if (s === 2) {
           const c = l;
@@ -2491,7 +2491,7 @@ async function yt(t, e) {
   }
 }
 function Ee({ projectId: t }) {
-  return `${Br}/projects/${t}/registrations`;
+  return `${Pr}/projects/${t}/registrations`;
 }
 async function Se({ appConfig: t, installations: e }) {
   const n = await e.getToken();
@@ -3114,7 +3114,7 @@ class Ls {
     };
   }
 }
-class Ps {
+class Bs {
   constructor({ precacheController: e }) {
     this.cacheKeyWillBeUsed = async ({ request: n, params: r }) => {
       const s = (r == null ? void 0 : r.cacheKey) || this._precacheController.getCacheKeyForURL(n.url);
@@ -3123,7 +3123,7 @@ class Ps {
   }
 }
 let O;
-function Bs() {
+function Ps() {
   if (O === void 0) {
     const t = new Response("");
     if ("body" in t)
@@ -3144,7 +3144,7 @@ async function xs(t, e) {
     headers: new Headers(r.headers),
     status: r.status,
     statusText: r.statusText
-  }, a = Bs() ? r.body : await r.blob();
+  }, a = Ps() ? r.body : await r.blob();
   return new Response(a, i);
 }
 const Us = (t) => new URL(String(t), location.href).href.replace(new RegExp(`^${location.origin}`), "");
@@ -3735,7 +3735,7 @@ class qs {
       cacheName: Ce.getPrecacheName(e),
       plugins: [
         ...n,
-        new Ps({ precacheController: this })
+        new Bs({ precacheController: this })
       ],
       fallbackToNetwork: r
     }), this.install = this.install.bind(this), this.activate = this.activate.bind(this);
@@ -4304,7 +4304,7 @@ Ds(si, async (t) => {
   const e = ((a = t == null ? void 0 : t.data) == null ? void 0 : a.title) ?? "Neue Nachricht", n = ((o = t == null ? void 0 : t.data) == null ? void 0 : o.body) ?? "", r = ((l = t == null ? void 0 : t.data) == null ? void 0 : l.url) ?? "/Mister-X/", s = ((c = t == null ? void 0 : t.data) == null ? void 0 : c.messageId) ?? null;
   await self.registration.showNotification(e, {
     body: n,
-    icon: "icons/android-chrome-192x192.png",
+    icon: "icons/Mister_X_Badge.png",
     badge: "icons/android-chrome-192x192.png",
     data: { url: r }
   });
