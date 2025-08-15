@@ -1,3 +1,7 @@
+const r1 = await fetch('/icons/Mister_X_Badge.png');
+console.log('badge ok?', r1.ok, r1.headers.get('content-type')); // sollte image/png sein
+
+
 let countdown;
 let timerListenerRegistered = false;
 let map;
