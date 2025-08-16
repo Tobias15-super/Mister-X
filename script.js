@@ -2326,7 +2326,7 @@ function _handleInAppMessage(data) {
 
     // Zustellung in RTDB markieren (Page-Variante)
     if (messageId && typeof markDeliveredFromPage === 'function') {
-      markDeliveredFromPage(messageId).catch(err => console.warn('Markieren fehlgeschlagen:', err));
+      markDeliveredFromPage(messageId).catch(err => log('Markieren fehlgeschlagen:', err));
     }
 
     // Nur im sichtbaren Tab einen UI-Hinweis zeigen
@@ -2336,7 +2336,7 @@ function _handleInAppMessage(data) {
       alert(`${title}\n${body}`);
     }
   } catch (e) {
-    console.error('handleInAppMessage error:', e);
+    log('handleInAppMessage error:', e);
   }
 }
 
@@ -2367,7 +2367,7 @@ async function startScript() {
           if (event && event.data && event.data.type === 'PUSH') {
             const payload = event.data.payload || {};
             _handleInAppMessage(payload);
-            console.debug('[Page] SW-Message empfangen', payload);
+            log('[Page] SW-Message empfangen', payload);
           }
         });
         window.__swMsgListenerAdded = true;
@@ -2377,7 +2377,7 @@ async function startScript() {
       onMessage(messaging, (payload) => {
         const data = (payload && payload.data) ? payload.data : {};
         _handleInAppMessage(data);
-        console.debug('[Page] FCM onMessage empfangen', payload);
+        log('[Page] FCM onMessage empfangen', payload);
       });
     }
 
