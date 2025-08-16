@@ -37092,8 +37092,8 @@ pB(GB, async (t) => {
   const e = ((s = t == null ? void 0 : t.data) == null ? void 0 : s.title) ?? "Neue Nachricht", r = ((o = t == null ? void 0 : t.data) == null ? void 0 : o.body) ?? "", n = ((l = t == null ? void 0 : t.data) == null ? void 0 : l.url) ?? "/Mister-X/", i = ((u = t == null ? void 0 : t.data) == null ? void 0 : u.messageId) ?? null;
   await self.registration.showNotification(e, {
     body: r,
-    icon: self.location.origin + "/icons/android-chrome-192x192.png",
-    badge: self.location.origin + "/icons/Mister_X_Badge.png",
+    icon: "icons/android-chrome-192x192.png",
+    badge: "icons/Mister_X_Badge.png",
     data: { url: n }
   });
   const a = await WB();
