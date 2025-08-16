@@ -89,38 +89,42 @@ async function markDelivered(messageId, deviceName) {
 // --- iOS-/Safari-fester Push-Handler ---
 // Zeigt IMMER eine sichtbare Notification und kapselt alles in waitUntil(...).
 self.addEventListener('push', (event) => {
-  const payload = event.data ? (() => {
-    try { return event.data.json(); } catch { return {}; }
-  })() : {};
+  event.waitUntil((async () => {
+    const payload = event.data ? (() => { try { return event.data.json(); } catch { return {}; } })() : {};
+    const n = payload.notification || {};
+    const d = payload.data || payload;
 
-  // Unterstütze sowohl "notification" als auch "data" Payloads
-  const n = payload.notification || {};
-  const d = payload.data || payload;
+    const title = n.title || d.title || 'Neue Nachricht';
+    const body  = n.body  || d.body  || '';
+    const url   = d.url || n.click_action || '/Mister-X/';
+    const tag   = d.tag || 'mrx-fg'; // gleicher Tag zum gezielten Schließen
 
-  const title = n.title || d.title || 'Neue Nachricht';
-  const body  = n.body  || d.body  || '';
-  const url   = d.url || n.click_action || '/Mister-X/';
+    // 1) Gibt es ein sichtbares Fenster (Foreground)?
+    const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const visibleClient = windows.find(w => w.visibilityState === 'visible'); // oder w.focused === true
 
-  // *** ACHTUNG: absolute Pfade, unter deinem SW-Scope erreichbar! ***
-  const icon  = '/Mister-X/icons/android-chrome-192x192.png';
-  // Badge: monochrom/transparenter PNG, ~96x96 wird auf Android gut verarbeitet
-  const badge = '/Mister-X/icons/Mister_X_Badge.png';
+    // 2) Immer Notification zeigen (iOS verlangt das), aber FG sofort schließen
+    const showPromise = self.registration.showNotification(title, {
+      body,
+      icon: '/Mister-X/icons/android-chrome-192x192.png',
+      badge: '/Mister-X/icons/Mister_X_Badge.png',
+      tag,
+      renotify: false,
+      silent: true // Best effort; wird nicht überall unterstützt
+    });
 
-  const showPromise = self.registration.showNotification(title, {
-    body,
-    icon,
-    badge,
-    data: { url, messageId: d.messageId || null },
-  });
+    if (visibleClient) {
+      // an die Seite posten -> dein Alert/Toast
+      visibleClient.postMessage({ type: 'PUSH', payload: d });
 
-  const afterShow = (async () => {
-    const deviceName = await getDeviceName();
-    if (d.messageId && deviceName) {
-      await markDelivered(d.messageId, deviceName);
+      // kurz warten, dann die FG-Notif wieder schließen
+      await showPromise;
+      await new Promise(r => setTimeout(r, 50)); // minimaler Tick
+      const notes = await self.registration.getNotifications({ tag });
+      notes.forEach(n => n.close()); // iOS-Anforderung erfüllt, User sieht nichts
     }
-  })();
-
-  event.waitUntil(Promise.all([showPromise, afterShow]));
+    // Wenn kein sichtbares Fenster: Notification stehen lassen (klassisches Background-Verhalten)
+  })());
 });
 
 // Klickverhalten

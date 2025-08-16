@@ -9,6 +9,7 @@ let postenLayer = null;
 const postenMarkers = {};
 let postenCache = null;
 let selectedPost = null;
+const _seenMessageIds = new Set(); // für Push-Handler, um Duplikate zu vermeiden
 
 // ====== Benutzer-Standort ======
 let userWatchId = null;
@@ -2138,6 +2139,36 @@ async function markDeliveredFromPage(messageId) {
 }
 
 
+function _handleInAppMessage(data) {
+  try {
+    const messageId = data && data.messageId;
+    if (messageId) {
+      if (_seenMessageIds.has(messageId)) return; // Dedupe
+      _seenMessageIds.add(messageId);
+    }
+
+    // Zustellung in RTDB markieren (Page-Variante)
+    if (messageId && typeof markDeliveredFromPage === 'function') {
+      markDeliveredFromPage(messageId).catch(err => console.warn('Markieren fehlgeschlagen:', err));
+    }
+
+    // Nur im sichtbaren Tab einen UI-Hinweis zeigen
+    if (document.visibilityState === 'visible') {
+      const title = data && data.title ? data.title : 'Nachricht';
+      const body  = data && data.body  ? data.body  : '';
+      alert(`${title}\n${body}`);
+    }
+  } catch (e) {
+    console.error('handleInAppMessage error:', e);
+  }
+}
+
+// Optional: einfache Garbage-Collection, damit das Set nicht endlos wächst
+setInterval(() => {
+  // Wenn du messageId als UUID benutzt, reicht z.B. ein einfaches Limit:
+  if (_seenMessageIds.size > 5000) _seenMessageIds.clear();
+}, 60 * 1000);
+
 
 // Beim Laden prüfen / initialisieren
 
@@ -2147,21 +2178,31 @@ async function startScript() {
     const support = await detectSupport();
 
     // (B) Foreground-Messages nur, wenn FCM generell unterstützt wird
-    if (support.fcm) {
 
+    if (support && support.fcm) {
       if (!messaging) messaging = getMessaging(app);
+
+      // 1) SW -> Page (der bevorzugte Pfad für Foreground)
+      //    Nur einmal registrieren (z. B. wenn du startScript mehrfach aufrufst)
+      if (!window.__swMsgListenerAdded) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+          if (event && event.data && event.data.type === 'PUSH') {
+            const payload = event.data.payload || {};
+            _handleInAppMessage(payload);
+            console.debug('[Page] SW-Message empfangen', payload);
+          }
+        });
+        window.__swMsgListenerAdded = true;
+      }
+
+      // 2) onMessage (Fallback für Browser/Setups, die SW-PostMessage nicht liefern)
       onMessage(messaging, (payload) => {
-        const messageId = payload?.data?.messageId;
-        if (messageId) {
-          markDeliveredFromPage(messageId).catch(err => {
-            log('Fehler beim Markieren der Nachricht:', err);
-          });
-        }
-        log('Nachricht empfangen (foreground):', payload);
-        const { title, body } = payload.data || {};
-        if (title || body) alert(`${title ?? 'Nachricht'}\n${body ?? ''}`);
+        const data = (payload && payload.data) ? payload.data : {};
+        _handleInAppMessage(data);
+        console.debug('[Page] FCM onMessage empfangen', payload);
       });
     }
+
 
     // (C) UI: Button/Hint steuern
     const btn = document.getElementById('enablePush');
