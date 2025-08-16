@@ -917,7 +917,6 @@ function stripPhone(raw) {
 function loadSmsPrefs() {
   if (!get(ref(rtdb,'roles/{deviceId}/allowSmsFallback')).exists()) {
     localStorage.removeItem("mrx_sms_prefs_v1");
-    askForDeviceIdAndPhone();
     return;
     };
 
