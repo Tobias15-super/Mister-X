@@ -570,7 +570,7 @@ async function triggerSmsFallbackIfNeeded(
       if (!roleRes.ok) return null;
       const data = await roleRes.json();
       // require explicit consent & valide Nummer
-      return (data && data.allowSmsFallback && isValidE164(data.tel)) ? data.tel : null;
+      return (data && data.allowSmsFallback && isValidAtE164(data.tel)) ? data.tel : null;
     });
     tels = unique((await Promise.all(telPromises)).filter(Boolean));
   } catch (e) {
