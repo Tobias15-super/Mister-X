@@ -373,8 +373,8 @@ async function openDbEnsureStore(dbName, storeName) {
 async function askForDeviceIdAndPhone() {
   let id = localStorage.getItem("deviceId");
   let telPrefs = loadSmsPrefs();
-  let tel = telPrefs.tel;
-  let noTel = telPrefs.noTel; // neues Flag
+  let tel = telPrefs.tel || false;
+  let noTel = telPrefs.noTel || false; // neues Flag
 
   // Name abfragen, falls nicht vorhanden
   while (!id || id.trim() === "") {
