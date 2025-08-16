@@ -1824,7 +1824,7 @@ async function switchView(view) {
   localStorage.setItem("activeView", view);
       const deviceId = getDeviceId();
     //firebase.database().ref("roles/" + deviceId).set({
-    set(ref(rtdb, "roles/" + deviceId), {
+    update(ref(rtdb, "roles/" + deviceId), {
       role: view,
       timestamp: Date.now(),
     });
@@ -1858,7 +1858,7 @@ async function goBack() {
   localStorage.setItem("activeView","start");
   const deviceId = getDeviceId();
   //firebase.database().ref("roles/" + deviceId).set({
-  set(ref(rtdb, "roles/" + deviceId), {
+  update(ref(rtdb, "roles/" + deviceId), {
     role: "start",
     timestamp: Date.now(),
   });
