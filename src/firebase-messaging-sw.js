@@ -1,3 +1,4 @@
+import { getAuth } from 'firebase-admin/auth';
 import { initializeApp } from 'firebase/app';
 import { getMessaging, onBackgroundMessage } from 'firebase/messaging/sw';
 import { precacheAndRoute } from 'workbox-precaching';
@@ -14,6 +15,7 @@ const firebaseConfig = {
   appId: "1:616391598963:web:da07882b0f481d3000db06",
   measurementId: "G-W66SK677NG"
 };
+
 
 const app = initializeApp(firebaseConfig);
 const messaging = getMessaging(app);
@@ -99,8 +101,8 @@ onBackgroundMessage(messaging, async (payload) => {
 
   await self.registration.showNotification(title, {
   body,
-  icon: '/icons/android-chrome-192x192.png',
-  badge: '/icons/Mister_X_Badge.png',
+  icon: self.location.origin + '/icons/android-chrome-192x192.png',
+  badge: self.location.origin + '/icons/Mister_X_Badge.png',
   data: { url },
 });
 
@@ -112,8 +114,10 @@ onBackgroundMessage(messaging, async (payload) => {
     await markDelivered(messageId, deviceName);
   }
 
-  // Notification anzeigen
+})();
 
+self.addEventListener('push', (event) => {
+  event.waitUntil(promise);
 });
 
 self.addEventListener('notificationclick', (event) => {

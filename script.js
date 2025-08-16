@@ -136,12 +136,6 @@ import { ref, child, set, get, onValue, remove, runTransaction, push, update, ge
 import * as supabase from '@supabase/supabase-js';
 
 
-
-
-
-
-
-
 window.onerror = function(message, source, lineno, colno, error) {
   alert("JS-Fehler: " + message + " in " + source + " Zeile " + lineno);
 };
