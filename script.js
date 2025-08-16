@@ -532,13 +532,13 @@ async function triggerSmsFallbackIfNeeded(
     if (idemRes.ok) {
       const idem = await idemRes.json();
       if (idem === true) {
-        console.log('[Fallback] SMS bereits ausgelöst – Abbruch.');
+        log('[Fallback] SMS bereits ausgelöst – Abbruch.');
         return;
       }
     }
   } catch (e) {
     // Wenn die Prüfung scheitert, lieber KEIN Fallback (um False-Positives zu vermeiden)
-    console.warn('[Fallback] Konnte Idempotenz nicht prüfen. Abbruch, um Doppel-SMS zu vermeiden.', e);
+    log('[Fallback] Konnte Idempotenz nicht prüfen. Abbruch, um Doppel-SMS zu vermeiden.', e);
     return;
   }
 
@@ -550,14 +550,14 @@ async function triggerSmsFallbackIfNeeded(
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     map = await res.json() || {};
   } catch (e) {
-    console.warn('[Fallback] Konnte Recipients nicht laden. Abbruch, um Fehl-SMS zu vermeiden.', e);
+    log('[Fallback] Konnte Recipients nicht laden. Abbruch, um Fehl-SMS zu vermeiden.', e);
     return; // konservativ: kein Fallback auslösen
   }
 
   // ACHTUNG: Keys sind DEVICE-NAMES (wie im SW geschrieben), daher hier Device-Namen prüfen
   const pendingDevices = recipientDeviceNames.filter(dn => !map?.[sanitizeKey(dn)]);
   if (pendingDevices.length === 0) {
-    console.log('[Fallback] Alle Empfänger bestätigt. Keine SMS nötig.');
+    log('[Fallback] Alle Empfänger bestätigt. Keine SMS nötig.');
     return;
   }
 
@@ -574,12 +574,12 @@ async function triggerSmsFallbackIfNeeded(
     });
     tels = unique((await Promise.all(telPromises)).filter(Boolean));
   } catch (e) {
-    console.error('[Fallback] Fehler beim Laden der Rollen:', e);
+    log('[Fallback] Fehler beim Laden der Rollen:', e);
     return;
   }
 
   if (tels.length === 0) {
-    console.log('[Fallback] Keine gültigen Telefonnummern/Erlaubnisse gefunden.');
+    log('[Fallback] Keine gültigen Telefonnummern/Erlaubnisse gefunden.');
     return;
   }
 
@@ -593,15 +593,15 @@ async function triggerSmsFallbackIfNeeded(
     });
   } catch (e) {
     // Wenn das Setzen fehlschlägt, können Doppel-SMS passieren – loggen, aber weiter
-    console.warn('[Fallback] Konnte Idempotenz-Flag nicht setzen – fahre fort.', e);
+    log('[Fallback] Konnte Idempotenz-Flag nicht setzen – fahre fort.', e);
   }
 
   // 6) SMS senden (catchen & loggen)
   try {
     await sendSmsViaTextBee(tels, smsText); // deine bestehende Funktion
-    console.log(`SMS-Fallback an ${tels.length} Nummer(n) ausgelöst.`);
+    log(`SMS-Fallback an ${tels.length} Nummer(n) ausgelöst.`);
   } catch (e) {
-    console.error('[Fallback] SMS-Versand fehlgeschlagen:', e);
+    log('[Fallback] SMS-Versand fehlgeschlagen:', e);
     // Optional: Idempotenz-Flag zurücksetzen (nur wenn du willst)
   }
 }
@@ -635,7 +635,7 @@ async function sendNotificationToTokens(
   try { result = await res.json(); } catch {}
 
   const messageId = result && result.messageId;
-  console.log(`📦 Versuch ${attempt}:`, result);
+  log(`📦 Versuch ${attempt}:`, result);
 
   // 2) Fallback nur genau einmal „scharfschalten“ (bei attempt 1, sofern messageId vorhanden)
   if (attempt === 1 && messageId && recipientDeviceNames.length > 0) {
@@ -653,16 +653,16 @@ async function sendNotificationToTokens(
   // 3) Retry nur für fehlgeschlagene Tokens (Backoff & Limit)
   const failedTokens = Array.isArray(result?.failedTokens) ? result.failedTokens : [];
   if (failedTokens.length > 0 && attempt < maxAttempts) {
-    console.log(`🔁 Wiederhole für ${failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
+    log(`🔁 Wiederhole für ${failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
     setTimeout(() => {
       sendNotificationToTokens(title, body, failedTokens, {
         recipientDeviceNames, link, attempt: attempt + 1, maxAttempts, waitSec, sendEndpoint, rtdbBase
       });
     }, 10_000);
   } else if (attempt >= maxAttempts) {
-    console.warn("⏱️ Max. Anzahl an Versuchen erreicht.");
+    log("⏱️ Max. Anzahl an Versuchen erreicht.");
   } else {
-    console.log("✅ Alle Benachrichtigungen verarbeitet.");
+    log("✅ Alle Benachrichtigungen verarbeitet.");
   }
 
   return result;
@@ -2525,7 +2525,7 @@ async function startScript() {
 
         // Deine bestehende In‑App‑UI
         _handleInAppMessage(data);
-        console.log('[Page] FCM onMessage empfangen', payload);
+        log('[Page] FCM onMessage empfangen', payload);
       });
 
     }
