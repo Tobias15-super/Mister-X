@@ -679,7 +679,7 @@ async function sendNotificationToTokens(
 
   // 2) Fallback nur genau einmal „scharfschalten“ (bei attempt 1, sofern messageId vorhanden)
   if (attempt === 1 && messageId && recipientDeviceNames.length > 0) {
-    const smsText = `${title}: ${body}${link ? " " + link : ""}`.slice(0, 280);
+    const smsText = `${title}: ${body}\n Diese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter IOS bitte einmal die App neuladen)`.slice(0, 280);
     // bewusst "fire-and-forget"
     triggerSmsFallbackIfNeeded(
       messageId,
