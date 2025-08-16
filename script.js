@@ -371,27 +371,65 @@ async function openDbEnsureStore(dbName, storeName) {
 }
 
 async function askForDeviceIdAndPhone() {
+  // --- 1) Device-ID sicherstellen ---
   let id = localStorage.getItem("deviceId");
-  let telPrefs = loadSmsPrefs();
-  let tel = telPrefs.tel || false;
-  let noTel = telPrefs.noTel || false; // neues Flag
-
-  // Name abfragen, falls nicht vorhanden
   while (!id || id.trim() === "") {
     id = prompt("Bitte gib deinen Namen ein");
     if (id === null) {
       alert("Du musst einen Namen eingeben, um fortzufahren.");
     }
   }
-  localStorage.setItem("deviceId", id.trim());
+  id = id.trim();
+  localStorage.setItem("deviceId", id);
 
-  // Telefonnummer nur abfragen, wenn sie fehlt und nicht bewusst leer gelassen wurde
-  if (!tel && !noTel) {
+  // --- 2) Lokale Präferenzen lesen ---
+  let telPrefs = loadSmsPrefs();
+  let tel   = telPrefs.tel || null;
+  let noTel = !!telPrefs.noTel;
+
+  // --- 3) Serverzustand abrufen ---
+  let remote;
+  try {
+    remote = await fetchRemoteSmsPrefs(id);
+  } catch (e) {
+    console.warn("[askForDeviceIdAndPhone] Konnte Remote-Status nicht laden:", e);
+    remote = { exists: false, allowSmsFallback: null, tel: null };
+  }
+
+  // --- 4) Entscheidungslogik, ob neu gefragt werden soll ---
+
+  // Fälle, die ein Neufragen auslösen:
+  // A) allowSmsFallback wurde serverseitig GELÖSCHT (null/undefined)
+  // B) allowSmsFallback ist serverseitig false
+  // C) allowSmsFallback ist true, aber KEINE Tel am Server
+  let mustAskTel = false;
+
+  if (remote.allowSmsFallback === null) {
+    // Serverseitiger Reset/Deletion -> unbedingt erneut fragen (lokales noTel ignorieren)
+    mustAskTel = true;
+    noTel = false;  // lokales Opt-out nicht mehr respektieren, weil Server neu entscheiden lässt
+  } else if (remote.allowSmsFallback === false) {
+    mustAskTel = false;
+  } else if (remote.allowSmsFallback === true && !remote.tel) {
+    mustAskTel = true;
+  }
+
+  // Wenn der Server bereits eine gültige Nummer hat, synchronisiere lokal & fertig
+  if (remote.allowSmsFallback === true && remote.tel) {
+    saveSmsPrefs({ tel: remote.tel, allowSmsFallback: true, noTel: false });
+    await saveTelToRTDB(id, remote.tel, true); // optional: sicherstellen, dass alles konsistent ist
+    return;
+  }
+
+  // --- 5) Nur fragen, wenn notwendig und nicht schon bewusst abgelehnt (außer bei Reset) ---
+  if ((mustAskTel && !noTel) || (mustAskTel && remote.allowSmsFallback === null)) {
+    // Telefonnummer nur abfragen, wenn sie fehlt oder ungültig ist
     while (!tel || !isValidAtE164(tel)) {
       let input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest.");
       if (input === null || input.trim() === "") {
+        // Nutzer möchte keine Nummer angeben
         tel = null;
-        noTel = true; // Nutzer möchte keine Nummer angeben
+        noTel = true;
         break;
       }
       tel = normalizeAtPhoneNumber(input.trim());
@@ -401,10 +439,12 @@ async function askForDeviceIdAndPhone() {
     }
   }
 
-  // Speichern in LocalStorage und Firebase
-  saveSmsPrefs({ tel, allowSmsFallback: !!tel, noTel });
-  await saveTelToRTDB(id, tel, !!tel);
+  // --- 6) Speichern (lokal + Server) ---
+  const allow = !!tel; // Erlaubnis = Nummer vorhanden
+  saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
+  await saveTelToRTDB(id, tel, allow);
 }
+
 
 
 
@@ -915,11 +955,6 @@ function stripPhone(raw) {
 
 
 function loadSmsPrefs() {
-  if (!get(ref(rtdb,'roles/{deviceId}/allowSmsFallback')).exists()) {
-    localStorage.removeItem("mrx_sms_prefs_v1");
-    return;
-    };
-
   try {
     return JSON.parse(localStorage.getItem("mrx_sms_prefs_v1")) ?? {
       allowSmsFallback: false,
@@ -949,6 +984,18 @@ function saveSmsPrefs(next) {
   return merged;
 }
 
+
+async function fetchRemoteSmsPrefs(deviceId) {
+  const key = sanitizeKey(deviceId);
+  const snap = await get(ref(rtdb, `roles/${key}`));
+  if (!snap.exists()) return { exists: false, allowSmsFallback: null, tel: null };
+  const data = snap.val() || {};
+  return {
+    exists: true,
+    allowSmsFallback: (data.allowSmsFallback !== undefined) ? !!data.allowSmsFallback : null,
+    tel: data.tel ?? null
+  };
+}
 
 
 
