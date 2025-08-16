@@ -539,7 +539,6 @@ async function sendNotificationToTokens(title, body, tokens = [], {
   maxAttempts = 20,
   waitSec = 20,
   sendEndpoint = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all",
-  fallbackEndpoint = "/functions/v1/send-sms-fallback",
 } = {}) {
 
   const senderName = getDeviceId?.() || "unknown"; // falls vorhanden
@@ -570,7 +569,7 @@ async function sendNotificationToTokens(title, body, tokens = [], {
     log(`🔁 Wiederhole für ${failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
     setTimeout(() => {
       sendNotificationToTokens(title, body, failedTokens, {
-        link, attempt: attempt + 1, maxAttempts, waitSec, sendEndpoint, fallbackEndpoint
+        link, attempt: attempt + 1, maxAttempts, waitSec, sendEndpoint
       });
     }, 10000);
   } else if (attempt >= maxAttempts) {
