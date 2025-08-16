@@ -374,6 +374,7 @@ async function askForDeviceIdAndPhone() {
   let id = localStorage.getItem("deviceId");
   let telPrefs = loadSmsPrefs();
   let tel = telPrefs.tel;
+  let noTel = telPrefs.noTel; // neues Flag
 
   // Name abfragen, falls nicht vorhanden
   while (!id || id.trim() === "") {
@@ -384,23 +385,27 @@ async function askForDeviceIdAndPhone() {
   }
   localStorage.setItem("deviceId", id.trim());
 
-  // Telefonnummer abfragen, falls nicht vorhanden
-  while (!tel || !isValidAtE164(tel)) {
-    let input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest.");
-    if (input === null || input.trim() === "") {
-      tel = null;
-      break;
-    }
-    tel = normalizeAtPhoneNumber(input.trim());
-    if (!tel) {
-      alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
+  // Telefonnummer nur abfragen, wenn sie fehlt und nicht bewusst leer gelassen wurde
+  if (!tel && !noTel) {
+    while (!tel || !isValidAtE164(tel)) {
+      let input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest.");
+      if (input === null || input.trim() === "") {
+        tel = null;
+        noTel = true; // Nutzer möchte keine Nummer angeben
+        break;
+      }
+      tel = normalizeAtPhoneNumber(input.trim());
+      if (!tel) {
+        alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
+      }
     }
   }
 
   // Speichern in LocalStorage und Firebase
-  saveSmsPrefs({ tel, allowSmsFallback: !!tel });
+  saveSmsPrefs({ tel, allowSmsFallback: !!tel, noTel });
   await saveTelToRTDB(id, tel, !!tel);
 }
+
 
 
 async function removeNotificationSetup() {
