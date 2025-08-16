@@ -512,7 +512,7 @@ async function triggerSmsFallbackIfNeeded(
   messageId,
   recipientDeviceNames,         // <<< WICHTIG: DEVICE-NAMES, nicht Tokens!
   smsText,
-  waitMs = 45000,               // 45s ist ein realistischerer Standard als 20s
+  waitMs = 30000,               // 45s ist ein realistischerer Standard als 20s
   {
     rtdbBase = RTDB_BASE,
     rolesPath = 'roles',
@@ -532,7 +532,7 @@ async function triggerSmsFallbackIfNeeded(
     if (idemRes.ok) {
       const idem = await idemRes.json();
       if (idem === true) {
-        log('[Fallback] SMS bereits ausgelöst – Abbruch.');
+        log('[Fallback] SMS bereits ausgelöst - Abbruch.');
         return;
       }
     }
@@ -617,7 +617,7 @@ async function sendNotificationToTokens(
     link = '/Mister-X/',
     attempt = 1,
     maxAttempts = 5,                     // 20 ist viel; 5 reicht oft
-    waitSec = 45,                        // realistisch für FCM/Doze
+    waitSec = 30,                        // realistisch für FCM/Doze
     sendEndpoint = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all",
     rtdbBase = RTDB_BASE
   } = {}
@@ -638,7 +638,7 @@ async function sendNotificationToTokens(
   log(`📦 Versuch ${attempt}:`, result);
 
   // 2) Fallback nur genau einmal „scharfschalten“ (bei attempt 1, sofern messageId vorhanden)
-  if (attempt === 1 && messageId && recipientDeviceNames.length > 0) {
+  if (attempt === 0 && messageId && recipientDeviceNames.length > 0) {
     const smsText = `${title}: ${body}${link ? " " + link : ""}`.slice(0, 280);
     // bewusst "fire-and-forget"
     triggerSmsFallbackIfNeeded(
