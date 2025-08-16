@@ -915,6 +915,12 @@ function stripPhone(raw) {
 
 
 function loadSmsPrefs() {
+  if (!get(ref(rtdb,'roles/{deviceId}/allowSmsFallback')).exists()) {
+    localStorage.removeItem("mrx_sms_prefs_v1");
+    askForDeviceIdAndPhone();
+    return;
+    };
+
   try {
     return JSON.parse(localStorage.getItem("mrx_sms_prefs_v1")) ?? {
       allowSmsFallback: false,
@@ -2050,11 +2056,6 @@ async function startTimer() {
 
 
 }
-
-
-
-export { startTimer };
-
 
 // Timer aus Firebase lesen
 function listenToTimer() {
