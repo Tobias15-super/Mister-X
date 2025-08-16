@@ -794,19 +794,37 @@ function stripPhone(raw) {
   return s.replace(/\D/g, '');
 }
 
-const LS_KEY = "mrx_sms_prefs_v1";
+
 function loadSmsPrefs() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY)) ?? { allowSmsFallback:false, tel:null, lastUpdated:0 }; }
-  catch { return { allowSmsFallback:false, tel:null, lastUpdated:0 }; }
+  try {
+    return JSON.parse(localStorage.getItem("mrx_sms_prefs_v1")) ?? {
+      allowSmsFallback: false,
+      tel: null,
+      noTel: false,
+      lastUpdated: 0
+    };
+  } catch {
+    return {
+      allowSmsFallback: false,
+      tel: null,
+      noTel: false,
+      lastUpdated: 0
+    };
+  }
 }
+
 function saveSmsPrefs(next) {
   const cur = loadSmsPrefs();
-  const merged = { allowSmsFallback: !!(next.allowSmsFallback ?? cur.allowSmsFallback),
-                   tel: next.tel === undefined ? cur.tel : next.tel,
-                   lastUpdated: Date.now() };
-  localStorage.setItem(LS_KEY, JSON.stringify(merged));
+  const merged = {
+    allowSmsFallback: !!(next.allowSmsFallback ?? cur.allowSmsFallback),
+    tel: next.tel === undefined ? cur.tel : next.tel,
+    noTel: next.noTel === undefined ? cur.noTel : next.noTel,
+    lastUpdated: Date.now()
+  };
+  localStorage.setItem("mrx_sms_prefs_v1", JSON.stringify(merged));
   return merged;
 }
+
 
 
 
@@ -2378,11 +2396,19 @@ async function startScript() {
       }
 
       // 2) onMessage (Fallback für Browser/Setups, die SW-PostMessage nicht liefern)
+      let _lastMsgId = null;
       onMessage(messaging, (payload) => {
         const data = (payload && payload.data) ? payload.data : {};
+
+        // einfache Duplikat-Sperre
+        if (data.messageId && data.messageId === _lastMsgId) return;
+        _lastMsgId = data.messageId || null;
+
+        // Deine bestehende In‑App‑UI
         _handleInAppMessage(data);
-        log('[Page] FCM onMessage empfangen', payload);
+        console.log('[Page] FCM onMessage empfangen', payload);
       });
+
     }
 
 

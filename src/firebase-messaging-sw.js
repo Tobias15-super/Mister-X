@@ -4,7 +4,7 @@ import { getMessaging } from 'firebase/messaging/sw';
 import { precacheAndRoute } from 'workbox-precaching';
 
 // Workbox: damit auch Icons offline/schnell verfügbar sind
-precacheAndRoute(self.__WB_MANIFEST);
+precacheAndRoute(self.__WB_MANIFEST || []);
 
 // --- Firebase ---
 const firebaseConfig = {
@@ -22,13 +22,13 @@ const app = initializeApp(firebaseConfig);
 getMessaging(app); // Initialisiert FCM im SW-Kontext (keinen Listener hier registrieren)
 
 // --- Helpers ---
-const RTDB_BASE = `${firebaseConfig.databaseURL}`;
+const RTDB_BASE = firebaseConfig.databaseURL;
 
 function sanitizeKey(key) {
   return (key || '').replace(/[.#$/\[\]\/]/g, '_');
 }
 
-async function openDbEnsureStore(dbName, storeName) {
+function openDbEnsureStore(dbName, storeName) {
   return new Promise((resolve, reject) => {
     const openReq = indexedDB.open(dbName);
     openReq.onupgradeneeded = () => {
@@ -39,7 +39,10 @@ async function openDbEnsureStore(dbName, storeName) {
     };
     openReq.onsuccess = () => {
       const db = openReq.result;
-      if (db.objectStoreNames.contains(storeName)) return resolve(db);
+      if (db.objectStoreNames.contains(storeName)) {
+        resolve(db);
+        return;
+      }
       const newVersion = db.version + 1;
       db.close();
       const upgradeReq = indexedDB.open(dbName, newVersion);
@@ -86,46 +89,76 @@ async function markDelivered(messageId, deviceName) {
   }
 }
 
-// --- iOS-/Safari-fester Push-Handler ---
-// Zeigt IMMER eine sichtbare Notification und kapselt alles in waitUntil(...).
+// --- iOS-/Safari-Erkennung (Heuristik) ---
+function isIOSLikeUA(ua) {
+  const s = ua || '';
+  const isiOSDevice = /iPhone|iPad|iPod/.test(s);
+  const isMacWithTouch = /Macintosh/.test(s) && /Mobile/.test(s); // iPadOS meldet sich oft so
+  return isiOSDevice || isMacWithTouch;
+}
+
+// --- Push-Handler ---
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
-    const payload = event.data ? (() => { try { return event.data.json(); } catch { return {}; } })() : {};
+    const payload = event.data ? (function () { try { return event.data.json(); } catch { return {}; } })() : {};
     const n = payload.notification || {};
-    const d = payload.data || payload;
+    const d = payload.data || payload || {};
 
     const title = n.title || d.title || 'Neue Nachricht';
     const body  = n.body  || d.body  || '';
     const url   = d.url || n.click_action || '/Mister-X/';
     const tag   = d.tag || 'mrx-fg'; // gleicher Tag zum gezielten Schließen
+    const messageId = d.messageId || d.id || n.tag || String(Date.now());
 
-    // 1) Gibt es ein sichtbares Fenster (Foreground)?
     const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const visibleClient = windows.find(w => w.visibilityState === 'visible'); // oder w.focused === true
+    const visibleClient = windows.find((w) => w.visibilityState === 'visible');
 
-    // 2) Immer Notification zeigen (iOS verlangt das), aber FG sofort schließen
-    const showPromise = self.registration.showNotification(title, {
+    const ua = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
+    const isIOS = isIOSLikeUA(ua);
+
+    // Zustellmarkierung nebenläufig
+    markDelivered(messageId, await getDeviceName()).catch((e) => console.error('[SW] markDelivered failed:', e));
+
+    if (visibleClient) {
+      // Foreground: an die Seite posten -> dein Alert/Toast
+      try {
+        visibleClient.postMessage({ type: 'PUSH', payload: d });
+      } catch {}
+
+      // iOS verlangt sichtbare Notification -> kurz zeigen und sofort schließen
+      if (isIOS) {
+        const opts = {
+          body,
+          icon: '/Mister-X/icons/android-chrome-192x192.png',
+          badge: '/Mister-X/icons/Mister_X_Badge.png',
+          tag,
+          renotify: false,
+          silent: true,
+          data: { url, messageId, tag, fg: true }
+        };
+        await self.registration.showNotification(title, opts);
+        await new Promise((r) => setTimeout(r, 50));
+        const notes = await self.registration.getNotifications({ tag });
+        notes.forEach((n) => n.close());
+      }
+
+      // Auf Nicht‑iOS: KEINE Notification im Foreground -> keine Doppelung
+      return;
+    }
+
+    // Background: "normale" sichtbare Notification
+    const opts = {
       body,
       icon: '/Mister-X/icons/android-chrome-192x192.png',
       badge: '/Mister-X/icons/Mister_X_Badge.png',
       tag,
       renotify: false,
-      silent: true // Best effort; wird nicht überall unterstützt
-    });
+      silent: (d.silent !== undefined) ? !!d.silent : true,
+      // vibrate: d.vibrate ?? undefined,  // optional
+      data: { url, messageId, tag, fg: false }
+    };
 
-    markDelivered(d.messageId, await getDeviceName()).catch(e => console.error('[SW] markDelivered failed:', e));
-
-    if (visibleClient) {
-      // an die Seite posten -> dein Alert/Toast
-      visibleClient.postMessage({ type: 'PUSH', payload: d });
-
-      // kurz warten, dann die FG-Notif wieder schließen
-      await showPromise;
-      await new Promise(r => setTimeout(r, 50)); // minimaler Tick
-      const notes = await self.registration.getNotifications({ tag });
-      notes.forEach(n => n.close()); // iOS-Anforderung erfüllt, User sieht nichts
-    }
-    // Wenn kein sichtbares Fenster: Notification stehen lassen (klassisches Background-Verhalten)
+    await self.registration.showNotification(title, opts);
   })());
 });
 
@@ -133,7 +166,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil((async () => {
-    const url = event.notification.data?.url || '/Mister-X/';
+    const url = (event.notification && event.notification.data && event.notification.data.url) || '/Mister-X/';
     const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of allClients) {
       if ('focus' in client && client.url.includes('/Mister-X/')) {
@@ -144,9 +177,9 @@ self.addEventListener('notificationclick', (event) => {
   })());
 });
 
-// Soft-Update Kontrollfluss
+// Soft-Update
 self.addEventListener('message', (event) => {
-  if (event?.data?.type === 'SKIP_WAITING') {
+  if (event && event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
