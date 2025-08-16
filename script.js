@@ -507,46 +507,122 @@ async function removeNotificationSetup() {
   }
 }
 
-async function triggerSmsFallbackIfNeeded(messageId, recipientDeviceIds, smsText, waitMs = 20000) {
-  // Warten
+
+async function triggerSmsFallbackIfNeeded(
+  messageId,
+  recipientDeviceNames,         // <<< WICHTIG: DEVICE-NAMES, nicht Tokens!
+  smsText,
+  waitMs = 45000,               // 45s ist ein realistischerer Standard als 20s
+  {
+    rtdbBase = RTDB_BASE,
+    rolesPath = 'roles',
+    recipientsPath = 'notifications',  // Basis; wir bauen die komplette URL unten
+    idempotencyFlag = 'smsTriggered'   // notifications/{messageId}/smsTriggered = true
+  } = {}
+) {
+  if (!messageId || !Array.isArray(recipientDeviceNames)) return;
+
+  // 1) Warten
   await new Promise(r => setTimeout(r, waitMs));
 
-  // Wer hat kein Delivered?
-  const url = `${RTDB_BASE}/notifications/${messageId}/recipients.json`;
-  const res = await fetch(url);
-  const map = res.ok ? await res.json() : {};
-  const pending = recipientDeviceIds.filter(did => !map?.[sanitizeKey(did)]);
+  // 2) Idempotenz prüfen: schon ausgelöst?
+  try {
+    const idemUrl = `${rtdbBase}/${recipientsPath}/${messageId}/${idempotencyFlag}.json`;
+    const idemRes = await fetch(idemUrl, { cache: 'no-store' });
+    if (idemRes.ok) {
+      const idem = await idemRes.json();
+      if (idem === true) {
+        console.log('[Fallback] SMS bereits ausgelöst – Abbruch.');
+        return;
+      }
+    }
+  } catch (e) {
+    // Wenn die Prüfung scheitert, lieber KEIN Fallback (um False-Positives zu vermeiden)
+    console.warn('[Fallback] Konnte Idempotenz nicht prüfen. Abbruch, um Doppel-SMS zu vermeiden.', e);
+    return;
+  }
 
-  if (pending.length === 0) return;
+  // 3) Wer hat kein Delivered?
+  let map;
+  try {
+    const url = `${rtdbBase}/${recipientsPath}/${messageId}/recipients.json`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    map = await res.json() || {};
+  } catch (e) {
+    console.warn('[Fallback] Konnte Recipients nicht laden. Abbruch, um Fehl-SMS zu vermeiden.', e);
+    return; // konservativ: kein Fallback auslösen
+  }
 
-  // Telefonnummern aus roles holen
-  const telPromises = pending.map(async (did) => {
-    const roleRes = await fetch(`${RTDB_BASE}/roles/${encodeURIComponent(did)}.json`);
-    if (!roleRes.ok) return null;
-    const data = await roleRes.json();
-    return (data?.allowSmsFallback && isValidAtE164(data?.tel)) ? data.tel : null;
-  });
-  const tels = (await Promise.all(telPromises)).filter(Boolean);
+  // ACHTUNG: Keys sind DEVICE-NAMES (wie im SW geschrieben), daher hier Device-Namen prüfen
+  const pendingDevices = recipientDeviceNames.filter(dn => !map?.[sanitizeKey(dn)]);
+  if (pendingDevices.length === 0) {
+    console.log('[Fallback] Alle Empfänger bestätigt. Keine SMS nötig.');
+    return;
+  }
 
-  if (tels.length > 0) {
-    await sendSmsViaTextBee(tels, smsText);
-    log(`SMS-Fallback an ${tels.length} Nummer(n) ausgelöst.`);
+  // 4) Telefonnummern aus roles holen & filtern
+  let tels = [];
+  try {
+    const telPromises = pendingDevices.map(async (dn) => {
+      const roleUrl = `${rtdbBase}/${rolesPath}/${encodeURIComponent(dn)}.json`;
+      const roleRes = await fetch(roleUrl, { cache: 'no-store' });
+      if (!roleRes.ok) return null;
+      const data = await roleRes.json();
+      // require explicit consent & valide Nummer
+      return (data && data.allowSmsFallback && isValidE164(data.tel)) ? data.tel : null;
+    });
+    tels = unique((await Promise.all(telPromises)).filter(Boolean));
+  } catch (e) {
+    console.error('[Fallback] Fehler beim Laden der Rollen:', e);
+    return;
+  }
+
+  if (tels.length === 0) {
+    console.log('[Fallback] Keine gültigen Telefonnummern/Erlaubnisse gefunden.');
+    return;
+  }
+
+  // 5) Idempotenz-Flag setzen (best effort) – vor dem SMS-Call, um Rennen zu minimieren
+  try {
+    const idemUrl = `${rtdbBase}/${recipientsPath}/${messageId}/${idempotencyFlag}.json`;
+    await fetch(idemUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(true)
+    });
+  } catch (e) {
+    // Wenn das Setzen fehlschlägt, können Doppel-SMS passieren – loggen, aber weiter
+    console.warn('[Fallback] Konnte Idempotenz-Flag nicht setzen – fahre fort.', e);
+  }
+
+  // 6) SMS senden (catchen & loggen)
+  try {
+    await sendSmsViaTextBee(tels, smsText); // deine bestehende Funktion
+    console.log(`SMS-Fallback an ${tels.length} Nummer(n) ausgelöst.`);
+  } catch (e) {
+    console.error('[Fallback] SMS-Versand fehlgeschlagen:', e);
+    // Optional: Idempotenz-Flag zurücksetzen (nur wenn du willst)
   }
 }
 
-// src/lib/send-with-fallback.ts
 
 
-// --- Drop-in: ersetzt deine bisherige sendNotificationToTokens ---
-async function sendNotificationToTokens(title, body, tokens = [], {
-  link = '/Mister-X/',
-  attempt = 1,
-  maxAttempts = 20,
-  waitSec = 20,
-  sendEndpoint = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all",
-} = {}) {
-
-  const senderName = getDeviceId?.() || "unknown"; // falls vorhanden
+async function sendNotificationToTokens(
+  title,
+  body,
+  tokens = [],
+  {
+    recipientDeviceNames = [],           // <<< NEU: Device-Namen passend zu /recipients/*
+    link = '/Mister-X/',
+    attempt = 1,
+    maxAttempts = 5,                     // 20 ist viel; 5 reicht oft
+    waitSec = 45,                        // realistisch für FCM/Doze
+    sendEndpoint = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all",
+    rtdbBase = RTDB_BASE
+  } = {}
+) {
+  const senderName = (typeof getDeviceId === 'function' ? getDeviceId() : null) || "unknown";
 
   // 1) Push über Supabase-Funktion
   const res = await fetch(sendEndpoint, {
@@ -558,66 +634,95 @@ async function sendNotificationToTokens(title, body, tokens = [], {
   let result = {};
   try { result = await res.json(); } catch {}
 
-  // Erwartet: Server vergibt messageId
-  const messageId = result?.messageId;
-  log(`📦 Versuch ${attempt}:`, result);
+  const messageId = result && result.messageId;
+  console.log(`📦 Versuch ${attempt}:`, result);
 
-  if (attempt === 1 && messageId) {
+  // 2) Fallback nur genau einmal „scharfschalten“ (bei attempt 1, sofern messageId vorhanden)
+  if (attempt === 1 && messageId && recipientDeviceNames.length > 0) {
     const smsText = `${title}: ${body}${link ? " " + link : ""}`.slice(0, 280);
-    triggerSmsFallbackIfNeeded(messageId, tokens, smsText, 20000);
+    // bewusst "fire-and-forget"
+    triggerSmsFallbackIfNeeded(
+      messageId,
+      recipientDeviceNames,
+      smsText,
+      waitSec * 1000,
+      { rtdbBase }
+    );
   }
-  
 
-  // 3) Deine Retry-Logik für fehlgeschlagene Tokens
+  // 3) Retry nur für fehlgeschlagene Tokens (Backoff & Limit)
   const failedTokens = Array.isArray(result?.failedTokens) ? result.failedTokens : [];
   if (failedTokens.length > 0 && attempt < maxAttempts) {
-    log(`🔁 Wiederhole für ${failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
+    console.log(`🔁 Wiederhole für ${failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
     setTimeout(() => {
       sendNotificationToTokens(title, body, failedTokens, {
-        link, attempt: attempt + 1, maxAttempts, waitSec, sendEndpoint
+        recipientDeviceNames, link, attempt: attempt + 1, maxAttempts, waitSec, sendEndpoint, rtdbBase
       });
-    }, 10000);
+    }, 10_000);
   } else if (attempt >= maxAttempts) {
-    log("⏱️ Max. Anzahl an Versuchen erreicht.");
+    console.warn("⏱️ Max. Anzahl an Versuchen erreicht.");
   } else {
-    log("✅ Alle Benachrichtigungen erfolgreich gesendet.");
+    console.log("✅ Alle Benachrichtigungen verarbeitet.");
   }
 
   return result;
 }
 
 
-async function sendNotificationToRoles(title, body, roles) {
-  const rolesSnapshot = await get(ref(rtdb, "roles"));
-  const tokensSnapshot = await get(ref(rtdb, "tokens"));
 
-  const rolesData = rolesSnapshot.val();
-  const tokensData = tokensSnapshot.val();
 
-  const matchingTokens = new Set();
+async function sendNotificationToRoles(title, body, roles, opts = {}) {
+  // RTDB lesen
+  const [rolesSnapshot, tokensSnapshot] = await Promise.all([
+    get(ref(rtdb, 'roles')),
+    get(ref(rtdb, 'tokens')),
+  ]);
+
+  const rolesData = rolesSnapshot.exists() ? rolesSnapshot.val() : {};
+  const tokensData = tokensSnapshot.exists() ? tokensSnapshot.val() : {};
 
   const roleList = Array.isArray(roles) ? roles : [roles];
+  const sendToAll = roleList.length === 1 && roleList[0] === 'all';
 
-  for (const userId in tokensData) {
-    const userRole = rolesData[userId]?.role;
-    const notificationEnabled = rolesData[userId]?.notification;
+  const tokensToSend = [];
+  const deviceNamesToExpect = [];
 
-    const shouldSend = 
-      (roles === "all" || roleList.includes(userRole)) &&
-      (notificationEnabled !== false); // true if undefined or true
+  // Durch alle bekannten Device-Namen iterieren (Keys von tokensData sind unsere Device-Namen)
+  for (const deviceName in tokensData) {
+    if (!Object.prototype.hasOwnProperty.call(tokensData, deviceName)) continue;
 
-    if (shouldSend) {
-      matchingTokens.add(tokensData[userId]);
-    }
+    const roleEntry = rolesData[deviceName] || {};
+    const userRole = roleEntry.role;
+    const notificationEnabled = (roleEntry.notification !== false); // default: true
+
+    const matchesRole = sendToAll || (userRole && roleList.includes(userRole));
+    if (!matchesRole || !notificationEnabled) continue;
+
+    const devTokens = normalizeTokens(tokensData[deviceName]);
+    if (devTokens.length === 0) continue;
+
+    tokensToSend.push(...devTokens);
+    deviceNamesToExpect.push(deviceName);
   }
 
-  if (matchingTokens.size === 0) {
-    log(`⚠️ Keine passenden Tokens für Rollen "${roles}" gefunden.`);
+  const uniqueTokens = unique(tokensToSend);
+  const uniqueDeviceNames = unique(deviceNamesToExpect);
+
+  if (uniqueTokens.length === 0) {
+    log(`⚠️ Keine passenden Tokens für Rollen "${Array.isArray(roles) ? roles.join(',') : roles}" gefunden.`);
     return;
   }
 
-  sendNotificationToTokens(title, body, Array.from(matchingTokens));
+  // Jetzt korrekt: tokens + recipientDeviceNames an deine bereits angepasste Funktion
+  return sendNotificationToTokens(title, body, uniqueTokens, {
+    recipientDeviceNames: uniqueDeviceNames,  // <<< wichtig für SMS-Fallback
+    link: opts.link || '/Mister-X/',
+    waitSec: typeof opts.waitSec === 'number' ? opts.waitSec : 45,
+    sendEndpoint: opts.sendEndpoint,          // optional override
+    rtdbBase: opts.rtdbBase                   // optional override
+  });
 }
+
 
 
 
@@ -771,6 +876,20 @@ function isValidAtE164(n) {
 function sanitizeKey(key) {
   return key.replace(/[.#$/\[\]\/]/g, "_");
 }
+
+function unique(array) {
+  return Array.from(new Set(array));
+}
+
+function normalizeTokens(entry) {
+  if (!entry) return [];
+  if (typeof entry === 'string') return [entry];
+  if (Array.isArray(entry)) return entry.filter(Boolean);
+  if (typeof entry === 'object') return Object.keys(entry).filter(Boolean);
+  return [];
+}
+
+
 
 async function sendSmsViaTextBee(recipients, message) {
   const url = `https://api.textbee.dev/api/v1/gateway/devices/${TEXTBEE_DEVICE_ID}/send-sms`;
