@@ -11,6 +11,10 @@ let postenCache = null;
 let selectedPost = null;
 const _seenMessageIds = new Set(); // für Push-Handler, um Duplikate zu vermeiden
 
+const TEXTBEE_API_KEY = "9bd1b2ba-67a5-412f-a5c1-9e30a8c8c3d3";
+const TEXTBEE_DEVICE_ID = "DEIN_TEXTBEE_DEVICE_ID";
+const RTDB_BASE = "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
+
 // ====== Benutzer-Standort ======
 let userWatchId = null;
 let userMarker = null;
@@ -176,7 +180,7 @@ async function saveTokenToSupabase(token) {
     });
 }
 
-function getDeviceId() {
+export function getDeviceId() {
   let id = localStorage.getItem("deviceId");
   while (!id || id.trim() === "") {
     id = prompt("Bitte gib deinen Namen ein");
@@ -187,6 +191,7 @@ function getDeviceId() {
   localStorage.setItem("deviceId", id.trim());
   return id.trim();
 }
+
 
 try {
   localStorage.setItem("test", "1");
@@ -365,7 +370,37 @@ async function openDbEnsureStore(dbName, storeName) {
   });
 }
 
+async function askForDeviceIdAndPhone() {
+  let id = localStorage.getItem("deviceId");
+  let telPrefs = loadSmsPrefs();
+  let tel = telPrefs.tel;
 
+  // Name abfragen, falls nicht vorhanden
+  while (!id || id.trim() === "") {
+    id = prompt("Bitte gib deinen Namen ein");
+    if (id === null) {
+      alert("Du musst einen Namen eingeben, um fortzufahren.");
+    }
+  }
+  localStorage.setItem("deviceId", id.trim());
+
+  // Telefonnummer abfragen, falls nicht vorhanden
+  while (!tel || !isValidAtE164(tel)) {
+    let input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest.");
+    if (input === null || input.trim() === "") {
+      tel = null;
+      break;
+    }
+    tel = normalizeAtPhoneNumber(input.trim());
+    if (!tel) {
+      alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
+    }
+  }
+
+  // Speichern in LocalStorage und Firebase
+  saveSmsPrefs({ tel, allowSmsFallback: !!tel });
+  await saveTelToRTDB(id, tel, !!tel);
+}
 
 
 async function removeNotificationSetup() {
@@ -467,33 +502,86 @@ async function removeNotificationSetup() {
   }
 }
 
+async function triggerSmsFallbackIfNeeded(messageId, recipientDeviceIds, smsText, waitMs = 20000) {
+  // Warten
+  await new Promise(r => setTimeout(r, waitMs));
+
+  // Wer hat kein Delivered?
+  const url = `${RTDB_BASE}/notifications/${messageId}/recipients.json`;
+  const res = await fetch(url);
+  const map = res.ok ? await res.json() : {};
+  const pending = recipientDeviceIds.filter(did => !map?.[sanitizeKey(did)]);
+
+  if (pending.length === 0) return;
+
+  // Telefonnummern aus roles holen
+  const telPromises = pending.map(async (did) => {
+    const roleRes = await fetch(`${RTDB_BASE}/roles/${encodeURIComponent(did)}.json`);
+    if (!roleRes.ok) return null;
+    const data = await roleRes.json();
+    return (data?.allowSmsFallback && isValidAtE164(data?.tel)) ? data.tel : null;
+  });
+  const tels = (await Promise.all(telPromises)).filter(Boolean);
+
+  if (tels.length > 0) {
+    await sendSmsViaTextBee(tels, smsText);
+    log(`SMS-Fallback an ${tels.length} Nummer(n) ausgelöst.`);
+  }
+}
+
+// src/lib/send-with-fallback.ts
 
 
+// --- Drop-in: ersetzt deine bisherige sendNotificationToTokens ---
+async function sendNotificationToTokens(title, body, tokens = [], {
+  link = '/Mister-X/',
+  attempt = 1,
+  maxAttempts = 20,
+  waitSec = 20,
+  sendEndpoint = "/functions/v1/send-to-all",
+  fallbackEndpoint = "/functions/v1/send-sms-fallback",
+} = {}) {
 
-async function sendNotificationToTokens(title, body, tokens = [], attempt = 1, maxAttempts = 20) {
-  const senderName = getDeviceId();
-  const res = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all", {
+  const senderName = getDeviceId?.() || "unknown"; // falls vorhanden
+
+  // 1) Push über Supabase-Funktion
+  const res = await fetch(sendEndpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ title, body, tokens, senderName })
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, body, tokens, senderName, link })
   });
 
-  const result = await res.json();
+  let result = {};
+  try { result = await res.json(); } catch {}
+
+  // Erwartet: Server vergibt messageId
+  const messageId = result?.messageId;
   log(`📦 Versuch ${attempt}:`, result);
 
-  if (result.failedTokens && result.failedTokens.length > 0 && attempt < maxAttempts) {
-    log(`🔁 Wiederhole für ${result.failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
+  if (attempt === 1 && messageId) {
+    const smsText = `${title}: ${body}${link ? " " + link : ""}`.slice(0, 280);
+    triggerSmsFallbackIfNeeded(messageId, tokens, smsText, 20000);
+  }
+  
+
+  // 3) Deine Retry-Logik für fehlgeschlagene Tokens
+  const failedTokens = Array.isArray(result?.failedTokens) ? result.failedTokens : [];
+  if (failedTokens.length > 0 && attempt < maxAttempts) {
+    log(`🔁 Wiederhole für ${failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
     setTimeout(() => {
-      sendNotificationToTokens(title, body, result.failedTokens, attempt + 1, maxAttempts);
+      sendNotificationToTokens(title, body, failedTokens, {
+        link, attempt: attempt + 1, maxAttempts, waitSec, sendEndpoint, fallbackEndpoint
+      });
     }, 10000);
   } else if (attempt >= maxAttempts) {
     log("⏱️ Max. Anzahl an Versuchen erreicht.");
   } else {
     log("✅ Alle Benachrichtigungen erfolgreich gesendet.");
   }
+
+  return result;
 }
+
 
 async function sendNotificationToRoles(title, body, roles) {
   const rolesSnapshot = await get(ref(rtdb, "roles"));
@@ -669,6 +757,95 @@ async function sendLocationWithPhoto() {
 
   statusEl.innerText = "✅ Posten/Farbe gemeldet & Foto wird hochgeladen.";
   startTimer?.();
+}
+
+//=======SMS-Funktionen=======
+
+function isValidAtE164(n) {
+  return typeof n === 'string' && /^\+43\d{4,13}$/.test(n);
+}
+function sanitizeKey(key) {
+  return key.replace(/[.#$/\[\]\/]/g, "_");
+}
+
+async function sendSmsViaTextBee(recipients, message) {
+  const url = `https://api.textbee.dev/api/v1/gateway/devices/${TEXTBEE_DEVICE_ID}/send-sms`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "x-api-key": TEXTBEE_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ recipients, message }),
+  });
+  const bodyText = await res.text();
+  return { ok: res.ok, status: res.status, bodyText };
+}
+
+
+// Entfernt alle Nicht-Ziffern außer führendem +
+function stripPhone(raw) {
+  const s = String(raw).trim();
+  if (s.startsWith('+')) return '+' + s.slice(1).replace(/\D/g, '');
+  return s.replace(/\D/g, '');
+}
+
+const LS_KEY = "mrx_sms_prefs_v1";
+function loadSmsPrefs() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) ?? { allowSmsFallback:false, tel:null, lastUpdated:0 }; }
+  catch { return { allowSmsFallback:false, tel:null, lastUpdated:0 }; }
+}
+function saveSmsPrefs(next) {
+  const cur = loadSmsPrefs();
+  const merged = { allowSmsFallback: !!(next.allowSmsFallback ?? cur.allowSmsFallback),
+                   tel: next.tel === undefined ? cur.tel : next.tel,
+                   lastUpdated: Date.now() };
+  localStorage.setItem(LS_KEY, JSON.stringify(merged));
+  return merged;
+}
+
+
+
+// Versucht Nutzerinput -> E.164 AT (+43…)
+export function normalizeAtPhoneNumber(input) {
+  if (!input) return null;
+  let s = stripPhone(input);
+
+  // Fälle: +43..., 0..., 43..., oder nur Ziffern
+  if (s.startsWith('+43')) {
+    return /^\+43\d{4,13}$/.test(s) ? s : null;
+  }
+  if (s.startsWith('0')) {
+    // national -> international
+    const candidate = '+43' + s.slice(1);
+    return /^\+43\d{4,13}$/.test(candidate) ? candidate : null;
+  }
+  if (s.startsWith('43')) {
+    const candidate = '+' + s;
+    return /^\+43\d{4,13}$/.test(candidate) ? candidate : null;
+  }
+  // Falls nur Ziffern und plausibel lang: als 0-Start interpretieren
+  if (/^\d{5,}$/.test(s) && s[0] !== '0') {
+    const candidate = '+43' + s; // vorsichtig, lieber Nutzer:innen zu 0… oder +43… anleiten
+    return /^\+43\d{4,13}$/.test(candidate) ? candidate : null;
+  }
+  return null;
+}
+
+
+async function saveTelToRTDB(deviceId, tel, allowSmsFallback) {
+  const safeId = sanitizeKey(deviceId);
+  const url = `${RTDB_BASE}/roles/${safeId}.json`;
+  const payload = {
+    tel: tel ?? null,
+    allowSmsFallback: !!allowSmsFallback,
+    ...(tel ? { telUpdatedAt: Date.now() } : {}),
+  };
+  await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 
@@ -2173,6 +2350,7 @@ setInterval(() => {
 // Beim Laden prüfen / initialisieren
 
 async function startScript() {
+  askForDeviceIdAndPhone();
   try {
     // (A) Kapazitäten prüfen – NICHTS forcen
     const support = await detectSupport();

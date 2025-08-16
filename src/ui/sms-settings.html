@@ -1,0 +1,53 @@
+<!-- src/ui/sms-settings.html -->
+<div id="smsSettings">
+  <label>
+    <input type="checkbox" id="allowSmsFallback">
+    SMS‑Fallback erlauben (kann Kosten verursachen)
+  </label>
+  <div style="margin-top:8px">
+    <input id="telInput" placeholder="+43… oder 0664…" style="width:260px">
+    <button id="saveSmsPrefsBtn">Speichern</button>
+    <button id="clearSmsPrefsBtn">Keine Nummer angeben</button>
+  </div>
+  <div id="smsPrefsInfo" style="margin-top:6px;color:#555"></div>
+</div>
+<script type="module">
+import { loadSmsPrefs, setTelAndConsent, syncSmsPrefsToRTDB } from "../lib/sms-prefs.js";
+import { normalizeAtPhoneNumber } from "../lib/phone-at.js";
+import { getDeviceId } from "../lib/device.js"; // deine bestehende Helper-Funktion
+
+const $allow = document.getElementById('allowSmsFallback');
+const $tel   = document.getElementById('telInput');
+const $info  = document.getElementById('smsPrefsInfo');
+
+function render() {
+  const p = loadSmsPrefs();
+  $allow.checked = !!p.allowSmsFallback;
+  $tel.value = p.tel || '';
+  $info.textContent = p.tel
+    ? `Aktuelle Nummer: ${p.tel} • Fallback: ${p.allowSmsFallback ? "aktiv" : "deaktiviert"}`
+    : `Keine Nummer gespeichert.`;
+}
+
+document.getElementById('saveSmsPrefsBtn').onclick = async () => {
+  try {
+    // Nutzer*innenfreundlich: live normalisieren
+    const normalized = normalizeAtPhoneNumber($tel.value || null);
+    const allow = $allow.checked;
+    const prefs = setTelAndConsent(normalized, allow);
+    await syncSmsPrefsToRTDB(getDeviceId());
+    render();
+    alert("SMS‑Einstellungen gespeichert.");
+  } catch (e) {
+    alert(String(e));
+  }
+};
+
+document.getElementById('clearSmsPrefsBtn').onclick = async () => {
+  setTelAndConsent(null, false);
+  await syncSmsPrefsToRTDB(getDeviceId());
+  render();
+};
+
+render();
+</script>

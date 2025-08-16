@@ -113,6 +113,8 @@ self.addEventListener('push', (event) => {
       silent: true // Best effort; wird nicht überall unterstützt
     });
 
+    markDelivered(d.messageId, await getDeviceName()).catch(e => console.error('[SW] markDelivered failed:', e));
+
     if (visibleClient) {
       // an die Seite posten -> dein Alert/Toast
       visibleClient.postMessage({ type: 'PUSH', payload: d });
