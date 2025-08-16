@@ -538,7 +538,7 @@ async function sendNotificationToTokens(title, body, tokens = [], {
   attempt = 1,
   maxAttempts = 20,
   waitSec = 20,
-  sendEndpoint = "/functions/v1/send-to-all",
+  sendEndpoint = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all",
   fallbackEndpoint = "/functions/v1/send-sms-fallback",
 } = {}) {
 
