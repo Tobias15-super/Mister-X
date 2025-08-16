@@ -12,7 +12,7 @@ let selectedPost = null;
 const _seenMessageIds = new Set(); // für Push-Handler, um Duplikate zu vermeiden
 
 const TEXTBEE_API_KEY = "9bd1b2ba-67a5-412f-a5c1-9e30a8c8c3d3";
-const TEXTBEE_DEVICE_ID = "DEIN_TEXTBEE_DEVICE_ID";
+const TEXTBEE_DEVICE_ID = "68a05594f6706f717bba9ed8";
 const RTDB_BASE = "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
 
 // ====== Benutzer-Standort ======
