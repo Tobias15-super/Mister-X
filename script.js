@@ -639,103 +639,69 @@ async function removeNotificationSetup() {
 }
 
 
-async function triggerSmsFallbackIfNeeded(
+
+function triggerSmsFallbackIfNeeded(
   messageId,
-  recipientDeviceNames,         // <<< WICHTIG: DEVICE-NAMES, nicht Tokens!
+  recipientDeviceNames = [],
   smsText,
-  waitMs,
+  waitSec = 15,
   {
-    rtdbBase = RTDB_BASE,
+    rtdbBase = (typeof RTDB_BASE !== 'undefined' ? RTDB_BASE : ''),
     rolesPath = 'roles',
-    recipientsPath = 'notifications',  // Basis; wir bauen die komplette URL unten
-    idempotencyFlag = 'smsTriggered'   // notifications/{messageId}/smsTriggered = true
+    recipientsPath = 'notifications',
+    idempotencyFlag = 'smsTriggered',
+    edgeUrl = 'https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-fallback',
+    secret = (typeof SMS_FALLBACK_SECRET !== 'undefined' ? SMS_FALLBACK_SECRET : ''),
+    rtdbAuth,
   } = {}
 ) {
-  if (!messageId || !Array.isArray(recipientDeviceNames)) return;
+  if (!messageId) throw new Error('[Fallback] messageId fehlt');
+  if (!Array.isArray(recipientDeviceNames) || recipientDeviceNames.length === 0) {
+    console.warn('[Fallback] keine Empfänger – Fallback nicht geplant');
+    return Promise.resolve({ ok: true, skipped: 'no_recipients' });
+  }
+  if (!rtdbBase) throw new Error('[Fallback] rtdbBase fehlt');
 
-  // 1) Warten
-  await new Promise(r => setTimeout(r, waitMs));
+  const payload = {
+    messageId,
+    recipientDeviceNames,
+    // SMS max. 280 Zeichen (Beispiel-Limit)
+    smsText: String(smsText ?? '').slice(0, 280),
+    waitSec,
+    rtdbBase,
+    rolesPath,
+    recipientsPath,
+    idempotencyFlag,
+    ...(rtdbAuth ? { rtdbAuth } : {}),
+  };
 
-  // 2) Idempotenz prüfen: schon ausgelöst?
-  try {
-    const idemUrl = `${rtdbBase}/${recipientsPath}/${messageId}/${idempotencyFlag}.json`;
-    const idemRes = await fetch(idemUrl, { cache: 'no-store' });
-    if (idemRes.ok) {
-      const idem = await idemRes.json();
-      if (idem === true) {
-        log('[Fallback] SMS bereits ausgelöst - Abbruch.');
-        return;
+  const headers = { 'Content-Type': 'application/json' };
+  if (secret) headers['x-sms-secret'] = secret;
+
+  // Fire-and-forget (Promise wird zurückgegeben, aber du musst nicht awaiten)
+  return fetch(edgeUrl, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+  })
+    .then(async (res) => {
+      let body = null;
+      try { body = await res.json(); } catch {}
+      if (!res.ok) {
+        console.error('[Fallback] Edge call failed', res.status, body || (await res.text().catch(() => '')));
+        throw new Error(`Edge function error ${res.status}`);
       }
-    }
-  } catch (e) {
-    // Wenn die Prüfung scheitert, lieber KEIN Fallback (um False-Positives zu vermeiden)
-    log('[Fallback] Konnte Idempotenz nicht prüfen. Abbruch, um Doppel-SMS zu vermeiden.', e);
-    return;
-  }
-
-  // 3) Wer hat kein Delivered?
-  let map;
-  try {
-    const url = `${rtdbBase}/${recipientsPath}/${messageId}/recipients.json`;
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    map = await res.json() || {};
-  } catch (e) {
-    log('[Fallback] Konnte Recipients nicht laden. Abbruch, um Fehl-SMS zu vermeiden.', e);
-    return; // konservativ: kein Fallback auslösen
-  }
-
-  // ACHTUNG: Keys sind DEVICE-NAMES (wie im SW geschrieben), daher hier Device-Namen prüfen
-  const pendingDevices = recipientDeviceNames.filter(dn => !map?.[sanitizeKey(dn)]);
-  if (pendingDevices.length === 0) {
-    log('[Fallback] Alle Empfänger bestätigt. Keine SMS nötig.');
-    return;
-  }
-
-  // 4) Telefonnummern aus roles holen & filtern
-  let tels = [];
-  try {
-    const telPromises = pendingDevices.map(async (dn) => {
-      const roleUrl = `${rtdbBase}/${rolesPath}/${encodeURIComponent(dn)}.json`;
-      const roleRes = await fetch(roleUrl, { cache: 'no-store' });
-      if (!roleRes.ok) return null;
-      const data = await roleRes.json();
-      // require explicit consent & valide Nummer
-      return (data && data.allowSmsFallback && isValidAtE164(data.tel)) ? data.tel : null;
+      console.log('[Fallback] scheduled:', body);
+      return body;
+    })
+    .catch((err) => {
+      // Für “echtes” fire-and-forget: hier NICHT throwen,
+      // sonst bricht dein Aufrufer ggf. ab.
+      console.error('[Fallback] Konnte SMS-Fallback nicht planen:', err);
+      return { ok: false, error: err?.message || String(err) };
     });
-    tels = unique((await Promise.all(telPromises)).filter(Boolean));
-  } catch (e) {
-    log('[Fallback] Fehler beim Laden der Rollen:', e);
-    return;
-  }
-
-  if (tels.length === 0) {
-    log('[Fallback] Keine gültigen Telefonnummern/Erlaubnisse gefunden.');
-    return;
-  }
-
-  // 5) Idempotenz-Flag setzen (best effort) – vor dem SMS-Call, um Rennen zu minimieren
-  try {
-    const idemUrl = `${rtdbBase}/${recipientsPath}/${messageId}/${idempotencyFlag}.json`;
-    await fetch(idemUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(true)
-    });
-  } catch (e) {
-    // Wenn das Setzen fehlschlägt, können Doppel-SMS passieren – loggen, aber weiter
-    log('[Fallback] Konnte Idempotenz-Flag nicht setzen - fahre fort.', e);
-  }
-
-  // 6) SMS senden (catchen & loggen)
-  try {
-    await sendSmsViaTextBee(tels, smsText); // deine bestehende Funktion
-    log(`SMS-Fallback an ${tels.length} Nummer(n) ausgelöst.`);
-  } catch (e) {
-    log('[Fallback] SMS-Versand fehlgeschlagen:', e);
-    // Optional: Idempotenz-Flag zurücksetzen (nur wenn du willst)
-  }
 }
+
 
 
 
@@ -810,25 +776,24 @@ async function sendNotificationToTokens(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  const data = await res.json();
-  log("FCM result:", data);
 
   let result = {};
   try { result = await res.json(); } catch {}
   log(`📦 Versuch ${attempt}: status=${res.status}`, result);
 
-  // SMS-Fallback nur nach dem 1. Versuch scharf schalten
-  if (isFirstAttempt && result?.messageId && recipientDeviceNames.length > 0) {
+
+// 👉 SMS-Fallback NUR vom lokalen Zustand abhängig machen
+  if (isFirstAttempt && recipientDeviceNames.length > 0) {
     const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über Knopf oben rechts).`.slice(0, 280);
-    // fire-and-forget
-    triggerSmsFallbackIfNeeded(
-      messageId,
-      recipientDeviceNames,
-      smsText,
-      waitSec * 1000,
-      { rtdbBase }
-    );
+
+    // fire-and-forget; bewusst NICHT awaiten
+    triggerSmsFallbackIfNeeded(messageId, recipientDeviceNames, smsText, 15, {
+        rtdbBase: RTDB_BASE,
+        edgeUrl: `${SUPABASE_URL}/functions/v1/sms-fallback`,
+      });
+
   }
+
 
   // Retry für fehlgeschlagene Tokens
   const failedTokens = Array.isArray(result?.failedTokens) ? result.failedTokens : [];

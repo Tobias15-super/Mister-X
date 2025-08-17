@@ -16,6 +16,15 @@ const FIREBASE_PROJECT_ID = Deno.env.get("FIREBASE_PROJECT_ID")!;
 const GCP_SA_JSON = Deno.env.get("GCP_SA_JSON")!; 
 
 
+
+const sa = JSON.parse(Deno.env.get("GCP_SA_JSON") || "{}");
+if (sa.project_id && sa.project_id !== FIREBASE_PROJECT_ID) {
+  console.error("Service-Account-Projekt passt nicht:", { saProject: sa.project_id, fcmProject: FIREBASE_PROJECT_ID });
+  throw new Error(`Service account project (${sa.project_id}) != FIREBASE_PROJECT_ID (${FIREBASE_PROJECT_ID})`);
+}
+
+
+
 function sanitizeKey(key: string) {
   return (key || '').replace(/[.#$/\[\]\/]/g, '_');
 }
@@ -429,6 +438,8 @@ serve(async (req) => {
     if (!patchRes2.ok) {
       console.error("RTDB attempt result patch failed:", await patchRes2.text());
     }
+
+    
 
 
     return new Response(JSON.stringify({
