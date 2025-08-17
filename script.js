@@ -153,7 +153,8 @@ const supabaseClient = supabase.createClient(
 
 
 // Token speichern
-async function saveTokenToSupabase(token, deviceId) {
+async function saveTokenToSupabase(token) {
+  const deviceId = getDeviceId();
   try {
     // Optional: stattdessen direkt upsert mit onConflict, dann brauchst du kein delete
     const { error: delErr } = await supabaseClient
