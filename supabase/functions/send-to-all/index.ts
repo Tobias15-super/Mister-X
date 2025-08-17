@@ -45,10 +45,7 @@ async function deleteOldNotifications(opts: {
   // (RTDB gibt max. batchSize Einträge zurück).
   // Achtung: Wenn sehr viele alte Einträge existieren, kann das mehrere Runden dauern.
   while (true) {
-    const listUrl = withAuth(
-      `${rtdbBase}/notifications.json?orderBy=${orderBy}&endAt=${cutoffMs}&limitToFirst=${batchSize}`,
-      rtdbAuth
-    );
+    const listUrl = `${rtdbBase}/notifications.json?orderBy=${orderBy}&endAt=${cutoffMs}&limitToFirst=${batchSize}`;
     const res = await fetch(listUrl, { headers: { 'Cache-Control': 'no-store' } });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
@@ -64,7 +61,7 @@ async function deleteOldNotifications(opts: {
 
     // Batch-Delete via PATCH (id: null)
     const patch = Object.fromEntries(ids.map((id) => [id, null]));
-    const patchUrl = withAuth(`${rtdbBase}/notifications.json`, rtdbAuth);
+    const patchUrl = `${rtdbBase}/notifications.json`;
     const delRes = await fetch(patchUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

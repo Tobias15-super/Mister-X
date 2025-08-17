@@ -1,6 +1,21 @@
 // supabase/functions/sms-fallback/index.ts
 // Deno + Supabase Edge Function (TypeScript)
 
+
+const corsHeaders = {
+  // Entweder ganz offen:
+  // 'Access-Control-Allow-Origin': '*',
+  // Oder gezielt nur deine GitHub Pages Domain:
+  'Access-Control-Allow-Origin': 'https://tobias15-super.github.io',
+  'Vary': 'Origin',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  // WICHTIG: alle Header erlauben, die du vom Client sendest
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-sms-secret',
+  'Access-Control-Max-Age': '86400',
+};
+
+
+
 type FallbackRequest = {
   messageId: string;
   recipientDeviceNames: string[];    // DEVICE-NAMES, nicht Tokens
@@ -108,18 +123,23 @@ function requireSecret(req: Request) {
     req.headers.get('x-sms-secret') ||
     new URL(req.url).searchParams.get('secret') ||
     '';
-  if (got !== want) throw new Response('Unauthorized', { status: 401 });
+  if (got !== want) throw new Response('Unauthorized', { status: 401, headers: corsHeaders});
 }
 
 // ---- Handler --------------------------------------------------------------
 
 Deno.serve(async (req) => {
-  try {
-    if (req.method !== 'POST') {
-      return new Response('Method Not Allowed', { status: 405 });
+  //1) Preflight
+  if (req.method === 'OPTIONS') {
+      return new Response('ok', { status: 204, headers: corsHeaders });
     }
-    requireSecret(req);
 
+
+  if (req.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405, headers: corsHeaders });
+  }
+    requireSecret(req);
+try {
     const payload = (await req.json()) as FallbackRequest;
 
     const {
@@ -135,10 +155,10 @@ Deno.serve(async (req) => {
     } = payload;
 
     if (!messageId || !Array.isArray(recipientDeviceNames) || !recipientDeviceNames.length) {
-      return Response.json({ ok: false, error: 'Missing messageId or recipientDeviceNames' }, { status: 400 });
+      return Response.json({ ok: false, error: 'Missing messageId or recipientDeviceNames' }, { status: 400, headers: corsHeaders });
     }
     if (!rtdbBase || !smsText) {
-      return Response.json({ ok: false, error: 'Missing rtdbBase or smsText' }, { status: 400 });
+      return Response.json({ ok: false, error: 'Missing rtdbBase or smsText' }, { status: 400, headers: corsHeaders });
     }
 
     // 1) Serverseitig warten
@@ -148,7 +168,7 @@ Deno.serve(async (req) => {
     const idemPath = `${rtdbBase}/${recipientsPath}/${messageId}/${idempotencyFlag}.json`;
     const { value: alreadyTriggered, etag: idemEtag } = await getWithEtag<boolean>(idemPath, rtdbAuth);
     if (alreadyTriggered === true) {
-      return Response.json({ ok: true, skipped: 'already_triggered' });
+      return Response.json({ ok: true, skipped: 'already_triggered' }, {headers: corsHeaders});
     }
 
     // 3) Recipients laden und offene Device-Namen bestimmen
@@ -159,7 +179,7 @@ Deno.serve(async (req) => {
 
     const pendingDevices = recipientDeviceNames.filter((dn) => !recMap?.[sanitizeKey(dn)]);
     if (pendingDevices.length === 0) {
-      return Response.json({ ok: true, skipped: 'all_delivered' });
+      return Response.json({ ok: true, skipped: 'all_delivered' }, {headers: corsHeaders});
     }
 
     // 4) Telefonnummern aus roles/<deviceName> holen
@@ -177,7 +197,7 @@ Deno.serve(async (req) => {
 
     const tels = unique((await Promise.all(telPromises)).filter((x): x is string => !!x));
     if (tels.length === 0) {
-      return Response.json({ ok: true, skipped: 'no_tel_or_consent' });
+      return Response.json({ ok: true, skipped: 'no_tel_or_consent' }, {headers: corsHeaders});
     }
 
     // 5) Idempotenz-Flag atomar setzen (Compare-And-Set per ETag)
@@ -186,16 +206,16 @@ Deno.serve(async (req) => {
     const etagToUse = idemEtag ?? '*'; // wenn Knoten noch nie existierte, liefert RTDB ein ETag; '*' akzeptiert nur, wenn existiert. Sicherer: hole vor dem PUT noch einmal ETag:
     const fresh = await getWithEtag<boolean>(idemPath, rtdbAuth);
     if (fresh.value === true) {
-      return Response.json({ ok: true, skipped: 'already_triggered' });
+      return Response.json({ ok: true, skipped: 'already_triggered' }, {headers: corsHeaders});
     }
     const putRes = await conditionalPut(idemPath, true, fresh.etag ?? '', rtdbAuth);
     if (putRes.status === 412) {
       // Lost the race
-      return Response.json({ ok: true, skipped: 'lost_race' });
+      return Response.json({ ok: true, skipped: 'lost_race' }, {headers: corsHeaders});
     }
     if (!putRes.ok) {
       const msg = await putRes.text().catch(() => '');
-      return Response.json({ ok: false, error: `Failed to set idempotency: ${putRes.status} ${msg}` }, { status: 500 });
+      return Response.json({ ok: false, error: `Failed to set idempotency: ${putRes.status} ${msg}` }, { status: 500, headers: corsHeaders });
     }
 
     // 6) SMS senden
@@ -212,10 +232,10 @@ Deno.serve(async (req) => {
       }),
     }).catch(() => { /* best effort */ });
 
-    return Response.json({ ok: true, sent: tels.length, pendingDevices });
-  } catch (err) {
+    return Response.json({ ok: true, sent: tels.length, pendingDevices }, {headers: corsHeaders});
+  }  catch (err) {
     if (err instanceof Response) return err;
     const message = err instanceof Error ? err.message : String(err);
-    return Response.json({ ok: false, error: message }, { status: 500 });
+    return Response.json({ ok: false, error: message }, { status: 500, headers: corsHeaders });
   }
 });
