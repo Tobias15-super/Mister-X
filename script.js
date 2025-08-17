@@ -810,6 +810,8 @@ async function sendNotificationToTokens(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  const data = await res.json();
+  log("FCM result:", data);
 
   let result = {};
   try { result = await res.json(); } catch {}

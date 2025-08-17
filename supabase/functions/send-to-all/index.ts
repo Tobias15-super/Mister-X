@@ -397,7 +397,10 @@ serve(async (req) => {
     }
 
     // 5) Senden
-    const { successTokens, failedTokens, raw } = await sendFcmToTokens(title, body, link, tokenList);
+
+    const { ok, successTokens, failedTokens, unregistered, errorsByToken } =
+      await sendFcmToTokens(title, body, link, tokenList, messageId);
+
 
     // 6) Versuchsergebnis protokollieren (PATCH, nicht überschreiben)
     const resultPatch: any = {
@@ -405,6 +408,12 @@ serve(async (req) => {
       [`attempts/${attempt}/success`]: successTokens.length,
       [`attempts/${attempt}/failed`]: failedTokens.length,
     };
+
+    
+    console.log("FCM result", {
+      ok, successCount: successTokens.length, failedCount: failedTokens.length, unregistered, errorsByToken
+    });
+
 
     // Optional: letzte Fehlerliste unter attempts speichern (klein halten!)
     if (failedTokens.length) {
@@ -421,10 +430,16 @@ serve(async (req) => {
       console.error("RTDB attempt result patch failed:", await patchRes2.text());
     }
 
-    return new Response(
-      JSON.stringify({ ok: true, messageId, successTokens, failedTokens, fcm: raw }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
+
+    return new Response(JSON.stringify({
+      ok,
+      messageId,
+      successTokens,
+      failedTokens,
+      unregistered,
+      errorsByToken,  // <-- HIER zurückgeben
+    }), { status: 200, headers: corsHeaders });
+
 
   } catch (e) {
     console.error(e);
