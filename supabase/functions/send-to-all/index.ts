@@ -196,6 +196,8 @@ serve(async (req) => {
           patch[`recipients/${k}`] = existing?.recipients?.[k] ?? false;
         });
       }
+      
+
 
       const patchRes = await fetch(`${rtdbBase}/notifications/${messageId}.json`, {
         method: "PATCH",

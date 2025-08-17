@@ -782,7 +782,7 @@ async function sendNotificationToTokens(
 
   let result = {};
   try { result = await res.json(); } catch {}
-  log(`📦 Versuch ${attempt}:`, result);
+  log(`📦 Versuch ${attempt}: status=${res.status}`, result);
 
   // SMS-Fallback nur nach dem 1. Versuch scharf schalten
   if (isFirstAttempt && result?.messageId && recipientDeviceNames.length > 0) {
