@@ -739,40 +739,71 @@ async function triggerSmsFallbackIfNeeded(
 
 
 
+function createMessageId() {
+  try {
+    const g = (typeof globalThis !== 'undefined') ? globalThis
+            : (typeof self !== 'undefined') ? self
+            : (typeof window !== 'undefined') ? window
+            : undefined;
+
+    const cryptoObj = g && g.crypto;
+    if (cryptoObj && typeof cryptoObj.randomUUID === 'function') {
+      return cryptoObj.randomUUID();
+    }
+    if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+      // UUID v4 Fallback
+      const bytes = new Uint8Array(16);
+      cryptoObj.getRandomValues(bytes);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+      bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant
+      const toHex = n => n.toString(16).padStart(2, '0');
+      const hex = Array.from(bytes, toHex).join('');
+      return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+    }
+  } catch {}
+  // letzte Rückfalloption
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 
 async function sendNotificationToTokens(
   title,
   body,
   tokens = [],
-  {
-    recipientDeviceNames = [],      // komplette Ziel-Liste (device_names!)
+  options = {}
+) {
+  const {
+    recipientDeviceNames = [],
     link = '/Mister-X/',
     attempt = 1,
     maxAttempts = 5,
     waitSec = 15,
     sendEndpoint = 'https://...supabase.co/functions/v1/send-to-all',
     rtdbBase = RTDB_BASE,
-    messageId = (self.crypto?.randomUUID?.() || String(Date.now())), // stabil über alle Versuche
-  } = {}
-) {
-  const senderName = (typeof getDeviceId === 'function' ? getDeviceId() : null) || 'unknown';
+    messageId: messageIdFromCaller, // kann vom Aufrufer stabil übergeben werden
+  } = options;
 
-  // Beim ersten Versuch: recipients mitsenden und sagen, dass sie "gesetzt" (nicht appended) werden sollen
-  // Bei Retries: recipients nicht anfassen -> appendRecipients=false und recipients leer lassen
+  // erzeugen, falls nicht vom Aufrufer vorgegeben
+  const messageId = messageIdFromCaller ?? createMessageId();
+
+  const senderName =
+    (typeof getDeviceId === 'function' ? getDeviceId() : null) || 'unknown';
+
   const isFirstAttempt = attempt === 1;
 
   const payload = {
     title,
     body,
-    tokens,                         // token-Liste für diesen Versuch (voll beim 1., nur failed beim retry)
+    tokens,
     senderName,
     link,
-    messageId,                      // stabil!
+    messageId,              // bleibt stabil über alle Retries
     rtdbBase,
     recipientDeviceNames: isFirstAttempt ? recipientDeviceNames : [],
-    setRecipientsMode: isFirstAttempt ? 'set_once' : 'none', // 'set_once' | 'append' | 'none'
-    attempt
+    setRecipientsMode: isFirstAttempt ? 'set_once' : 'none',
+    attempt,
   };
+
 
   const res = await fetch(sendEndpoint, {
     method: 'POST',
