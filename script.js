@@ -640,6 +640,7 @@ async function removeNotificationSetup() {
 
 
 
+
 function triggerSmsFallbackIfNeeded(
   messageId,
   recipientDeviceNames = [],
@@ -650,7 +651,7 @@ function triggerSmsFallbackIfNeeded(
     rolesPath = 'roles',
     recipientsPath = 'notifications',
     idempotencyFlag = 'smsTriggered',
-    edgeUrl = 'https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-fallback',
+    // Hinweis: edgeUrl wird bei invoke() nicht benötigt
     secret = (typeof SMS_FALLBACK_SECRET !== 'undefined' ? SMS_FALLBACK_SECRET : ''),
     rtdbAuth,
   } = {}
@@ -665,8 +666,7 @@ function triggerSmsFallbackIfNeeded(
   const payload = {
     messageId,
     recipientDeviceNames,
-    // SMS max. 280 Zeichen (Beispiel-Limit)
-    smsText: String(smsText ?? '').slice(0, 280),
+    smsText: String(smsText ?? '').slice(0, 280), // optionales Kürzen
     waitSec,
     rtdbBase,
     rolesPath,
@@ -675,32 +675,27 @@ function triggerSmsFallbackIfNeeded(
     ...(rtdbAuth ? { rtdbAuth } : {}),
   };
 
-  const headers = { 'Content-Type': 'application/json' };
-  if (secret) headers['x-sms-secret'] = secret;
+  const headers = {};
+  if (secret) headers['x-sms-secret'] = secret; // nur falls du dein requireSecret serverseitig aktiv lässt
 
-  // Fire-and-forget (Promise wird zurückgegeben, aber du musst nicht awaiten)
-  return fetch(edgeUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  })
-    .then(async (res) => {
-      let body = null;
-      try { body = await res.json(); } catch {}
-      if (!res.ok) {
-        console.error('[Fallback] Edge call failed', res.status, body || (await res.text().catch(() => '')));
-        throw new Error(`Edge function error ${res.status}`);
+  // Aufruf per supabase-js: setzt Authorization & apikey automatisch
+  return supabaseClient.functions
+    .invoke('sms-fallback', { body: payload, headers })
+    .then(({ data, error }) => {
+      if (error) {
+        console.error('[Fallback] Edge call failed', error);
+        return { ok: false, error: error.message || 'invoke failed' };
       }
-      console.log('[Fallback] scheduled:', body);
-      return body;
+      console.log('[Fallback] scheduled:', data);
+      return data;
     })
     .catch((err) => {
-      // Für “echtes” fire-and-forget: hier NICHT throwen,
-      // sonst bricht dein Aufrufer ggf. ab.
+      // Fire-and-forget: wir werfen nicht, sondern liefern ein Fehlerobjekt zurück
       console.error('[Fallback] Konnte SMS-Fallback nicht planen:', err);
       return { ok: false, error: err?.message || String(err) };
     });
 }
+
 
 
 
