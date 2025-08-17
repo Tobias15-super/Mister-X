@@ -34,25 +34,68 @@ async function fetchNamesForTokens(tokens: string[]): Promise<Record<string, str
   return map;
 }
 
+/**
+ * Sendet Web/FCM-Nachrichten über den FCM HTTP v1 Endpoint.
+ * Erwartet, dass FIREBASE_PROJECT_ID und getAccessToken() im Scope vorhanden sind.
+ */
 async function sendFcmToTokens(
   title: string,
   body: string,
   link: string,
   tokens: string[],
   messageId?: string
-) {
-  if (!tokens.length) return { successTokens: [], failedTokens: [] };
+): Promise<{
+  ok: boolean;
+  successTokens: string[];
+  failedTokens: string[];
+  unregistered: string[];
+  errorsByToken: Record<string, { status: number; errorCode?: string; message?: string; raw?: unknown }>;
+}> {
+  // --- 1) Tokenliste deduplizieren & grob validieren ---
+  const deduped = [...new Set((tokens || []).filter(Boolean))];
 
+  const looksLikeFcmToken = (t: string) =>
+    typeof t === "string" && t.length > 100 && t.includes(":");
+
+  const invalidTokens: string[] = [];
+  const validTokens = deduped.filter((t) => {
+    const ok = looksLikeFcmToken(t);
+    if (!ok) invalidTokens.push(String(t));
+    return ok;
+  });
+
+  // Wenn nach Filterung nichts übrig ist, früh zurückgeben
+  if (validTokens.length === 0) {
+    const errorsByToken = Object.fromEntries(
+      invalidTokens.map((t) => [t, { status: 400, message: "invalid-token-shape" }])
+    );
+    return {
+      ok: false,
+      successTokens: [],
+      failedTokens: invalidTokens,
+      unregistered: [],
+      errorsByToken,
+    };
+  }
+
+  // --- 2) FCM v1 Endpoint & OAuth2 Access Token ---
   const fcmUrl = `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`;
   const accessToken = await getAccessToken();
 
   const toStr = (v: unknown) => (v == null ? "" : String(v));
 
-  const results = await Promise.allSettled(tokens.map(async (token) => {
+  // Map für Fehlerdetails pro Token
+  const errorsByToken: Record<
+    string,
+    { status: number; errorCode?: string; message?: string; raw?: unknown }
+  > = {};
+
+  // --- 3) Sende-Helfer pro Token (v1 fordert 1 Request je Ziel) ---
+  const sendOne = async (token: string) => {
     const payload = {
       message: {
         token,
-        // data-only ist für Web oft sinnvoll; alternativ notification+webpush ergänzen
+        // Data-only (Service Worker rendert selbst). Alternativ "notification" ergänzen.
         data: {
           title: toStr(title),
           body: toStr(body),
@@ -60,17 +103,17 @@ async function sendFcmToTokens(
           messageId: toStr(messageId ?? ""),
         },
         webpush: {
-          headers: { Urgency: "high", TTL: "120" },
+          headers: { Urgency: "high", TTL: "120" }, // TTL in Sekunden
           fcm_options: { link },
         },
-        // notification: { title, body }, // falls du eine native Notification vom FCM möchtest
+        // notification: { title, body }, // falls du native Anzeige ohne eigene SW-Logik möchtest
       },
     };
 
     const res = await fetch(fcmUrl, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
@@ -78,35 +121,51 @@ async function sendFcmToTokens(
 
     const text = await res.text();
     let json: any = null;
-    try { json = JSON.parse(text); } catch {}
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // HTML oder leer -> belasse text als raw
+    }
 
     if (!res.ok) {
-      const err: any = new Error(`FCM v1 send failed (${res.status})`);
-      err.status = res.status;
-      err.raw = json ?? text;
-      err.errorCode = json?.error?.details?.[0]?.errorCode ?? null; // z.B. "UNREGISTERED"
-      throw err;
+      const errorCode = json?.error?.details?.[0]?.errorCode; // z.B. "UNREGISTERED", "SENDER_ID_MISMATCH", ...
+      errorsByToken[token] = {
+        status: res.status,
+        errorCode: errorCode || undefined,
+        message: json?.error?.message ?? text,
+        raw: json ?? text,
+      };
+      throw new Error(`FCM v1 send failed (${res.status})`);
     }
+
     return { token, response: json };
-  }));
+  };
+
+  // --- 4) Parallel senden & Ergebnisse einsammeln ---
+  const results = await Promise.allSettled(validTokens.map(sendOne));
 
   const successTokens: string[] = [];
-  const failedTokens: string[] = [];
+  const failedTokens: string[] = [...invalidTokens]; // von Anfang an als "failed" mitzählen
   const unregistered: string[] = [];
 
-  results.forEach((r, i) => {
-    const t = tokens[i];
-    if (r.status === "fulfilled") successTokens.push(t);
-    else {
-      failedTokens.push(t);
-      if ((r as PromiseRejectedResult).reason?.errorCode === "UNREGISTERED") {
-        unregistered.push(t); // → im Backend löschen
+  results.forEach((r, idx) => {
+    const token = validTokens[idx];
+    if (r.status === "fulfilled") {
+      successTokens.push(token);
+    } else {
+      failedTokens.push(token);
+      const code = errorsByToken[token]?.errorCode;
+      if (code === "UNREGISTERED") {
+        unregistered.push(token); // -> im Backend löschen
       }
     }
   });
 
-  return { successTokens, failedTokens, unregistered };
+  const ok = successTokens.length > 0;
+
+  return { ok, successTokens, failedTokens, unregistered, errorsByToken };
 }
+
 
 
 

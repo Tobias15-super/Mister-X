@@ -643,7 +643,7 @@ async function triggerSmsFallbackIfNeeded(
   messageId,
   recipientDeviceNames,         // <<< WICHTIG: DEVICE-NAMES, nicht Tokens!
   smsText,
-  waitMs,              // 45s ist ein realistischerer Standard als 20s
+  waitMs,
   {
     rtdbBase = RTDB_BASE,
     rolesPath = 'roles',
