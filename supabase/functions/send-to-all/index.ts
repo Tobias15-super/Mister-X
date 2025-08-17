@@ -12,6 +12,10 @@ const corsHeaders = {
 
 const RTDB_BASE_FALLBACK = Deno.env.get("RTDB_BASE") ?? "";
 
+const FIREBASE_PROJECT_ID = Deno.env.get("FIREBASE_PROJECT_ID")!;
+const GCP_SA_JSON = Deno.env.get("GCP_SA_JSON")!; 
+
+
 function sanitizeKey(key: string) {
   return (key || '').replace(/[.#$/\[\]\/]/g, '_');
 }
@@ -30,51 +34,175 @@ async function fetchNamesForTokens(tokens: string[]): Promise<Record<string, str
   return map;
 }
 
-async function sendFcmToTokens(title: string, body: string, link: string, tokens: string[]) {
+async function sendFcmToTokens(
+  title: string,
+  body: string,
+  link: string,
+  tokens: string[],
+  messageId?: string
+) {
   if (!tokens.length) return { successTokens: [], failedTokens: [] };
-  const fcmUrl = "https://fcm.googleapis.com/fcm/send";
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": `key=${fcmKey}`
-  };
 
-  // Data-only Payload (empfohlen): SW rendert selbst
-  const payload = {
-    registration_ids: tokens,
-    priority: "high",
-    time_to_live: 120, // Sekunden
-    data: {
-      title,
-      body,
-      url: link,
-      messageId: undefined, // wird vom Aufrufer gesetzt, optional
+  const fcmUrl = `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`;
+  const accessToken = await getAccessToken();
+
+  const toStr = (v: unknown) => (v == null ? "" : String(v));
+
+  const results = await Promise.allSettled(tokens.map(async (token) => {
+    const payload = {
+      message: {
+        token,
+        // data-only ist für Web oft sinnvoll; alternativ notification+webpush ergänzen
+        data: {
+          title: toStr(title),
+          body: toStr(body),
+          url: toStr(link),
+          messageId: toStr(messageId ?? ""),
+        },
+        webpush: {
+          headers: { Urgency: "high", TTL: "120" },
+          fcm_options: { link },
+        },
+        // notification: { title, body }, // falls du eine native Notification vom FCM möchtest
+      },
+    };
+
+    const res = await fetch(fcmUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await res.text();
+    let json: any = null;
+    try { json = JSON.parse(text); } catch {}
+
+    if (!res.ok) {
+      const err: any = new Error(`FCM v1 send failed (${res.status})`);
+      err.status = res.status;
+      err.raw = json ?? text;
+      err.errorCode = json?.error?.details?.[0]?.errorCode ?? null; // z.B. "UNREGISTERED"
+      throw err;
     }
-  };
-
-  const res = await fetch(fcmUrl, { method: "POST", headers, body: JSON.stringify(payload) });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`FCM error ${res.status}: ${txt}`);
-  }
-  const json = await res.json();
+    return { token, response: json };
+  }));
 
   const successTokens: string[] = [];
   const failedTokens: string[] = [];
+  const unregistered: string[] = [];
 
-  // Auswertung: FCM-Response hat i.d.R. results array pro token
-  if (Array.isArray(json.results)) {
-    json.results.forEach((r: any, idx: number) => {
-      const t = tokens[idx];
-      if (r && (r.message_id || r.success)) {
-        successTokens.push(t);
-      } else {
-        failedTokens.push(t);
+  results.forEach((r, i) => {
+    const t = tokens[i];
+    if (r.status === "fulfilled") successTokens.push(t);
+    else {
+      failedTokens.push(t);
+      if ((r as PromiseRejectedResult).reason?.errorCode === "UNREGISTERED") {
+        unregistered.push(t); // → im Backend löschen
       }
-    });
+    }
+  });
+
+  return { successTokens, failedTokens, unregistered };
+}
+
+
+
+
+
+type SaJson = {
+  client_email: string;
+  private_key: string; // PEM
+  token_uri?: string;  // optional, default oauth2.googleapis.com/token
+};
+
+let cachedAccessToken: { token: string; exp: number } | null = null;
+
+async function getAccessToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedAccessToken && now < cachedAccessToken.exp - 60) {
+    return cachedAccessToken.token;
   }
 
-  return { successTokens, failedTokens, raw: json };
+  const sa: SaJson = JSON.parse(GCP_SA_JSON);
+  const iat = now;
+  const exp = now + 3600;
+  const scope = "https://www.googleapis.com/auth/firebase.messaging";
+  const aud = sa.token_uri || "https://oauth2.googleapis.com/token";
+
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = {
+    iss: sa.client_email,
+    scope,
+    aud,
+    iat,
+    exp,
+  };
+
+  const enc = (obj: any) =>
+    b64url(new TextEncoder().encode(JSON.stringify(obj)));
+
+  const unsigned = `${enc(header)}.${enc(payload)}`;
+  const signature = await signWithPemRS256(sa.private_key, unsigned);
+  const assertion = `${unsigned}.${b64url(signature)}`;
+
+  const res = await fetch(aud, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`OAuth token fetch failed: ${res.status} ${await res.text()}`);
+  }
+  const json = await res.json() as { access_token: string; expires_in: number };
+  cachedAccessToken = { token: json.access_token, exp: now + Math.min(json.expires_in ?? 3600, 3600) };
+  return cachedAccessToken.token;
 }
+
+function b64url(input: Uint8Array) {
+  return btoa(String.fromCharCode(...input))
+    .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function signWithPemRS256(pem: string, data: string): Promise<Uint8Array> {
+  // PEM -> ArrayBuffer (PKCS8)
+  const pkcs8 = pemToPkcs8(pem);
+  const key = await crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(data),
+  );
+  return new Uint8Array(sig);
+}
+
+function pemToPkcs8(pem: string): ArrayBuffer {
+  const body = pem
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/\s+/g, "");
+  const raw = atob(body);
+  const buf = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+  return buf.buffer;
+}
+
+
+
+
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
