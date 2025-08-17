@@ -15,6 +15,8 @@ const RTDB_BASE_FALLBACK = Deno.env.get("RTDB_BASE") ?? "";
 const FIREBASE_PROJECT_ID = Deno.env.get("FIREBASE_PROJECT_ID")!;
 const GCP_SA_JSON = Deno.env.get("GCP_SA_JSON")!; 
 
+const FIVE_MIN = 5 * 60 * 1000; // 5 Minuten in Millisekunden
+
 
 
 const sa = JSON.parse(Deno.env.get("GCP_SA_JSON") || "{}");
@@ -22,6 +24,66 @@ if (sa.project_id && sa.project_id !== FIREBASE_PROJECT_ID) {
   console.error("Service-Account-Projekt passt nicht:", { saProject: sa.project_id, fcmProject: FIREBASE_PROJECT_ID });
   throw new Error(`Service account project (${sa.project_id}) != FIREBASE_PROJECT_ID (${FIREBASE_PROJECT_ID})`);
 }
+
+
+
+
+
+async function deleteOldNotifications(opts: {
+  rtdbBase: string;
+  cutoffMs: number;
+  keep?: string[];
+  rtdbAuth?: string;
+  batchSize?: number; // default 500
+}) {
+  const { rtdbBase, cutoffMs, keep = [], rtdbAuth, batchSize = 500 } = opts;
+
+  const orderBy = encodeURIComponent('"timestamp"');
+
+  let totalDeleted = 0;
+  // Wir loopen so lange, bis kein Batch mehr zurückkommt
+  // (RTDB gibt max. batchSize Einträge zurück).
+  // Achtung: Wenn sehr viele alte Einträge existieren, kann das mehrere Runden dauern.
+  while (true) {
+    const listUrl = withAuth(
+      `${rtdbBase}/notifications.json?orderBy=${orderBy}&endAt=${cutoffMs}&limitToFirst=${batchSize}`,
+      rtdbAuth
+    );
+    const res = await fetch(listUrl, { headers: { 'Cache-Control': 'no-store' } });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`cleanup list failed: HTTP ${res.status} ${txt}`);
+    }
+
+    const map = (await res.json()) as Record<string, { timestamp?: number }>|null;
+    if (!map || Object.keys(map).length === 0) break;
+
+    // Zu löschende IDs bestimmen (aktuellen messageId nicht löschen)
+    const ids = Object.keys(map).filter((id) => !keep.includes(id));
+    if (ids.length === 0) break;
+
+    // Batch-Delete via PATCH (id: null)
+    const patch = Object.fromEntries(ids.map((id) => [id, null]));
+    const patchUrl = withAuth(`${rtdbBase}/notifications.json`, rtdbAuth);
+    const delRes = await fetch(patchUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!delRes.ok) {
+      const txt = await delRes.text().catch(() => '');
+      throw new Error(`cleanup patch failed: HTTP ${delRes.status} ${txt}`);
+    }
+
+    totalDeleted += ids.length;
+    // Wenn weniger als batchSize zurückkamen, sind wir fertig
+    if (ids.length < batchSize) break;
+    // sonst nächste Runde (falls noch mehr alte Einträge existieren)
+  }
+
+  return totalDeleted;
+}
+
 
 
 
@@ -439,7 +501,31 @@ serve(async (req) => {
       console.error("RTDB attempt result patch failed:", await patchRes2.text());
     }
 
-    
+        // 7) Aufräumen: alle Notifications älter als 5 Minuten entfernen
+    try {
+      const cutoff = Date.now() - FIVE_MIN;
+
+      // Optional: RTDB-Auth (falls du es als Secret/Const hast)
+      // Wenn du kein Token nutzt, lass rtdbAuth einfach undefined.
+      const rtdbAuth = (globalThis as any).RTDB_AUTH || undefined;
+
+      const deleted = await deleteOldNotifications({
+        rtdbBase,
+        cutoffMs: cutoff,
+        keep: [messageId], // aktuelle Nachricht nicht löschen
+        rtdbAuth,
+        // batchSize: 500, // optional anpassbar
+      });
+
+      if (deleted > 0) {
+        console.log(`Cleanup: ${deleted} alte Notification(s) gelöscht (<= ${new Date(cutoff).toISOString()})`);
+      }
+    } catch (e) {
+      console.warn('Cleanup fehlgeschlagen:', e);
+    }
+
+
+
 
 
     return new Response(JSON.stringify({

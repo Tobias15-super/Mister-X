@@ -789,7 +789,7 @@ async function sendNotificationToTokens(
     // fire-and-forget; bewusst NICHT awaiten
     triggerSmsFallbackIfNeeded(messageId, recipientDeviceNames, smsText, 15, {
         rtdbBase: RTDB_BASE,
-        edgeUrl: `${SUPABASE_URL}/functions/v1/sms-fallback`,
+        edgeUrl: `https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-fallback`,
       });
 
   }
