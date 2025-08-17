@@ -111,7 +111,10 @@ serve(async (req) => {
       tokenList = [...new Set(providedTokens)].filter(Boolean);
     } else {
       const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name`, {
-        headers: { apikey: supabaseKey },
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
       });
       if (!tokensRes.ok) throw new Error(`Token fetch failed: ${tokensRes.status} ${await tokensRes.text()}`);
       const rows = await tokensRes.json() as Array<{ token: string; device_name?: string | null }>;
