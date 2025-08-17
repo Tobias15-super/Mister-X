@@ -153,32 +153,34 @@ const supabaseClient = supabase.createClient(
 
 
 // Token speichern
-async function saveTokenToSupabase(token) {
-  let device_name = ""
-  const deviceId = getDeviceId();
+async function saveTokenToSupabase(token, deviceId) {
+  try {
+    // Optional: stattdessen direkt upsert mit onConflict, dann brauchst du kein delete
+    const { error: delErr } = await supabaseClient
+      .from('fcm_tokens')
+      .delete()
+      .eq('device_name', deviceId);
 
-  const { error } = await supabaseClient
-  .from('fcm_tokens')
-  .delete()
-  .eq('device_name', deviceId);
-  if (error) {
-    log("❌ Fehler beim Löschen aus Supabase:", error);
-  } else {
-    log("✅ Alter Token aus Supabase gelöscht.");
+    if (delErr) {
+      log("❌ Fehler beim Löschen aus Supabase:", delErr);
+    } else {
+      log("✅ Alter Token aus Supabase gelöscht.");
+    }
+
+    const { error: upsertErr } = await supabaseClient
+      .from('fcm_tokens')
+      .upsert({ token, device_name: deviceId });
+
+    if (upsertErr) {
+      log("❌ Fehler beim Speichern des Tokens:", upsertErr);
+    } else {
+      log("✅ Token erfolgreich gespeichert.");
+    }
+  } catch (e) {
+    log("❌ Supabase Exception:", e);
   }
-
-
-  supabaseClient
-    .from('fcm_tokens')
-    .upsert({ token, device_name: deviceId })
-    .then(({ error }) => {
-      if (error) {
-        log("Fehler beim Speichern des Tokens:", error);
-      } else {
-        log("Token erfolgreich gespeichert.");
-      }
-    });
 }
+
 
 export function getDeviceId() {
   let id = localStorage.getItem("deviceId");
@@ -280,61 +282,149 @@ async function saveDeviceName(deviceName) {
 
 
 
-async function refreshTokenIfPermitted() {
+async function readSwFlag(key) {
+  const db = await new Promise((resolve, reject) => {
+    const req = indexedDB.open('app-db');
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('sw-flags')) db.createObjectStore('sw-flags');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  try {
+    return await new Promise((res) => {
+      const tx = db.transaction('sw-flags', 'readonly');
+      const store = tx.objectStore('sw-flags');
+      const r = store.get(key);
+      r.onsuccess = () => { db.close(); res(r.result || null); };
+      r.onerror = () => { db.close(); res(null); };
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function clearSwFlag(key) {
+  const db = await new Promise((resolve, reject) => {
+    const req = indexedDB.open('app-db');
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('sw-flags')) db.createObjectStore('sw-flags');
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  await new Promise((res) => {
+    const tx = db.transaction('sw-flags', 'readwrite');
+    tx.objectStore('sw-flags').delete(key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); res(); };
+  });
+}
+
+
+async function refreshTokenIfPermitted(options = {}) {
+  const {
+    force = false,
+    vapidKey = "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE",
+    touchWhenUnchanged = true
+  } = options;
+
   if (
     typeof Notification === "undefined" ||
     Notification.permission !== "granted" ||
     localStorage.getItem("serviceWorkerRegistered") !== "true"
   ) {
     log("🔕 Token-Refresh übersprungen: Keine Berechtigung oder kein SW.");
-    return;
+    return null;
   }
+
+  // Mutex, um parallele Aufrufe zu verhindern
+  const mutexKey = "fcmTokenRefreshLock";
+  const nowStamp = String(Date.now());
+  const existingLock = localStorage.getItem(mutexKey);
+  if (existingLock) {
+    log("⏳ Token-Refresh läuft bereits, übersprungen.");
+    return null;
+  }
+  localStorage.setItem(mutexKey, nowStamp);
 
   try {
     const registration = await navigator.serviceWorker.ready;
-    const newToken = await getToken(messaging, {
-      serviceWorkerRegistration: registration,
-      vapidKey: "BPxoiPhAH4gXMrR7PhhrAUolApYTK93-MZ48-BHWF0rksFtkvBwE9zYUS2pfiEw6_PXzPYyaQZdNwM6LL4QdeOE"
-    });
+
+    let newToken = null;
+    try {
+      newToken = await getToken(messaging, {
+        serviceWorkerRegistration: registration,
+        vapidKey
+      });
+    } catch (e) {
+      log("❌ Fehler bei getToken:", e);
+      return null;
+    }
 
     if (!newToken) {
       log("⚠️ Kein Token beim Refresh erhalten.");
-      return;
+      return null;
     }
 
     const deviceId = getDeviceId();
     const oldToken = localStorage.getItem("fcmToken");
 
-    if (newToken !== oldToken) {
+    if (force || newToken !== oldToken) {
       log("🔄 Token aktualisiert:", newToken);
 
-      // Firebase Realtime Database
-      await set(ref(rtdb, "tokens/" + deviceId), newToken);
+      // RTDB: strukturierter Eintrag
+      await set(ref(rtdb, "tokens/" + deviceId), {
+        token: newToken,
+        deviceName: deviceId,
+        updatedAt: Date.now(),
+        ua: (typeof navigator !== "undefined" ? navigator.userAgent : null),
+        platform: (typeof navigator !== "undefined" ? navigator.platform : null)
+      });
 
-      // Supabase: alten Token löschen
-      const { error } = await supabaseClient
-        .from('fcm_tokens')
-        .delete()
-        .eq('device_name', deviceId);
-
-      if (error) {
-        log("❌ Fehler beim Löschen aus Supabase:", error);
-      } else {
-        log("✅ Alter Token aus Supabase gelöscht.");
+      // Supabase: upsert by device_name (ohne vorheriges Delete)
+      try {
+        const { error } = await supabaseClient
+          .from('fcm_tokens')
+          .upsert({ token: newToken, device_name: deviceId }, { onConflict: 'device_name' }); // erfordert UNIQUE(device_name)
+        if (error) {
+          log("❌ Fehler beim Upsert in Supabase:", error);
+        } else {
+          log("✅ Token in Supabase upserted.");
+        }
+      } catch (e) {
+        log("❌ Supabase Upsert Exception:", e);
       }
-
-      // Supabase: neuen Token speichern
-      await saveTokenToSupabase(newToken);
 
       localStorage.setItem("fcmToken", newToken);
       localStorage.setItem("nachrichtAktiv", "true");
+      return newToken;
+
     } else {
       log("ℹ️ Token ist unverändert.");
+
+      // Optional: Touch in RTDB, damit der Eintrag frisch bleibt
+      try {
+        await update(ref(rtdb, "tokens/" + deviceId), { touchedAt: Date.now() });
+      } catch (e) {
+        // Falls update nicht importiert ist:
+        // await set(ref(rtdb, `tokens/${deviceId}/touchedAt`), Date.now());
+      }
+      return newToken;
     }
   } catch (err) {
     log("❌ Fehler beim Token-Refresh:", err);
+    return null;
+  } finally {
+    if (localStorage.getItem(mutexKey) === nowStamp) {
+      localStorage.removeItem(mutexKey);
+    }
   }
 }
+
+
 
 // Einmalig definieren (Window & SW gleich)
 async function openDbEnsureStore(dbName, storeName) {
@@ -552,7 +642,7 @@ async function triggerSmsFallbackIfNeeded(
   messageId,
   recipientDeviceNames,         // <<< WICHTIG: DEVICE-NAMES, nicht Tokens!
   smsText,
-  waitMs = 20000,               // 45s ist ein realistischerer Standard als 20s
+  waitMs,              // 45s ist ein realistischerer Standard als 20s
   {
     rtdbBase = RTDB_BASE,
     rolesPath = 'roles',
@@ -657,7 +747,7 @@ async function sendNotificationToTokens(
     link = '/Mister-X/',
     attempt = 1,
     maxAttempts = 5,                     // 20 ist viel; 5 reicht oft
-    waitSec = 20,                        // realistisch für FCM/Doze
+    waitSec = 15,                        // realistisch für FCM/Doze
     sendEndpoint = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all",
     rtdbBase = RTDB_BASE
   } = {}
@@ -2576,6 +2666,24 @@ async function startScript() {
       });
 
     }
+
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e?.data?.type === 'PUSH_SUBSCRIPTION_CHANGED') {
+        // force = true -> registriere auch bei unverändertem Token erneut & touch DB
+        refreshTokenIfPermitted({ force: true }).catch(log);
+      }
+    });
+
+    
+    (async () => {
+      const changedAt = await readSwFlag('pushSubscriptionChangedAt');
+      if (changedAt) {
+        await refreshTokenIfPermitted({ force: true }).catch(log);
+        await clearSwFlag('pushSubscriptionChangedAt');
+      }
+    })();
+
+
 
 
     // (C) UI: Button/Hint steuern

@@ -98,17 +98,18 @@ function isIOSLikeUA(ua) {
 }
 
 // --- Push-Handler ---
+
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
-    const payload = event.data ? (function () { try { return event.data.json(); } catch { return {}; } })() : {};
+    const payload = event.data ? (() => { try { return event.data.json(); } catch { return {}; } })() : {};
     const n = payload.notification || {};
     const d = payload.data || payload || {};
 
     const title = n.title || d.title || 'Neue Nachricht';
     const body  = n.body  || d.body  || '';
     const url   = d.url || n.click_action || '/Mister-X/';
-    const tag   = d.tag || 'mrx-fg'; // gleicher Tag zum gezielten Schließen
     const messageId = d.messageId || d.id || n.tag || String(Date.now());
+    const tagBase = d.tag || 'mrx';
 
     const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     const visibleClient = windows.find((w) => w.visibilityState === 'visible');
@@ -116,49 +117,60 @@ self.addEventListener('push', (event) => {
     const ua = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
     const isIOS = isIOSLikeUA(ua);
 
-    // Zustellmarkierung nebenläufig
-    markDelivered(messageId, await getDeviceName()).catch((e) => console.error('[SW] markDelivered failed:', e));
-
+    // --- FOREGROUND ---
     if (visibleClient) {
-      // Foreground: an die Seite posten -> dein Alert/Toast
-      try {
-        visibleClient.postMessage({ type: 'PUSH', payload: d });
-      } catch {}
+      try { visibleClient.postMessage({ type: 'PUSH', payload: d }); } catch {}
 
-      // iOS verlangt sichtbare Notification -> kurz zeigen und sofort schließen
       if (isIOS) {
+        // iOS verlangt sichtbare Notification im FG
+        const fgTag = `${tagBase}-fg`;
         const opts = {
           body,
           icon: '/Mister-X/icons/android-chrome-192x192.png',
           badge: '/Mister-X/icons/Mister_X_Badge.png',
-          tag,
-          renotify: false,
-          silent: true,
-          data: { url, messageId, tag, fg: true }
+          tag: fgTag,
+          renotify: true,
+          silent: true, // im FG i.d.R. stumm, um Doppelung zu vermeiden
+          requireInteraction: false,
+          timestamp: d.timestamp || Date.now(),
+          data: { url, messageId, tag: fgTag, fg: true }
         };
         await self.registration.showNotification(title, opts);
-        await new Promise((r) => setTimeout(r, 50));
-        const notes = await self.registration.getNotifications({ tag });
+        // kurz zeigen und schließen
+        await new Promise((r) => setTimeout(r, 80));
+        const notes = await self.registration.getNotifications({ tag: fgTag });
         notes.forEach((n) => n.close());
       }
 
-      // Auf Nicht‑iOS: KEINE Notification im Foreground -> keine Doppelung
+      // Erst NACH Anzeige (oder Post) markieren
+      try { await markDelivered(messageId, await getDeviceName()); } catch (e) {
+        console.error('[SW] markDelivered failed:', e);
+      }
       return;
     }
 
-    // Background: "normale" sichtbare Notification
+    // --- BACKGROUND ---
+    // eigener Tag pro Nachricht -> keine stille Ersetzung
+    const bgTag = `${tagBase}-${messageId}`;
     const opts = {
       body,
       icon: '/Mister-X/icons/android-chrome-192x192.png',
       badge: '/Mister-X/icons/Mister_X_Badge.png',
-      tag,
-      renotify: false,
-      silent: (d.silent !== undefined) ? !!d.silent : true,
-      // vibrate: d.vibrate ?? undefined,  // optional
-      data: { url, messageId, tag, fg: false }
+      tag: bgTag,
+      renotify: true,
+      silent: (d.silent !== undefined) ? !!d.silent : false, // Standard: NICHT stumm
+      requireInteraction: d.requireInteraction ?? false,
+      vibrate: d.vibrate ?? [120, 60, 120], // Hinweis; OS kann ignorieren
+      timestamp: d.timestamp || Date.now(),
+      data: { url, messageId, tag: bgTag, fg: false }
     };
 
     await self.registration.showNotification(title, opts);
+
+    // Danach Zustellung markieren
+    try { await markDelivered(messageId, await getDeviceName()); } catch (e) {
+      console.error('[SW] markDelivered failed:', e);
+    }
   })());
 });
 
@@ -186,3 +198,29 @@ self.addEventListener('message', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
+
+
+async function setSwFlag(key, val) {
+  const db = await openDbEnsureStore('app-db', 'sw-flags');
+  await new Promise((res, rej) => {
+    const tx = db.transaction('sw-flags', 'readwrite');
+    tx.objectStore('sw-flags').put(val, key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  });
+}
+
+// Wichtig: Token-/Subscription-Wechsel signalisieren **und** persistieren
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    // Flag persistieren
+    try { await setSwFlag('pushSubscriptionChangedAt', Date.now()); } catch {}
+
+    // an offene Clients posten (falls vorhanden)
+    const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    windows.forEach((c) => {
+      try { c.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED' }); } catch {}
+    });
+  })());
+});
+
