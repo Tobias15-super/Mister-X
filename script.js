@@ -482,7 +482,7 @@ async function askForDeviceIdAndPhone() {
   try {
     remote = await fetchRemoteSmsPrefs(id);
   } catch (e) {
-    console.warn("[askForDeviceIdAndPhone] Konnte Remote-Status nicht laden:", e);
+    log("[askForDeviceIdAndPhone] Konnte Remote-Status nicht laden:", e);
     remote = { exists: false, allowSmsFallback: null, tel: null };
   }
 
@@ -804,7 +804,7 @@ async function sendNotificationToTokens(
       sendNotificationToTokens(title, body, failedTokens, {
         recipientDeviceNames, link, attempt: attempt + 1, maxAttempts, waitSec,
         sendEndpoint, rtdbBase, messageId
-      }).catch(console.error);
+      }).catch(log);
     }, 10_000);
   } else if (attempt >= maxAttempts) {
     log('⏱️ Max. Anzahl an Versuchen erreicht.');
