@@ -778,7 +778,7 @@ async function sendNotificationToTokens(
     attempt = 1,
     maxAttempts = 5,
     waitSec = 15,
-    sendEndpoint = 'https://...supabase.co/functions/v1/send-to-all',
+    sendEndpoint = 'https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all',
     rtdbBase = RTDB_BASE,
     messageId: messageIdFromCaller, // kann vom Aufrufer stabil übergeben werden
   } = options;
