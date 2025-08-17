@@ -738,39 +738,55 @@ async function triggerSmsFallbackIfNeeded(
 
 
 
+
 async function sendNotificationToTokens(
   title,
   body,
   tokens = [],
   {
-    recipientDeviceNames = [],           // <<< NEU: Device-Namen passend zu /recipients/*
+    recipientDeviceNames = [],      // komplette Ziel-Liste (device_names!)
     link = '/Mister-X/',
     attempt = 1,
-    maxAttempts = 5,                     // 20 ist viel; 5 reicht oft
-    waitSec = 15,                        // realistisch für FCM/Doze
-    sendEndpoint = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all",
-    rtdbBase = RTDB_BASE
+    maxAttempts = 5,
+    waitSec = 15,
+    sendEndpoint = 'https://...supabase.co/functions/v1/send-to-all',
+    rtdbBase = RTDB_BASE,
+    messageId = (self.crypto?.randomUUID?.() || String(Date.now())), // stabil über alle Versuche
   } = {}
 ) {
-  const senderName = (typeof getDeviceId === 'function' ? getDeviceId() : null) || "unknown";
+  const senderName = (typeof getDeviceId === 'function' ? getDeviceId() : null) || 'unknown';
 
-  // 1) Push über Supabase-Funktion
+  // Beim ersten Versuch: recipients mitsenden und sagen, dass sie "gesetzt" (nicht appended) werden sollen
+  // Bei Retries: recipients nicht anfassen -> appendRecipients=false und recipients leer lassen
+  const isFirstAttempt = attempt === 1;
+
+  const payload = {
+    title,
+    body,
+    tokens,                         // token-Liste für diesen Versuch (voll beim 1., nur failed beim retry)
+    senderName,
+    link,
+    messageId,                      // stabil!
+    rtdbBase,
+    recipientDeviceNames: isFirstAttempt ? recipientDeviceNames : [],
+    setRecipientsMode: isFirstAttempt ? 'set_once' : 'none', // 'set_once' | 'append' | 'none'
+    attempt
+  };
+
   const res = await fetch(sendEndpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, body, tokens, senderName, link })
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
 
   let result = {};
   try { result = await res.json(); } catch {}
-
-  const messageId = result && result.messageId;
   log(`📦 Versuch ${attempt}:`, result);
 
-  // 2) Fallback nur genau einmal „scharfschalten“ (bei attempt 1, sofern messageId vorhanden)
-  if (attempt === 1 && messageId && recipientDeviceNames.length > 0) {
-    const smsText = `${title}: ${body}\n Diese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter IOS bitte einmal die App neuladen mittels Knopf oben rechts)`.slice(0, 280);
-    // bewusst "fire-and-forget"
+  // SMS-Fallback nur nach dem 1. Versuch scharf schalten
+  if (isFirstAttempt && result?.messageId && recipientDeviceNames.length > 0) {
+    const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über Knopf oben rechts).`.slice(0, 280);
+    // fire-and-forget
     triggerSmsFallbackIfNeeded(
       messageId,
       recipientDeviceNames,
@@ -780,23 +796,25 @@ async function sendNotificationToTokens(
     );
   }
 
-  // 3) Retry nur für fehlgeschlagene Tokens (Backoff & Limit)
+  // Retry für fehlgeschlagene Tokens
   const failedTokens = Array.isArray(result?.failedTokens) ? result.failedTokens : [];
   if (failedTokens.length > 0 && attempt < maxAttempts) {
-    log(`🔁 Wiederhole für ${failedTokens.length} fehlgeschlagene Tokens in 10 Sekunden...`);
+    log(`🔁 Wiederhole für ${failedTokens.length} fehlgeschlagene Tokens in 10s...`);
     setTimeout(() => {
       sendNotificationToTokens(title, body, failedTokens, {
-        recipientDeviceNames, link, attempt: attempt + 1, maxAttempts, waitSec, sendEndpoint, rtdbBase
-      });
+        recipientDeviceNames, link, attempt: attempt + 1, maxAttempts, waitSec,
+        sendEndpoint, rtdbBase, messageId
+      }).catch(console.error);
     }, 10_000);
   } else if (attempt >= maxAttempts) {
-    log("⏱️ Max. Anzahl an Versuchen erreicht.");
+    log('⏱️ Max. Anzahl an Versuchen erreicht.');
   } else {
-    log("✅ Alle Benachrichtigungen verarbeitet.");
+    log('✅ Alle Benachrichtigungen verarbeitet.');
   }
 
   return result;
 }
+
 
 
 
