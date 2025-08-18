@@ -2245,7 +2245,7 @@ async function startTimer() {
     await resolveRecipientsForRoles('misterx');
 
   // Nach dem Speichern von timer/startTime, duration, timerMessage ...
-  const dueInSec = duration; // z. B. 25*60
+  const dueInSec = duration-60; // z. B. 25*60
 
 
   // messageId stabil halten, wenn du willst:

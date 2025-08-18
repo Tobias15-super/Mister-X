@@ -6,6 +6,16 @@ const url  = Deno.env.get("SUPABASE_URL")!;
 const key  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supa = createClient(url, key);
 
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "https://tobias15-super.github.io",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-sms-secret",
+  "Access-Control-Max-Age": "86400"
+};
+
+
+
 type Payload = {
   // Pflicht
   title: string;
@@ -20,6 +30,12 @@ type Payload = {
 };
 
 serve(async (req) => {
+  // ✅ Preflight beantworten – sonst blockt der Browser
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+
   try {
     const p = (await req.json()) as Payload;
     const now = new Date();
@@ -48,9 +64,14 @@ serve(async (req) => {
     if (cronErr) throw cronErr;
 
     return new Response(JSON.stringify({ ok: true, messageId, dueAt }), {
-      headers: { "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
-  }
+    
+    return new Response(JSON.stringify({ ok: false, error: String(e) }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+
+  });
+}
 });
