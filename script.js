@@ -658,7 +658,7 @@ function triggerSmsFallbackIfNeeded(
 ) {
   if (!messageId) throw new Error('[Fallback] messageId fehlt');
   if (!Array.isArray(recipientDeviceNames) || recipientDeviceNames.length === 0) {
-    console.warn('[Fallback] keine Empfänger – Fallback nicht geplant');
+    log('[Fallback] keine Empfänger – Fallback nicht geplant');
     return Promise.resolve({ ok: true, skipped: 'no_recipients' });
   }
   if (!rtdbBase) throw new Error('[Fallback] rtdbBase fehlt');
@@ -683,15 +683,15 @@ function triggerSmsFallbackIfNeeded(
     .invoke('sms-fallback', { body: payload, headers })
     .then(({ data, error }) => {
       if (error) {
-        console.error('[Fallback] Edge call failed', error);
+        log('[Fallback] Edge call failed', error);
         return { ok: false, error: error.message || 'invoke failed' };
       }
-      console.log('[Fallback] scheduled:', data);
+      log('[Fallback] scheduled:', data);
       return data;
     })
     .catch((err) => {
       // Fire-and-forget: wir werfen nicht, sondern liefern ein Fehlerobjekt zurück
-      console.error('[Fallback] Konnte SMS-Fallback nicht planen:', err);
+      log('[Fallback] Konnte SMS-Fallback nicht planen:', err);
       return { ok: false, error: err?.message || String(err) };
     });
 }
