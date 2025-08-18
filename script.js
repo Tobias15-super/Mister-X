@@ -865,6 +865,44 @@ async function sendNotificationToRoles(title, body, roles, opts = {}) {
   });
 }
 
+async function resolveRecipientsForRoles(roleOrRoles) {
+  const roles = Array.isArray(roleOrRoles) ? roleOrRoles : [roleOrRoles];
+
+  const [rolesSnapshot, tokensSnapshot] = await Promise.all([
+    get(ref(rtdb, 'roles')),
+    get(ref(rtdb, 'tokens')),
+  ]);
+
+  const rolesData = rolesSnapshot.exists() ? rolesSnapshot.val() : {};
+  const tokensData = tokensSnapshot.exists() ? tokensSnapshot.val() : {};
+
+  const sendToAll = roles.length === 1 && roles[0] === 'all';
+
+  const tokensToSend = [];
+  const deviceNamesToExpect = [];
+
+  for (const deviceName in tokensData) {
+    if (!Object.prototype.hasOwnProperty.call(tokensData, deviceName)) continue;
+
+    const roleEntry = rolesData[deviceName] || {};
+    const userRole = roleEntry.role;
+    const notificationEnabled = (roleEntry.notification !== false); // default: true
+
+    const matchesRole = sendToAll || (userRole && roles.includes(userRole));
+    if (!matchesRole || !notificationEnabled) continue;
+
+    const devTokens = normalizeTokens(tokensData[deviceName]); // deine bestehende Helper-Funktion
+    if (devTokens.length === 0) continue;
+
+    tokensToSend.push(...devTokens);
+    deviceNamesToExpect.push(deviceName);
+  }
+
+  return {
+    tokens: unique(tokensToSend),
+    deviceNames: unique(deviceNamesToExpect),
+  };
+}
 
 
 
@@ -2187,8 +2225,8 @@ async function startTimer() {
   const endTime = startTime + duration * 1000;
 
   const message = {
-    title: "⏰ Zeit abgelaufen!",
-    body: "Mister X muss sich zeigen!",
+    title: "Deine Zeit läuft gleich ab",
+    body: "Bitte öffne deine App!",
     roles: ["misterx"]
   };
 
@@ -2201,6 +2239,40 @@ async function startTimer() {
   });
 
   await set(ref(rtdb, "timerMessage"), message);
+
+  
+  // 1) Sicherstellen: Es läuft kein anderer Online-Timer
+  try {
+    await supabaseClient.rpc('cancel_and_unschedule');
+  } catch (e) {
+    console.warn('[Timer] cancel_and_unschedule fehlgeschlagen (ignoriere und fahre fort):', e);
+  }
+
+  // 2) Empfänger für "misterx" jetzt bestimmen
+  const { tokens: misterxTokens, deviceNames: misterxDevices } =
+    await resolveRecipientsForRoles('misterx');
+
+  // Nach dem Speichern von timer/startTime, duration, timerMessage ...
+  const dueInSec = duration; // z. B. 25*60
+
+
+  // messageId stabil halten, wenn du willst:
+  const messageId = createMessageId?.() ?? undefined;
+
+  await supabaseClient.functions.invoke('arm-timer-cron', {
+    body: {
+      title: message.title,
+      body:  message.body,
+      dueInSec,
+      messageId,
+      link: "/Mister-X/",
+      recipientDeviceNames: misterxDevices,
+      tokens: misterxTokens,              // optional, falls du per Token zielst
+      rtdbBase: RTDB_BASE,     // falls dein Fallback das braucht
+    }
+  });
+
+  log(`🕒 Timer gestartet: ${duration}s, fällt um ${new Date(endTime).toLocaleTimeString()}.`);
 
 
 }
