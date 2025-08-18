@@ -4,11 +4,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const supa = createClient(SUPABASE_URL, SERVICE_KEY);
 
-// Deine bestehenden Endpunkte:
-const SEND_ENDPOINT = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all";
-const SMS_ENDPOINT  = "https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-fallback";
+const projectRef = new URL(SUPABASE_URL).host.split(".")[0];
+const FUNCTIONS_BASE = `https://${projectRef}.functions.supabase.co`;
+
+const SEND_ENDPOINT = `${FUNCTIONS_BASE}/send-to-all`;
+const SMS_ENDPOINT  = `${FUNCTIONS_BASE}/sms-fallback`;
+
 
 // Optional: Wenn du serverseitig ein Secret für SMS brauchst:
 const SMS_SECRET = Deno.env.get("SMS_FALLBACK_SECRET") ?? "";
@@ -65,7 +67,16 @@ async function sendPushAndFallback(job: any) {
         recipientsPath: "notifications",
         idempotencyFlag: "smsTriggered",
       }),
-    }).catch(() => {});
+    })
+    
+    if (!smsRes.ok) {
+      const errText = await smsRes.text().catch(() => "");
+      console.error("SMS fallback failed", smsRes.status, errText);
+    } else {
+      console.log("SMS fallback scheduled ok");
+    }
+
+
   }
 
   return { ok: res.ok, result };
@@ -112,6 +123,24 @@ serve(async () => {
     if (hasArmed === false) {
       await supa.rpc("unschedule_timer_tick").catch(() => {});
     }
+
+    
+    // 5) Alte Einträge löschen (älter als 5 Minuten)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+    const { error: delErr, count: delCount } = await supa
+      .from("timer_jobs")
+      .delete({ count: "exact" }) // zählt die gelöschten Zeilen
+      .lt("due_at", fiveMinutesAgo)
+      .in("status", ["fired", "armed", "expired"]);
+
+    if (delErr) {
+      console.error("Cleanup delete failed:", delErr);
+    } else {
+      console.log(`Cleanup deleted ${delCount ?? 0} rows older than 5 min`);
+    }
+
+
 
     return new Response(JSON.stringify({ ok: true, claimed: due.length }), {
       headers: { "Content-Type": "application/json" },

@@ -650,7 +650,7 @@ function triggerSmsFallbackIfNeeded(
 ) {
   if (!messageId) throw new Error('[Fallback] messageId fehlt');
   if (!Array.isArray(recipientDeviceNames) || recipientDeviceNames.length === 0) {
-    log('[Fallback] keine Empfänger – Fallback nicht geplant');
+    log('[Fallback] keine Empfänger - Fallback nicht geplant');
     return Promise.resolve({ ok: true, skipped: 'no_recipients' });
   }
   if (!rtdbBase) throw new Error('[Fallback] rtdbBase fehlt');
