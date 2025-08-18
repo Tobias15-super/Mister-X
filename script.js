@@ -405,14 +405,6 @@ async function refreshTokenIfPermitted(options = {}) {
 
     } else {
       log("ℹ️ Token ist unverändert.");
-
-      // Optional: Touch in RTDB, damit der Eintrag frisch bleibt
-      try {
-        await update(ref(rtdb, "tokens/" + deviceId), { touchedAt: Date.now() });
-      } catch (e) {
-        // Falls update nicht importiert ist:
-        // await set(ref(rtdb, `tokens/${deviceId}/touchedAt`), Date.now());
-      }
       return newToken;
     }
   } catch (err) {
