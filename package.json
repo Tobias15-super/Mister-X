@@ -3,7 +3,7 @@
     "@google-cloud/tasks": "^6.2.0",
     "@supabase/supabase-js": "^2.52.1",
     "@upstash/qstash": "^2.8.2",
-    "firebase": "^12.0.0",
+    "firebase": "^12.1.0",
     "firebase-admin": "^13.4.0",
     "firebase-functions": "^6.4.0"
   },
@@ -15,7 +15,10 @@
     "workbox-window": "^7.3.0"
   },
   "scripts": {
+    "dev": "vite",
     "build": "vite build",
+    "preview": "vite preview",
+    "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   }
 }

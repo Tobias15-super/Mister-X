@@ -1,0 +1,33 @@
+{
+  "name": "Mister-X Dev",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  // Optional: falls du pnpm/yarn nutzt -> in postCreateCommand "corepack enable"
+  "postCreateCommand": "npm ci || npm install && npm install -g firebase-tools",
+  "forwardPorts": [
+    5173,   // Vite
+    4000,   // Firebase Emulator UI
+    5000,   // Hosting Emulator
+    5001,   // Functions Emulator
+    8080,   // Firestore Emulator
+    9099,   // Auth Emulator
+    9199,   // Storage Emulator
+    9000,   // Realtime DB Emulator
+    8085    // Pub/Sub Emulator
+  ],
+  "portsAttributes": {
+    "5173": { "label": "Vite Dev Server" },
+    "4000": { "label": "Firebase Emulator UI" },
+    "5000": { "label": "Firebase Hosting" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "firebase.firebase-vscode",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+  "remoteUser": "node"
+}
