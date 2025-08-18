@@ -1200,9 +1200,9 @@ function showLocationHistory() {
       const baseMaps = {
         "Standard": osm,
         "Jawg Street": jawgStreet,
-        "Hell & reduziert": cartoLight,
+        "Reduziert": cartoLight,
         "Satellit": satellite,
-        "TopPlus Open": TopPlusOpen_Color,
+        "Gezeichneter Plan": TopPlusOpen_Color,
       };
 
       osm.addTo(map); // Standard aktivieren

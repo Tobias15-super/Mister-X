@@ -120,26 +120,41 @@ async function conditionalPut(url: string, body: unknown, etag: string, auth?: s
 
 // ---- SMS provider (TextBee – Platzhalter; passt du an deine API an) ------
 
-async function sendSmsViaTextBee(numbers: string[], text: string) {
-  const apiBase = 'https://api.textbee.dev/api/v1';
-  const apiKey = Deno.env.get('TEXTBEE_API_KEY') ?? '';
-  if (!apiBase || !apiKey) throw new Error('TEXTBEE_API_BASE/TEXTBEE_API_KEY fehlen');
 
-  const res = await fetch(`${apiBase.replace(/\/$/, '')}/send`, {
+async function sendSmsViaTextBee(
+  recipients: string[],
+  message: string
+): Promise<{ ok: boolean; status: number; bodyText: string }> {
+  const deviceId = Deno.env.get('TEXTBEE_DEVICE_ID') ?? '';
+  const apiKey = Deno.env.get('TEXTBEE_API_KEY') ?? '';
+
+  if (!deviceId || !apiKey) {
+    throw new Error('TEXTBEE_DEVICE_ID/TEXTBEE_API_KEY fehlen');
+  }
+
+  const url = `https://api.textbee.dev/api/v1/gateway/devices/${encodeURIComponent(
+    deviceId
+  )}/send-sms`;
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
+      'x-api-key': apiKey,              // wie in deiner alten Funktion
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ to: numbers, text }),
+    body: JSON.stringify({ recipients, message }), // wie in deiner alten Funktion
   });
 
+  const bodyText = await res.text().catch(() => '');
+
   if (!res.ok) {
-    const msg = await res.text().catch(() => '');
-    throw new Error(`TextBee HTTP ${res.status}: ${msg}`);
+    // Fehlermeldung inkl. Response-Text wie bisher
+    throw new Error(`TextBee HTTP ${res.status}: ${bodyText}`);
   }
-  return res.json().catch(() => ({}));
+
+  return { ok: res.ok, status: res.status, bodyText };
 }
+
 
 // ---- Security: Shared secret zwischen Funktionen/Client (optional, empfohlen)
 
