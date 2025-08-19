@@ -1212,6 +1212,10 @@ function createOrReuseMap(lat, lon) {
 
     osm.addTo(map); // Standard aktivieren
     L.control.layers(baseMaps).addTo(map); // Umschaltmenü
+    setTimeout(() => map.invalidateSize(),0);
+  } else {
+    map.setView([lat, lon], 15);
+    map.invalidateSize();
   }
   ensurePostenLayer();
 }
@@ -1634,13 +1638,18 @@ function extractLatLon(loc) {
   return { lat, lon };
 }
 
-function listenAndRenderPosten() {
+async function ensurePostenLoadedOnce() {
   const postenRef = ref(rtdb, "posten");
-  onValue(postenRef, (snap) => {
-    postenCache = snap.exists() ? snap.val() : null;
+  const snap = await get(postenRef);
+  postenCache = snap.exists() ? snap.val() : null;
+  renderPostenMarkersFromCache();
+  // danach live-updates anschließen
+  onValue(postenRef, (s) => {
+    postenCache = s.exists() ? s.val() : null;
     renderPostenMarkersFromCache();
   });
 }
+
 
 function ensurePostenLayer() {
   if (!postenLayer) postenLayer = L.layerGroup();
@@ -2818,8 +2827,8 @@ async function startScript() {
 
     // (D) Dein bestehendes App-Setup ohne Push:
     const savedView = localStorage.getItem('activeView') || 'start';
-    listenAndRenderPosten();
     if (savedView !=='start'){switchView(savedView);}
+    await ensurePostenLoadedOnce();
     showLocationHistory();
     listenToTimer();
     setTimerInputFromFirebase();
