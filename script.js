@@ -1169,6 +1169,55 @@ async function saveTelToRTDB(deviceId, tel, allowSmsFallback) {
 
 
 
+function ensureMapVisible() {
+  const el = document.getElementById('map');
+  el.style.display = ''; // sichtbar machen (oder 'block')
+}
+
+function createOrReuseMap(lat, lon) {
+  ensureMapVisible();
+  if (!map) {
+    map = L.map('map', { preferCanvas: true }).setView([lat, lon], 15);
+
+  // Karten-Layer definieren
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    });
+
+    const cartoLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© CartoDB'
+    });
+
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles © Esri'
+    });
+
+    const TopPlusOpen_Color = L.tileLayer('http://sgx.geodatenzentrum.de/wmts_topplus_open/tile/1.0.0/web/default/WEBMERCATOR/{z}/{y}/{x}.png', {
+      maxZoom: 18,
+      attribution: 'TopPlus Open © GeoBasis-DE / BKG',
+    });
+
+    const jawgStreet = L.tileLayer('https://tile.jawg.io/jawg-streets/{z}/{x}/{y}{r}.png?access-token=sxLNDIsEdS0kt8fQKhSLB1Z7wVp3ZkV78F5HhvIElZWKDuahhvgWnCZkOceLTzYS', {
+      attribution: '© Jawg',
+    })
+
+
+    const baseMaps = {
+      "Standard": osm,
+      "Jawg Street": jawgStreet,
+      "Reduziert": cartoLight,
+      "Satellit": satellite,
+      "Gezeichneter Plan": TopPlusOpen_Color,
+    };
+
+    osm.addTo(map); // Standard aktivieren
+    L.control.layers(baseMaps).addTo(map); // Umschaltmenü
+  }
+  ensurePostenLayer();
+}
+
+
+
 
 
 function showLocationHistory() {
@@ -1191,46 +1240,7 @@ function showLocationHistory() {
     if (validEntries.length > 0) {
       const { lat, lon } = validEntries[0];
 
-      if (map) {
-        map.remove();
-        map = null;
-      }
-
-      map = L.map('map').setView([lat, lon], 15);
-
-      // Karten-Layer definieren
-      const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-      });
-
-      const cartoLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '© CartoDB'
-      });
-
-      const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles © Esri'
-      });
-
-      const TopPlusOpen_Color = L.tileLayer('http://sgx.geodatenzentrum.de/wmts_topplus_open/tile/1.0.0/web/default/WEBMERCATOR/{z}/{y}/{x}.png', {
-        maxZoom: 18,
-        attribution: 'TopPlus Open © GeoBasis-DE / BKG',
-      });
-
-      const jawgStreet = L.tileLayer('https://tile.jawg.io/jawg-streets/{z}/{x}/{y}{r}.png?access-token=sxLNDIsEdS0kt8fQKhSLB1Z7wVp3ZkV78F5HhvIElZWKDuahhvgWnCZkOceLTzYS', {
-        attribution: '© Jawg',
-      })
-
-
-      const baseMaps = {
-        "Standard": osm,
-        "Jawg Street": jawgStreet,
-        "Reduziert": cartoLight,
-        "Satellit": satellite,
-        "Gezeichneter Plan": TopPlusOpen_Color,
-      };
-
-      osm.addTo(map); // Standard aktivieren
-      L.control.layers(baseMaps).addTo(map); // Umschaltmenü
+      createOrReuseMap(lat, lon);
 
       ensurePostenLayer();
       renderPostenMarkersFromCache();
@@ -2393,6 +2403,18 @@ document.head.appendChild(style);
 
 // Standort abrufen
 function getLocation() {
+    get(ref(rtdb, "timer"), (snapshot) => {
+    const data = snapshot.val() || {};
+    const {
+      startTime = null,
+      duration = null,
+      durationInput = null
+    } = data;
+
+    if (startTime + duration * 1000 > Date.now()) {
+      return 
+    };});
+  
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       position => {

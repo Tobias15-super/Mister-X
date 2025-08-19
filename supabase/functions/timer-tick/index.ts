@@ -2,25 +2,32 @@
 import { serve } from "https://deno.land/std/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// --- ENV ---
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SMS_SECRET   = Deno.env.get("SMS_FALLBACK_SECRET") ?? "";
 
-// Supabase Client (Service Role)
+// --- Supabase Client (Service-Role) ---
 const supa = createClient(SUPABASE_URL, SERVICE_KEY, {
-  global: { headers: { "X-Client-Info": "timer-tick/1.0"}}
+  global: { headers: { "X-Client-Info": "timer-tick/1.0" } },
 });
 
-// Edge Function Namen
+// --- Edge Function Namen ---
 const SEND_FN = "send-to-all";
 const SMS_FN  = "sms-fallback";
 
-// Optional: Secret für sms-fallback (falls du es mal aktivierst)
-const SMS_SECRET = Deno.env.get("SMS_FALLBACK_SECRET") ?? "";
+// --- Helper: JSON Response ---
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 /**
  * Bearbeitet einen Timer-Job:
  * - Push (Best-Effort) für Logging
- * - SMS IMMER, wenn Empfänger vorhanden (mit Idempotenz via claim_sms_once)
+ * - SMS IMMER, wenn Empfänger vorhanden (Idempotenz via claim_sms_once)
  */
 async function handleJob(job: any) {
   const {
@@ -34,10 +41,9 @@ async function handleJob(job: any) {
     id: dbId,
   } = job;
 
-  // Fallback-Schlüssel: nutze message_id, sonst auf DB id zurück
   const messageKey = message_id ?? dbId;
 
-  // --- 1) Push senden (nur Best-Effort/Logging) ---
+  // --- 1) Push senden (Best-Effort) ---
   let pushOk = false;
   let pushBody: any = null;
   try {
@@ -54,10 +60,11 @@ async function handleJob(job: any) {
         setRecipientsMode: "set_once",
         attempt: 1,
       },
-      // Viele Middlewares erwarten Authorization; explizit setzen
-      headers: { Authorization: `Bearer ${SERVICE_KEY}` },
+      headers: {
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        apikey: SERVICE_KEY, // falls deine send-to-all das auch prüft
+      },
     });
-
     pushOk = !error && (data?.ok ?? true);
     pushBody = error ? { error: error.message ?? String(error) } : data;
     console.log("send-to-all:", {
@@ -70,88 +77,82 @@ async function handleJob(job: any) {
     pushBody = { error: String(e) };
   }
 
+  // --- 2) SMS immer senden, wenn es Empfänger gibt ---
+  const recipients: string[] = recipient_device_names ?? [];
+  if (recipients.length > 0) {
+    // Idempotenz-Guard: nur ERSTER gewinnt
+    try {
+      const { data: canSend, error: claimErr } = await supa.rpc("claim_sms_once", {
+        p_message_id: messageKey,
+        p_source: "timer-tick",
+      });
+      if (claimErr) {
+        console.error("claim_sms_once failed:", claimErr);
+        // armed lassen -> späterer Retry; keine Doppel-SMS
+        return {
+          ok: false,
+          result: { stage: "claim", error: claimErr.message ?? String(claimErr) },
+        };
+      }
+      if (canSend !== true) {
+        console.log("SMS already claimed earlier for", messageKey);
+        return { ok: true, result: { stage: "sms", already: true, pushOk, pushBody } };
+      }
+    } catch (e) {
+      console.error("claim_sms_once threw:", e);
+      return { ok: false, result: { stage: "claim", error: String(e) } };
+    }
 
-// --- 2) SMS immer senden, wenn es Empfänger gibt ---
-const recipients: string[] = recipient_device_names ?? [];
-if (recipients.length > 0) {
-  // Idempotenz: nur ERSTER gewinnt (Unique Guard)
-  try {
-    const { data: canSend, error: claimErr } = await supa.rpc("claim_sms_once", {
-      p_message_id: messageKey,
-      p_source: "timer-tick",
-    });
+    // SMS-Text (auf 280 chars kürzen)
+    const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über den Knopf oben rechts)`.slice(0, 280);
 
-    if (claimErr) {
-      console.error("claim_sms_once failed:", claimErr);
-      // armed lassen -> später neuer Versuch; dank Idempotenz keine Doppel-SMS
-      return {
-        ok: false,
-        result: { stage: "claim", error: claimErr.message ?? String(claimErr) },
+    // Direkt per fetch rufen -> volle Header-Kontrolle
+    try {
+      const smsUrl = `${SUPABASE_URL}/functions/v1/${SMS_FN}`;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "x-sms-secret": SMS_SECRET,
       };
-    }
 
-    if (canSend !== true) {
-      // Bereits früher geplant; wir betrachten den Auftrag als erledigt
-      console.log("SMS already claimed earlier for", messageKey);
-      return { ok: true, result: { stage: "sms", already: true, pushOk, pushBody } };
+      const resp = await fetch(smsUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          messageId: messageKey,
+          recipientDeviceNames: recipients,
+          smsText,
+          waitSec: 15,
+          rtdbBase: rtdb_base ?? "",
+          rolesPath: "roles",
+          recipientsPath: "notifications",
+          idempotencyFlag: "smsTriggered",
+          // rtdbAuth: ... // falls deine sms-fallback das erwartet
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => "");
+        console.error("sms-fallback non-2xx", resp.status, resp.statusText, text);
+        const retryable = resp.status >= 500 || resp.status === 0;
+        return {
+          ok: false,
+          result: { stage: "sms", error: `HTTP ${resp.status} ${resp.statusText}`, body: text.slice(0, 500), retryable },
+        };
+      }
+
+      const smsData = await resp.json().catch(() => ({}));
+      return { ok: true, result: { stage: "sms", pushOk, pushBody, smsData } };
+    } catch (e) {
+      console.error("SMS fetch threw:", e);
+      return { ok: false, result: { stage: "sms", error: String(e), retryable: true } };
     }
-  } catch (e) {
-    console.error("claim_sms_once threw:", e);
-    return { ok: false, result: { stage: "claim", error: String(e) } };
   }
-
-  // SMS-Text (auf 280 chars kürzen)
-  const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über den Knopf oben rechts)`.slice(0, 280);
-
-  try {
-    const headers: Record<string, string> = {
-      // Kritisch gegen 401: Service-Role explizit mitsenden
-      Authorization: `Bearer ${SERVICE_KEY}`,
-      apikey: SERVICE_KEY,                     // <-- zusätzlich mitgeben
-      "Content-Type": "application/json",      // sauber setzen
-    };
-    if (SMS_SECRET) headers["x-sms-secret"] = SMS_SECRET;
-
-    const { data: smsData, error: smsErr } = await supa.functions.invoke(SMS_FN, {
-      body: {
-        messageId: messageKey,
-        recipientDeviceNames: recipients,
-        smsText,
-        waitSec: 15,
-        rtdbBase: rtdb_base ?? "",
-        rolesPath: "roles",
-        recipientsPath: "notifications",
-        idempotencyFlag: "smsTriggered",
-        // rtdbAuth: ..., // falls deine sms-fallback das braucht
-      },
-      headers,
-    });
-
-    if (smsErr) {
-      // 4xx = config/authorization; 5xx = retrybar
-      const status = (smsErr as any)?.context?.status ?? 0;
-      console.error("SMS fallback failed:", smsErr);
-      const retryable = status >= 500 || status === 0;
-      return {
-        ok: false,
-        result: { stage: "sms", error: smsErr.message ?? String(smsErr), retryable },
-      };
-    }
-
-    // Erfolg
-    return { ok: true, result: { stage: "sms", pushOk, pushBody, smsData } };
-  } catch (e) {
-    console.error("SMS invoke threw:", e);
-    return { ok: false, result: { stage: "sms", error: String(e) } };
-  }
-}
-
 
   // --- 3) Keine Empfänger: nur Push-Ergebnis zurückgeben ---
   return { ok: pushOk, result: { stage: "push_only", pushBody } };
 }
 
-serve(async () => {
+serve(async (req) => {
   try {
     // 1) Fällige Timer claimen
     const { data: due, error: claimErr } = await supa.rpc("claim_due_timers", { limit_n: 10 });
@@ -159,16 +160,20 @@ serve(async () => {
 
     // 2) Keine fälligen? ggf. Cron unschedulen
     if (!due || due.length === 0) {
-      const { data: hasArmed } = await supa.rpc("has_armed_timers");
-      if (hasArmed === false) {
-        await supa.rpc("unschedule_timer_tick").catch(() => {});
+      const { data: hasArmed, error: hasArmedErr } = await supa.rpc("has_armed_timers");
+      if (hasArmedErr) {
+        console.error("has_armed_timers failed:", hasArmedErr);
+      } else if (hasArmed === false) {
+        const { error: unschedErr } = await supa.rpc("unschedule_timer_tick");
+        if (unschedErr) {
+          console.warn("unschedule_timer_tick failed:", unschedErr);
+        }
       }
-      return new Response(JSON.stringify({ ok: true, claimed: 0 }), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return json({ ok: true, claimed: 0 });
     }
 
-    // 3) Jobs abarbeiten
+
+    // 3) Jobs abarbeiten (seriell ok; parallel ginge auch, aber SMS-Anbieter mögen Seriell)
     for (const job of due) {
       try {
         const { ok, result } = await handleJob(job);
@@ -207,28 +212,31 @@ serve(async () => {
       }
     }
 
-    // 4) Cleanup – lösche fired/expired/canceled, die älter als 5 Min sind
+    
+
+    return json({ ok: true, claimed: due.length });
+  } catch (e) {
+    return json({ ok: false, error: String(e) }, 500);
+  }
+  finally {
+    try{
+      // 4) Cleanup – lösche fired/expired/canceled, die älter als 5 Min sind
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const { data: delRows, error: delErr, count: delCount } = await supa
       .from("timer_jobs")
       .delete()
       .lt("due_at", fiveMinutesAgo)
       .in("status", ["fired", "expired", "canceled"])
-      .select("id", { count: "exact" }); // representation -> Count zuverlässig
+      .select("id", { count: "exact" });
 
     if (delErr) {
       console.error("Cleanup delete failed:", delErr);
     } else {
       console.log(`Cleanup deleted ${delCount ?? delRows?.length ?? 0} rows older than 5 min`);
     }
+    } catch (cleanupErr) {
+      console.error("Cleanup failed:", cleanupErr);
+    }
 
-    return new Response(JSON.stringify({ ok: true, claimed: due.length }), {
-      headers: { "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    return new Response(JSON.stringify({ ok: false, error: String(e) }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
   }
 });

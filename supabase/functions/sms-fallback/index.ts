@@ -9,7 +9,7 @@ const ALLOW_ORIGINS = new Set([
   "https://tobias15-super.github.io",
   // weitere erlaubte Origins hier
 ]);
-const ALLOW_ANON_INVOKE = (Deno.env.get("ALLOW_ANON_INVOKE") ?? "").toLowerCase() === "true";
+
 
 function buildCorsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get("Origin") ?? "";
