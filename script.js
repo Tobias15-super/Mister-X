@@ -2176,7 +2176,7 @@ async function switchView(view) {
   get(ref(rtdb, "timer")).then(snapshot => {
     const data = snapshot.val();
     if (data) {
-      const { startTime, duration, durationInput } = data;
+      const { startTime, duration, durationInput, durationInput2 } = data;
       if (duration){
         updateCountdown(startTime, duration);
         updateStartButtonState(true);
@@ -2293,7 +2293,8 @@ function listenToTimer() {
     const {
       startTime = null,
       duration = null,
-      durationInput = null
+      durationInput = null,
+      durationInput2 = null,
     } = data;
 
 
@@ -2391,12 +2392,18 @@ function setTimerInputFromFirebase(){
     if (!snapshot.exists()) return;
     const data = snapshot.val();
     const timerInputElem = document.getElementById("timerDurationInput");
-    if (!timerInputElem) return;
+    const timerInputElem2 = document.getElementById("timerDurationInput2");
+    if (!timerInputElem||!timerInputElem2) return;
 
     if (data && typeof data.durationInput === "number"){
       timerInputElem.value = Math.floor(data.durationInput/60);
     } else {
       timerInputElem.value = 25;
+    }
+    if (data && typeof data.durationInput2 === "number"){
+      timerInputElem2.value = Math.floor(data.durationInput2/60);
+    } else {
+      timerInputElem2.value = 5;
     }
   });
 }
@@ -2417,7 +2424,8 @@ function getLocation() {
     const {
       startTime = null,
       duration = null,
-      durationInput = null
+      durationInput = null,
+      durationInput2 = null
     } = data;
 
     if (startTime + duration * 1000 > Date.now()) {
@@ -2644,6 +2652,27 @@ function save_timer_duration() {
     })
     .catch((error) => {
       log("Fehler beim Speichern von DurationInput:", error);
+    });
+}
+
+function save_timer_duration2() {
+  const anzahl = document.getElementById("timerDurationInput2").value;
+  const anzahl_in_sekunden = anzahl * 60
+
+  //const settingsRef = firebase.database().ref("timer");
+
+  // Erst löschen
+  remove(ref(rtdb, "timer/durationInput2"))
+    .then(() => {
+      // Dann neuen Wert setzen
+      //return settingsRef.child("durationInput").set(Number(anzahl_in_sekunden));
+      return set(ref(rtdb, "timer/durationInput2"), Number(anzahl_in_sekunden));
+    })
+    .then(() => {
+      log("Duration_input2:", anzahl_in_sekunden);
+    })
+    .catch((error) => {
+      log("Fehler beim Speichern von DurationInput2:", error);
     });
 }
 
@@ -2911,6 +2940,7 @@ window.sendLocationWithPhoto = sendLocationWithPhoto;
 window.startTimer = startTimer;
 window.goBack = goBack;
 window.save_timer_duration = save_timer_duration;
+window.save_timer_duration2 = save_timer_duration2;
 window.save_max_mister_x = save_max_mister_x;
 window.resetTimer = resetTimer;
 window.deleteAllLocations = deleteAllLocations;
