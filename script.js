@@ -377,13 +377,7 @@ async function refreshTokenIfPermitted(options = {}) {
       log("🔄 Token aktualisiert:", newToken);
 
       // RTDB: strukturierter Eintrag
-      await set(ref(rtdb, "tokens/" + deviceId), {
-        token: newToken,
-        deviceName: deviceId,
-        updatedAt: Date.now(),
-        ua: (typeof navigator !== "undefined" ? navigator.userAgent : null),
-        platform: (typeof navigator !== "undefined" ? navigator.platform : null)
-      });
+      await set(ref(rtdb, "tokens/" + deviceId), newToken);
 
       // Supabase: upsert by device_name (ohne vorheriges Delete)
       try {
@@ -2541,6 +2535,14 @@ async function resetTimer() {
   // UI zurücksetzen
   clearInterval(countdown);
   updateStartButtonState(false);
+
+
+  //Online-Timer für Notifications abbrechen
+    try {
+    await supabaseClient.rpc('cancel_and_unschedule');
+  } catch (e) {
+    console.warn('[Timer] cancel_and_unschedule fehlgeschlagen (ignoriere und fahre fort):', e);
+  }
 
   const misterxTimer = document.getElementById("timer");
   const agentTimer = document.getElementById("agentTimer");
