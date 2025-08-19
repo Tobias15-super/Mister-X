@@ -2242,25 +2242,21 @@ async function startTimer(duration_for_function) {
     startTime,
     duration,
     durationInput: duration,
-    canceled: false,
-    fired: false,
+
   });
 
-  await set(ref(rtdb, "timerMessage"), message);
 
   
   // 1) Sicherstellen: Es läuft kein anderer Online-Timer
   try {
     await supabaseClient.rpc('cancel_and_unschedule');
   } catch (e) {
-    console.warn('[Timer] cancel_and_unschedule fehlgeschlagen (ignoriere und fahre fort):', e);
+    log('[Timer] cancel_and_unschedule fehlgeschlagen (ignoriere und fahre fort):', e);
   }
 
   // 2) Empfänger für "misterx" jetzt bestimmen
   const { tokens: misterxTokens, deviceNames: misterxDevices } =
     await resolveRecipientsForRoles('misterx');
-
-  // Nach dem Speichern von timer/startTime, duration, timerMessage ...
   const dueInSec = duration-60; // z. B. 25*60
 
 
@@ -2380,15 +2376,28 @@ function updateCountdown(startTime, duration) {
         }
       });
       if (localStorage.getItem("activeView")==="misterx"){
-        alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
-        getLocation();
-
-      get(ref(rtdb, "timer")).then(snapshot => {
-        const data = snapshot.val();
-        durationInput = data?.durationInput;
-        durationInput2 = data?.durationInput2;
-        if (duration === durationInput && durationInput2 > 0){
-          startTimer(durationInput2);
+        get(ref(rtdb, "timer")).then(snapshot => {
+          const data = snapshot.val();
+          durationInput = data?.durationInput;
+          durationInput2 = data?.durationInput2;
+          if (duration === durationInput && durationInput2 > 0){
+            alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
+            getLocation();
+            startTimer(durationInput2);
+          } else if (duration === durationInput2||(duration === durationInput && durationInput2 === 0)){
+            alert("Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen (der Timer ist bis zum nächsten Posten deaktiviert)")
+            remove(ref(rtdb, "timer/duration"));
+            remove(ref(rtdb, "timer/startTime"));
+            remove(ref(rtdb, "timerMessage"));
+            clearInterval(countdown);
+            updateStartButtonState(false);
+            const misterxTimer = document.getElementById("timer");
+            const agentTimer = document.getElementById("agentTimer");
+            const settingsTimer = document.getElementById("settingsTimer");
+            if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
+            if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
+            if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
+            sendNotificationToRoles("Zeit abgelaufen!", "Mister X muss sich per Live-Standort zeigen", "all");
           }
         })
       }
@@ -2561,23 +2570,6 @@ async function resetTimer() {
   //await timerRef.child("startTime").remove();
   await remove(ref(rtdb, "timer/startTime"));
 
-  // Upstash-Timer abbrechen, falls vorhanden
-  //const scheduleIdSnapshot = await firebase.database().ref("timerScheduleId").once("value");
-  const scheduleIdSnapshot = await get(ref(rtdb, "timerScheduleId"));
-  const scheduleId = scheduleIdSnapshot.val();
-
-
-  if (scheduleId) {
-    await fetch(`https://qstash.upstash.io/v2/schedules/${scheduleId}`, {
-      method: "DELETE",
-      headers: {
-        "Authorization": "Bearer eyJVc2VySUQiOiI3YjAxMDFmYi04MGE2LTRmMjAtOWM0MS0zNzZiNDUxNmNkOWQiLCJQYXNzd29yZCI6IjYyM2ZhNzlmOWM4MDRhMzQ5YmE2NjZmYjFlMDExNDBjIn0"
-      }
-    });
-    //await firebase.database().ref("timerScheduleId").remove();
-    await remove(ref(rtdb, "timerScheduleId"));
-  }
-
   // Nachricht löschen
   //await firebase.database().ref("timerMessage").remove();
   await remove(ref(rtdb, "timerMessage"));
@@ -2591,7 +2583,7 @@ async function resetTimer() {
     try {
     await supabaseClient.rpc('cancel_and_unschedule');
   } catch (e) {
-    console.warn('[Timer] cancel_and_unschedule fehlgeschlagen (ignoriere und fahre fort):', e);
+    log('[Timer] cancel_and_unschedule fehlgeschlagen (ignoriere und fahre fort):', e);
   }
 
   const misterxTimer = document.getElementById("timer");
