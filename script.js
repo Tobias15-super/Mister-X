@@ -2208,7 +2208,7 @@ async function goBack() {
 };
 
 
-async function startTimer() {
+async function startTimer(duration_for_function) {
   await remove(ref(rtdb, "timer/duration"));
   await remove(ref(rtdb, "timer/startTime"));
   await remove(ref(rtdb, "timerMessage"));
@@ -2224,6 +2224,9 @@ async function startTimer() {
   if (typeof data?.durationInput === "number" && data.durationInput > 0) {
     duration = data.durationInput;
     if (isNaN(duration) || duration < 1) duration = 60;
+  }
+  if (typeof duration_for_function === "number" && duration_for_function > 0) {
+    duration = duration_for_function;
   }
 
   const startTime = Date.now();
@@ -2379,10 +2382,18 @@ function updateCountdown(startTime, duration) {
       if (localStorage.getItem("activeView")==="misterx"){
         alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
         getLocation();
-        startTimer();
-        }
+
+      get(ref(rtdb, "timer")).then(snapshot => {
+        const data = snapshot.val();
+        durationInput = data?.durationInput;
+        durationInput2 = data?.durationInput2;
+        if (duration === durationInput && durationInput2 > 0){
+          startTimer(durationInput2);
+          }
+        })
+      }
     }
-    }
+  }
   , 1000);
 }
 
