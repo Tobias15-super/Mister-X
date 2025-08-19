@@ -9,6 +9,7 @@ const ALLOW_ORIGINS = new Set([
   "https://tobias15-super.github.io",
   // weitere erlaubte Origins hier
 ]);
+const ALLOW_ANON_INVOKE = (Deno.env.get("ALLOW_ANON_INVOKE") ?? "").toLowerCase() === "true";
 
 function buildCorsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get("Origin") ?? "";
@@ -158,6 +159,7 @@ async function sendSmsViaTextBee(
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const SMS_SECRET = Deno.env.get("SMS_FALLBACK_SECRET") ?? "";
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 const supa =
   SUPABASE_URL && SERVICE_KEY ? createClient(SUPABASE_URL, SERVICE_KEY) : null;
@@ -185,18 +187,35 @@ function isServiceRoleJwt(jwt: string) {
  *  - Service-Role-JWT (Authorization: Bearer ... ODER apikey: ...)
  *  - ODER (optional) x-sms-secret (falls gesetzt)
  */
+
+
 async function isAuthorized(req: Request) {
-  // Secret erlaubt (wenn gesetzt)
   if (SMS_SECRET && req.headers.get("x-sms-secret") === SMS_SECRET) return true;
 
-  // Service-Role erlauben (Authorization oder apikey)
-  const bearer = getHeaderToken(req, "authorization");
-  const apikey = getHeaderToken(req, "apikey");
-  const token = bearer || apikey;
-  if (token && isServiceRoleJwt(token)) return true;
+  const bearerToken = getHeaderToken(req, "authorization");
+  const apikeyToken  = getHeaderToken(req, "apikey");
+  if ((bearerToken && isServiceRoleJwt(bearerToken)) || (apikeyToken && isServiceRoleJwt(apikeyToken))) {
+    return true; // Service-Role
+  }
+
+  // Endnutzer (Browser)
+  const authHeader = req.headers.get("Authorization") ?? "";
+  if (SUPABASE_URL && ANON_KEY && authHeader) {
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: authHeader } } });
+    const { data, error } = await userClient.auth.getUser();
+    if (!error && data?.user) return true; // optional: DB-Rollenprüfung hier
+  }
+
+  // Optional (bewusst): Anon erlauben, aber NUR für whitelisted Origins
+  if ((Deno.env.get("ALLOW_ANON_INVOKE") ?? "").toLowerCase() === "true") {
+    const origin = req.headers.get("Origin") ?? "";
+    if (ALLOW_ORIGINS.has(origin)) return true;
+  }
 
   return false;
 }
+
+
 
 /**
  * Optionaler DB-Guard für Idempotenz (wenn `claim_sms_once` als RPC existiert).
@@ -224,9 +243,32 @@ async function tryDbClaim(messageId: string, source = "sms-fallback") {
   }
 }
 
+
+function roleFromJwt(jwt?: string) {
+  try {
+    if (!jwt) return "none";
+    const payload = JSON.parse(atob(jwt.split(".")[1]));
+    return payload?.role ?? "unknown";
+  } catch { return "invalid"; }
+}
+
+
 // ---- Handler --------------------------------------------------------------
 
 Deno.serve(async (req) => {
+
+  const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization") ?? "";
+  const apikeyHeader = req.headers.get("apikey") ?? "";
+
+  console.log("[REQ AUTH]", {
+    origin: req.headers.get("Origin"),
+    hasAuth: !!authHeader,
+    authRole: roleFromJwt(authHeader.replace(/^Bearer\s+/i, "")),
+    hasApikey: !!apikeyHeader,
+    apikeyRole: roleFromJwt(apikeyHeader),
+    hasSecret: !!req.headers.get("x-sms-secret"),
+  });
+
   // 1) Preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: buildCorsHeaders(req) });

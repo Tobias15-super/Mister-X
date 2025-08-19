@@ -6,7 +6,9 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 // Supabase Client (Service Role)
-const supa = createClient(SUPABASE_URL, SERVICE_KEY);
+const supa = createClient(SUPABASE_URL, SERVICE_KEY, {
+  global: { headers: { "X-Client-Info": "timer-tick/1.0"}}
+});
 
 // Edge Function Namen
 const SEND_FN = "send-to-all";
