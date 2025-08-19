@@ -70,79 +70,82 @@ async function handleJob(job: any) {
     pushBody = { error: String(e) };
   }
 
-  // --- 2) SMS immer senden, wenn es Empfänger gibt ---
-  const recipients: string[] = recipient_device_names ?? [];
-  if (recipients.length > 0) {
-    // Idempotenz: nur ERSTER gewinnt (Unique Guard)
-    try {
-      const { data: canSend, error: claimErr } = await supa.rpc("claim_sms_once", {
-        p_message_id: messageKey,
-        p_source: "timer-tick",
-      });
 
-      if (claimErr) {
-        console.error("claim_sms_once failed:", claimErr);
-        // armed lassen -> später neuer Versuch; dank Idempotenz keine Doppel-SMS
-        return {
-          ok: false,
-          result: { stage: "claim", error: claimErr.message ?? String(claimErr) },
-        };
-      }
+// --- 2) SMS immer senden, wenn es Empfänger gibt ---
+const recipients: string[] = recipient_device_names ?? [];
+if (recipients.length > 0) {
+  // Idempotenz: nur ERSTER gewinnt (Unique Guard)
+  try {
+    const { data: canSend, error: claimErr } = await supa.rpc("claim_sms_once", {
+      p_message_id: messageKey,
+      p_source: "timer-tick",
+    });
 
-      if (canSend !== true) {
-        // Bereits früher geplant; wir betrachten den Auftrag als erledigt
-        console.log("SMS already claimed earlier for", messageKey);
-        return { ok: true, result: { stage: "sms", already: true, pushOk, pushBody } };
-      }
-    } catch (e) {
-      console.error("claim_sms_once threw:", e);
-      return { ok: false, result: { stage: "claim", error: String(e) } };
+    if (claimErr) {
+      console.error("claim_sms_once failed:", claimErr);
+      // armed lassen -> später neuer Versuch; dank Idempotenz keine Doppel-SMS
+      return {
+        ok: false,
+        result: { stage: "claim", error: claimErr.message ?? String(claimErr) },
+      };
     }
 
-    // SMS-Text (auf 280 chars kürzen)
-    const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über den Knopf oben rechts)`.slice(
-      0,
-      280,
-    );
-
-    try {
-      const { data: smsData, error: smsErr } = await supa.functions.invoke(SMS_FN, {
-        body: {
-          messageId: messageKey,
-          recipientDeviceNames: recipients,
-          smsText,
-          waitSec: 15,
-          rtdbBase: rtdb_base ?? "",
-          rolesPath: "roles",
-          recipientsPath: "notifications",
-          idempotencyFlag: "smsTriggered",
-          // Falls deine sms-fallback rtdbAuth erwartet, hier ergänzen:
-          // rtdbAuth,
-        },
-        headers: {
-          // Kritisch gegen 401: Service-Role explizit mitsenden
-          Authorization: `Bearer ${SERVICE_KEY}`,
-          // Optional: falls du den Secret-Guard nutzt
-          ...(SMS_SECRET ? { "x-sms-secret": SMS_SECRET } : {}),
-          // Optional (bei eigener Middleware): apikey
-          // apikey: SERVICE_KEY,
-        },
-      });
-
-      if (smsErr) {
-        console.error("SMS fallback failed:", smsErr);
-        // armed lassen -> späterer Retry; Doppel-SMS durch claim_sms_once verhindert
-        return { ok: false, result: { stage: "sms", error: smsErr.message ?? String(smsErr) } };
-      }
-
-      console.log("SMS fallback scheduled:", smsData);
-      // Erfolg: SMS geplant -> Auftrag 'fired'
-      return { ok: true, result: { stage: "sms", scheduled: true, pushOk, pushBody } };
-    } catch (e) {
-      console.error("sms-fallback threw:", e);
-      return { ok: false, result: { stage: "sms", error: String(e) } };
+    if (canSend !== true) {
+      // Bereits früher geplant; wir betrachten den Auftrag als erledigt
+      console.log("SMS already claimed earlier for", messageKey);
+      return { ok: true, result: { stage: "sms", already: true, pushOk, pushBody } };
     }
+  } catch (e) {
+    console.error("claim_sms_once threw:", e);
+    return { ok: false, result: { stage: "claim", error: String(e) } };
   }
+
+  // SMS-Text (auf 280 chars kürzen)
+  const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über den Knopf oben rechts)`.slice(0, 280);
+
+  try {
+    const headers: Record<string, string> = {
+      // Kritisch gegen 401: Service-Role explizit mitsenden
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,                     // <-- zusätzlich mitgeben
+      "Content-Type": "application/json",      // sauber setzen
+    };
+    if (SMS_SECRET) headers["x-sms-secret"] = SMS_SECRET;
+
+    const { data: smsData, error: smsErr } = await supa.functions.invoke(SMS_FN, {
+      body: {
+        messageId: messageKey,
+        recipientDeviceNames: recipients,
+        smsText,
+        waitSec: 15,
+        rtdbBase: rtdb_base ?? "",
+        rolesPath: "roles",
+        recipientsPath: "notifications",
+        idempotencyFlag: "smsTriggered",
+        // rtdbAuth: ..., // falls deine sms-fallback das braucht
+      },
+      headers,
+    });
+
+    if (smsErr) {
+      // 4xx = config/authorization; 5xx = retrybar
+      const status = (smsErr as any)?.context?.status ?? 0;
+      console.error("SMS fallback failed:", smsErr);
+      const retryable = status >= 500 || status === 0;
+      return {
+        ok: false,
+        result: { stage: "sms", error: smsErr.message ?? String(smsErr), retryable },
+      };
+    }
+
+    // Erfolg
+    return { ok: true, result: { stage: "sms", pushOk, pushBody, smsData } };
+  } catch (e) {
+    console.error("SMS invoke threw:", e);
+    return { ok: false, result: { stage: "sms", error: String(e) } };
+  }
+}
+
 
   // --- 3) Keine Empfänger: nur Push-Ergebnis zurückgeben ---
   return { ok: pushOk, result: { stage: "push_only", pushBody } };
