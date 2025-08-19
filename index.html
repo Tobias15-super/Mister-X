@@ -12,7 +12,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Mister X Spiel</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <script type="module" crossorigin src="/Mister-X/assets/index-CAWCk9wd.js"></script>
+  <script type="module" crossorigin src="/Mister-X/assets/index-BLFMk-ex.js"></script>
   <link rel="stylesheet" crossorigin href="/Mister-X/assets/index-B-MkzqQl.css">
 <link rel="manifest" href="/Mister-X/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/Mister-X/registerSW.js"></script></head>
 <body>
@@ -91,6 +91,8 @@
   <h3 id="settingsTimer">⏳ Aktueller Timer: --:--</h3>
   <label for="timerDurationInput" onclick="save_timer_duration()">Timer-Dauer (Minuten):</label>
   <input type="number" id="timerDurationInput" min="1" max="120" value="25" style="width:60px;" />
+  <label for="timerDurationInput2" onclick="save_timer_duration2()">Timer-Dauer2 (Minuten):</label>
+  <input type="number" id="timerDurationInput2" min="0" max="120" value="25" style="width:60px;" />
   <label for="max_Team_X" onclick="save_max_mister_x()">Maximale Mister-X-Mitglieder:</label>
   <input type="number" id="max_Team_X" min="1" max="10" value="1" style="width:60px;" />
   <button onclick="startTimer()">▶️ Timer starten</button>
