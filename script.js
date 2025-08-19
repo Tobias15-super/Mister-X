@@ -2251,7 +2251,8 @@ async function startTimer(duration_for_function) {
   await set(ref(rtdb, "timer"), {
     startTime,
     duration,
-    durationInput: duration,
+    durationInput: data?.durationInput,
+    durationInput2: data?.durationInput2 || 0,
 
   });
 
