@@ -23,6 +23,15 @@ let followMe = false;  // optional: Karte folgt der Position
 
 const LS_SHOW_HEADER = "showNotifHeader";
 
+
+const divaOverride = {
+      // 'Volkstheater': 6020xxxxx,
+      // 'Herrengasse':  6020xxxxx,
+      // 'Stephansplatz':6020xxxxx,
+      // 'Stubentor':    6020xxxxx
+    };
+
+
 // Optional: ein eigenes Icon für "ich" (sonst Leaflet-Default)
 const meIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1/dist/images/marker-icon.png',
@@ -139,6 +148,7 @@ import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'fir
 import { rtdb, storage } from './firebase.js';
 import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
+import { startU3Realtime, stopU3Realtime } from './u3-realtime.js';
 
 
 window.onerror = function(message, source, lineno, colno, error) {
@@ -2366,8 +2376,7 @@ function updateCountdown(startTime, duration) {
     }
 
     if (remaining <= 0) {
-      clearInterval(countdown);
-      updateStartButtonState(false); // Timer ist abgelaufen
+      // Timer ist abgelaufen
       // Timer-Elemente zurücksetzen
       [misterxTimer, agentTimer, settingsTimer].forEach(elem => {
         if (elem) {
@@ -2869,6 +2878,18 @@ async function startScript() {
     startup_Header();
     initRefreshButton();
     autoCheckUpdatesOnResume();
+    
+    await startU3Realtime(map, {
+          pollMs: 15000, // Fair Use  [2](https://www.data.gv.at/katalog/dataset/wiener-linien-echtzeitdaten-via-datendrehscheibe-wien)
+          divaOverride,
+          segmentSeconds: {
+            'Volkstheater→Herrengasse': 90,
+            'Herrengasse→Stephansplatz': 90,
+            'Stephansplatz→Stubentor': 90
+          }
+        });
+
+
     
 
     // Event-Handler für Karte
