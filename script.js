@@ -1344,16 +1344,25 @@ function renderCurrentTeamBox() {
 }
 
 
+
 function renderTeamList() {
   const listEl = $('teamList');
   const emptyEl = $('teamsEmpty');
   if (!listEl) return;
   listEl.innerHTML = '';
 
-  const entries = Object.entries(teamsSnapshotCache);
-  if (entries.length === 0) { show(emptyEl); return; }
-  hide(emptyEl);
+  // Teams robust einlesen und Null-Einträge filtern
+  const entries = Object
+    .entries(teamsSnapshotCache || {})
+    .filter(([, t]) => t && typeof t === 'object');
 
+  if (entries.length === 0) {
+    if (emptyEl) show(emptyEl);
+    return;
+  }
+  if (emptyEl) hide(emptyEl);
+
+  // Sortiere Teams: erst Mitgliederzahl (desc), dann Name (asc)
   entries.sort((a, b) => {
     const cntA = countMembers(a[1]);
     const cntB = countMembers(b[1]);
@@ -1362,25 +1371,36 @@ function renderTeamList() {
   });
 
   for (const [teamId, team] of entries) {
-    const members = countMembers(team);
-    const amMember = currentTeamId === teamId;
+    // → ERSETZT die fehlerhafte Zahl-Variable durch ein Array mit Member-Objekten
+    const memberArray = Object.entries(team.members || {})
+      .map(([id, data]) => ({
+        id,
+        joinedAt: normalizeTimestamp(data?.joinedAt)
+      }))
+      .sort((a, b) => {
+        if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
+        return a.id.localeCompare(b.id);
+      });
 
-    const chipsHtml = members.map(m => {
-    const isMe = m.id === deviceId;
-    const label = getDisplayName(m.id) + (isMe ? ' (Du)' : '');
-    return `<li class="ts-member ${isMe ? 'me' : ''}" title="${escapeHtml(m.id)}">${escapeHtml(label)}</li>`;
-  }).join('');
+    const chipsHtml = memberArray.map(m => {
+      const isMe = m.id === deviceId;
+      const label = getDisplayName(m.id) + (isMe ? ' (Du)' : '');
+      return `<li class="ts-member ${isMe ? 'me' : ''}" title="${escapeHtml(m.id)}">${escapeHtml(label)}</li>`;
+    }).join('');
+
     const card = document.createElement('div');
     card.className = 'ts-team';
     card.innerHTML = `
       <div>
         <div style="font-weight:600">${escapeHtml(team.name || '(ohne Namen)')}</div>
-        <div class="muted">${members.length} Mitglied(er)</div>
-        <ul class="ts-member-list">${chipsHtml}</ul>
+        <div class="muted">${memberArray.length} Mitglied(er)</div>
+        <ul class="ts-member-list">
+          ${chipsHtml || ''}
+        </ul>
       </div>
       <div>
         ${
-          amMember
+          currentTeamId === teamId
             ? `<button class="danger" onclick="leaveTeam()">Verlassen</button>`
             : `<button onclick="joinTeam('${teamId}', this)">Beitreten</button>`
         }
@@ -1390,6 +1410,7 @@ function renderTeamList() {
   }
 }
 
+
 function renderTeamStatusBar() {
   const nameSpan = $('teamStatusName');
   const countSpan = $('teamStatusCount');
@@ -1397,7 +1418,7 @@ function renderTeamStatusBar() {
   const team = currentTeamId ? teamsSnapshotCache[currentTeamId] : null;
   if (!team) {
     nameSpan.textContent = 'Kein Team';
-    countSpan.textContent = '–';
+    countSpan.textContent = '-';
     return;
   }
   nameSpan.textContent = team.name || '(ohne Namen)';
@@ -1437,7 +1458,7 @@ async function createTeam() {
     input.value = '';
   } catch (err) {
     alert(err?.message || 'Team konnte nicht erstellt werden.');
-    console.error(err);
+    log(err);
   } finally {
     btn.disabled = false;
   }
@@ -1462,7 +1483,7 @@ async function joinTeam(teamId, btnEl) {
     saveLocalTeamId(teamId);
   } catch (err) {
     alert(err?.message || 'Beitritt nicht möglich.');
-    console.error(err);
+    log(err);
   } finally {
     if (btnEl) btnEl.disabled = false;
   }
@@ -2452,10 +2473,10 @@ async function triggerAgentLocationRequest() {
     sendNotificationToRoles(
       'Mister X hat deinen Standort angefragt',
       'Bitte öffne die App und gib deinen Standort frei!',
-      new Set(['agent','settings','start'])
+      ['agent','settings','start']
     );
   } catch (e) {
-    console.error('Anfrage fehlgeschlagen', e);
+    log('Anfrage fehlgeschlagen', e);
     alert('Konnte die Anfrage nicht auslösen.');
   }
 }
@@ -2505,7 +2526,7 @@ function maybePromptForLocation(req) {
 
   if (ok) {
     shareTeamLocationForRequest(req).catch(err => {
-      console.error('Standortfreigabe fehlgeschlagen', err);
+      lgo('Standortfreigabe fehlgeschlagen', err);
       alert('Konnte Standort nicht freigeben.');
     });
   }
