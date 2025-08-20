@@ -159,6 +159,7 @@ const supabaseClient = supabase.createClient(
 // Token speichern
 async function saveTokenToSupabase(token) {
   const deviceId = getDeviceId();
+  const role = localStorage.getItem("role") || "start";
   try {
     // Optional: stattdessen direkt upsert mit onConflict, dann brauchst du kein delete
     const { error: delErr } = await supabaseClient
@@ -174,7 +175,7 @@ async function saveTokenToSupabase(token) {
 
     const { error: upsertErr } = await supabaseClient
       .from('fcm_tokens')
-      .upsert({ token, device_name: deviceId });
+      .upsert({ token, device_name: deviceId, role });
 
     if (upsertErr) {
       log("❌ Fehler beim Speichern des Tokens:", upsertErr);
@@ -255,6 +256,7 @@ async function requestPermission() {
     localStorage.setItem('fcmToken', currentToken);
     log('Token:', currentToken);
     await set(ref(rtdb, `tokens/${deviceId}`), currentToken);
+    await update(ref(rtdb, 'roles/${deviceId}/role'), 'start')
     await saveTokenToSupabase(currentToken);
 
     // 6) UI aktualisieren
