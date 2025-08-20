@@ -24,12 +24,6 @@ let followMe = false;  // optional: Karte folgt der Position
 const LS_SHOW_HEADER = "showNotifHeader";
 
 
-const divaOverride = {
-      // 'Volkstheater': 6020xxxxx,
-      // 'Herrengasse':  6020xxxxx,
-      // 'Stephansplatz':6020xxxxx,
-      // 'Stubentor':    6020xxxxx
-    };
 
 
 // Optional: ein eigenes Icon für "ich" (sonst Leaflet-Default)
@@ -2388,8 +2382,8 @@ function updateCountdown(startTime, duration) {
       if (localStorage.getItem("activeView")==="misterx"){
         get(ref(rtdb, "timer")).then(snapshot => {
           const data = snapshot.val();
-          durationInput = data?.durationInput;
-          durationInput2 = data?.durationInput2;
+          const durationInput = data?.durationInput;
+          const durationInput2 = data?.durationInput2;
           if (duration === durationInput && durationInput2 > 0){
             alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
             getLocation();
@@ -2879,17 +2873,6 @@ async function startScript() {
     startup_Header();
     initRefreshButton();
     autoCheckUpdatesOnResume();
-    
-    await startU3Realtime(map, {
-          pollMs: 15000, // Fair Use  [2](https://www.data.gv.at/katalog/dataset/wiener-linien-echtzeitdaten-via-datendrehscheibe-wien)
-          divaOverride,
-          segmentSeconds: {
-            'Volkstheater→Herrengasse': 90,
-            'Herrengasse→Stephansplatz': 90,
-            'Stephansplatz→Stubentor': 90
-          }
-        });
-
 
     
 
