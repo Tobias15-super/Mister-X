@@ -1609,7 +1609,6 @@ function showLocationHistory() {
 
       
       renderAgentRequestOverlay();
-      updateAgentReqProgressUi();
 
 
       historyMarkers.forEach(marker => map.removeLayer(marker));
