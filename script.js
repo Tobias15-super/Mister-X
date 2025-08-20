@@ -22,14 +22,13 @@ let userAccuracyCircle = null;
 let followMe = false;  // optional: Karte folgt der Position
 
 const LS_SHOW_HEADER = "showNotifHeader";
+const LS_KEY = "currentTeamId"
 
-let currentTeam = null;
-let teamsSnapshotCache = {};
 
-let unsubs = {
-  deviceTeam: null,
-  teams: null,
-};
+let currentTeamId = null;             // Quelle: RTDB deviceTeams/{deviceId}
+let teamsSnapshotCache = {};          // {teamId: {name, members: {...}}}
+let listeners = { deviceTeam: null, teams: null };
+
 
 
 
@@ -1183,75 +1182,93 @@ async function saveTelToRTDB(deviceId, tel, allowSmsFallback) {
 
 //=======Funktionen für Teams =======
 
-// --- Helpers ---
-function $(id) { return document.getElementById(id); }
-function show(el) { el.style.display = ''; }
-function hide(el) { el.style.display = 'none'; }
+
+// --- Helpers DOM/LS ---
+const $ = (id) => document.getElementById(id);
+const show = (el) => el && (el.style.display = '');
+const hide = (el) => el && (el.style.display = 'none');
+const saveLocalTeamId = (id) => {
+  try { localStorage.setItem(LS_KEY, id || ''); } catch {}
+};
+const getLocalTeamId = () => {
+  try { return localStorage.getItem(LS_KEY) || ''; } catch { return ''; }
+};
 
 function sanitizeTeamName(raw) {
   const s = (raw || '').trim();
-  // einfache Validierung
   if (s.length < 2) throw new Error('Der Teamname muss mindestens 2 Zeichen lang sein.');
   if (s.length > 24) throw new Error('Der Teamname darf maximal 24 Zeichen lang sein.');
   return s;
 }
-
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 function countMembers(team) {
   const m = team?.members || {};
   return Object.keys(m).length;
 }
-
 function isMemberOf(team, devId = deviceId) {
   return !!team?.members && !!team.members[devId];
 }
 
-// --- View steuern ---
-function openTeamSettings() {
-  show($('teamSettings'));
+// --- Init: Statusbar sofort mit localStorage füllen, dann Live-Listener starten ---
+function initTeamModule() {
+  // Statusbar mit letztem bekannten Team (LS) zeigen, bevor RTDB geladen ist
+  const lsTeamId = getLocalTeamId();
+  if (lsTeamId) {
+    // Name/Count kennen wir noch nicht -> Platzhalter
+    $('teamStatusName').textContent = '(lädt…)';
+    $('teamStatusCount').textContent = '–';
+  } else {
+    $('teamStatusName').textContent = 'Kein Team';
+    $('teamStatusCount').textContent = '–';
+  }
   ensureTeamListeners();
 }
+document.addEventListener('DOMContentLoaded', initTeamModule);
 
-
+// --- View Switch ---
+function openTeamSettings() {
+  show($('teamSettings'));
+  ensureTeamListeners(); // falls noch nicht aktiv
+}
 function closeTeamSettings() {
   show($('startView'));
   hide($('teamSettings'));
-  // Du kannst Listener weiterlaufen lassen (geringes Volumen),
-  // oder hier mit removeTeamListeners() abmelden.
+  // Listener bewusst anlassen, damit Statusbar aktuell bleibt
 }
 
-
-async function ensureTeamListeners() {
-  // 1) Hör auf meine Teamzuordnung
-  if (!unsubs.deviceTeam) {
+// --- Listener einrichten ---
+function ensureTeamListeners() {
+  if (!listeners.deviceTeam) {
     const deviceTeamRef = ref(rtdb, `deviceTeams/${deviceId}`);
     const handler = (snap) => {
       currentTeamId = snap.val() || null;
+      saveLocalTeamId(currentTeamId || '');
       renderCurrentTeamBox();
-      renderTeamList(); // Buttons/Badges aktualisieren
+      renderTeamList();
+      renderTeamStatusBar();
     };
     onValue(deviceTeamRef, handler);
-    unsubs.deviceTeam = { ref: deviceTeamRef, handler };
+    listeners.deviceTeam = { ref: deviceTeamRef, handler };
   }
 
-  // 2) Hör auf Teams-Liste
-  if (!unsubs.teams) {
+  if (!listeners.teams) {
     const teamsRef = ref(rtdb, 'teams');
     const handler = (snap) => {
       teamsSnapshotCache = snap.val() || {};
-      renderTeamList();
       renderCurrentTeamBox();
+      renderTeamList();
+      renderTeamStatusBar();
     };
     onValue(teamsRef, handler);
-    unsubs.teams = { ref: teamsRef, handler };
+    listeners.teams = { ref: teamsRef, handler };
   }
 }
-
 function removeTeamListeners() {
-  const { deviceTeam, teams } = unsubs;
-  if (deviceTeam) { off(deviceTeam.ref, 'value', deviceTeam.handler); unsubs.deviceTeam = null; }
-  if (teams) { off(teams.ref, 'value', teams.handler); unsubs.teams = null; }
+  if (listeners.deviceTeam) { off(listeners.deviceTeam.ref, 'value', listeners.deviceTeam.handler); listeners.deviceTeam = null; }
+  if (listeners.teams) { off(listeners.teams.ref, 'value', listeners.teams.handler); listeners.teams = null; }
 }
-
 
 // --- Rendering ---
 function renderCurrentTeamBox() {
@@ -1259,39 +1276,33 @@ function renderCurrentTeamBox() {
   const memEl = $('currentTeamMembers');
   const leaveBtn = $('leaveTeamBtn');
 
-  if (!currentTeamId || !teamsSnapshotCache[currentTeamId]) {
+  const team = currentTeamId ? teamsSnapshotCache[currentTeamId] : null;
+  if (!team) {
     nameEl.textContent = 'Kein Team';
     memEl.textContent = '— Mitglieder';
-    leaveBtn.disabled = true;
+    if (leaveBtn) leaveBtn.disabled = true;
     return;
-    }
-
-  const team = teamsSnapshotCache[currentTeamId];
+  }
   nameEl.textContent = team.name || '(ohne Namen)';
   memEl.textContent = `${countMembers(team)} Mitglied(er)`;
-  leaveBtn.disabled = !isMemberOf(team);
+  if (leaveBtn) leaveBtn.disabled = !isMemberOf(team);
 }
 
 function renderTeamList() {
   const listEl = $('teamList');
   const emptyEl = $('teamsEmpty');
+  if (!listEl) return;
   listEl.innerHTML = '';
 
   const entries = Object.entries(teamsSnapshotCache);
-  if (entries.length === 0) {
-    show(emptyEl);
-    return;
-  }
+  if (entries.length === 0) { show(emptyEl); return; }
   hide(emptyEl);
 
-  // sortiere nach Mitgliederzahl (desc), dann Name (asc)
   entries.sort((a, b) => {
     const cntA = countMembers(a[1]);
     const cntB = countMembers(b[1]);
     if (cntA !== cntB) return cntB - cntA;
-    const nameA = (a[1].name || '').toLowerCase();
-    const nameB = (b[1].name || '').toLowerCase();
-    return nameA.localeCompare(nameB);
+    return (a[1].name || '').localeCompare(b[1].name || '');
   });
 
   for (const [teamId, team] of entries) {
@@ -1309,7 +1320,7 @@ function renderTeamList() {
         ${
           amMember
             ? `<button class="danger" onclick="leaveTeam()">Verlassen</button>`
-            : `<button onclick="joinTeam('${teamId}')" ${isMemberOf(team, deviceId) ? 'disabled' : ''}>Beitreten</button>`
+            : `<button onclick="joinTeam('${teamId}', this)">Beitreten</button>`
         }
       </div>
     `;
@@ -1317,8 +1328,18 @@ function renderTeamList() {
   }
 }
 
-function escapeHtml(s) {
-  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function renderTeamStatusBar() {
+  const nameSpan = $('teamStatusName');
+  const countSpan = $('teamStatusCount');
+
+  const team = currentTeamId ? teamsSnapshotCache[currentTeamId] : null;
+  if (!team) {
+    nameSpan.textContent = 'Kein Team';
+    countSpan.textContent = '–';
+    return;
+  }
+  nameSpan.textContent = team.name || '(ohne Namen)';
+  countSpan.textContent = `${countMembers(team)} Mitglied(er)`;
 }
 
 // --- Aktionen ---
@@ -1327,16 +1348,14 @@ async function createTeam() {
   const input = $('createTeamInput');
   try {
     btn.disabled = true;
-
     const name = sanitizeTeamName(input.value);
 
-    // Wenn bereits in einem Team: zuerst verlassen
+    // Wenn schon in Team: zuerst sauber verlassen
     if (currentTeamId) {
       await leaveTeam(currentTeamId);
     }
 
-    const teamsRoot = ref(rtdb, 'teams');
-    const newTeamRef = push(teamsRoot);
+    const newTeamRef = push(ref(rtdb, 'teams'));
     const teamId = newTeamRef.key;
 
     const updates = {};
@@ -1344,13 +1363,14 @@ async function createTeam() {
       name,
       createdAt: serverTimestamp(),
       createdBy: deviceId,
-      members: {
-        [deviceId]: { joinedAt: serverTimestamp() }
-      }
+      members: { [deviceId]: { joinedAt: serverTimestamp() } }
     };
     updates[`deviceTeams/${deviceId}`] = teamId;
 
     await update(ref(rtdb), updates);
+
+    // localStorage aktualisiert sich durch den deviceTeam-Listener; hier optional direkt:
+    saveLocalTeamId(teamId);
 
     input.value = '';
   } catch (err) {
@@ -1361,63 +1381,62 @@ async function createTeam() {
   }
 }
 
-async function joinTeam(teamId) {
+async function joinTeam(teamId, btnEl) {
   if (!teamId) return;
   const team = teamsSnapshotCache[teamId];
-  if (!team) {
-    alert('Team existiert nicht mehr.');
-    return;
-  }
+  if (!team) { alert('Team existiert nicht (mehr).'); return; }
 
-  const joinBtn = event?.target instanceof HTMLButtonElement ? event.target : null;
-  if (joinBtn) joinBtn.disabled = true;
-
+  if (btnEl) btnEl.disabled = true;
   try {
-    // Falls ich bereits in einem Team bin: verlassen
     if (currentTeamId && currentTeamId !== teamId) {
       await leaveTeam(currentTeamId);
     }
 
-    // Mitglied hinzufügen + Mapping setzen
     const updates = {};
     updates[`teams/${teamId}/members/${deviceId}`] = { joinedAt: serverTimestamp() };
     updates[`deviceTeams/${deviceId}`] = teamId;
     await update(ref(rtdb), updates);
+
+    saveLocalTeamId(teamId);
   } catch (err) {
     alert(err?.message || 'Beitritt nicht möglich.');
     console.error(err);
   } finally {
-    if (joinBtn) joinBtn.disabled = false;
+    if (btnEl) btnEl.disabled = false;
   }
 }
 
 /**
- * Verlässt das angegebene Team oder – wenn leer – das aktuelle.
- * Löscht das Team automatisch, wenn danach 0 Mitglieder verbleiben.
+ * Verlässt das angegebene Team (oder das aktuelle).
+ * Wenn danach 0 Mitglieder übrig sind, wird das Team gelöscht (runTransaction -> return null).
+ * Zusätzlich wird das deviceTeams-Mapping des Geräts auf null gesetzt.
  */
 async function leaveTeam(teamId = null) {
   const id = teamId || currentTeamId;
   if (!id) return;
 
-  // Transaktion auf dem Team-Root:
-  // - Entfernt mein Mitglied
-  // - Wenn danach keine Mitglieder: return null -> löscht den Knoten "teams/{id}"
   const teamRef = ref(rtdb, `teams/${id}`);
+
+  // Transaktion: entferne mich aus members; wenn danach 0 -> Team-Knoten löschen
   await runTransaction(teamRef, (team) => {
-    if (!team) return team; // bereits gelöscht
+    if (!team) return team; // schon weg
     if (team.members && team.members[deviceId]) {
       delete team.members[deviceId];
       const left = Object.keys(team.members).length;
       if (left === 0) {
-        return null; // löscht das Team
+        return null; // löscht teams/{id}
       }
     }
     return team;
   });
 
-  // Mein Mapping auflösen (separat, Transaktion deckt das Team ab)
+  // Mapping lösen
   await set(ref(rtdb, `deviceTeams/${deviceId}`), null);
+
+  // localStorage leeren
+  saveLocalTeamId('');
 }
+
 
 
 
@@ -3204,6 +3223,10 @@ window.resetAllMisterXRollen = resetAllMisterXRollen;
 window.removeNotificationSetup = removeNotificationSetup;
 window.mxState = window.mxState || {};
 window.mxState.selectedPost = null; 
+window.openTeamSettings = openTeamSettings;
+window.closeTeamSettings = closeTeamSettings;
+window.leaveTeam = leaveTeam;
+window.createTeam = createTeam;
 function setSelectedPost(p) {window.mxState.selectedPost = p; }
 function getselectedPost() { return window.mxState.selectedPost; }
 document.addEventListener("DOMContentLoaded", startScript);

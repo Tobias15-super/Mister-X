@@ -15,6 +15,12 @@
   <link rel="icon" href="favicon.ico" type="image/x-icon">
 </head>
 <body>
+<div id="teamStatusBar" class="team-status">
+  <span id="teamStatusName">Kein Team</span>
+  <span class="sep">•</span>
+  <span id="teamStatusCount">-</span>
+</div>
+
   <div class="header-bar">
   <h1>Mister X Spiel</h1>
     <button id="refreshBtn"
@@ -57,6 +63,7 @@
   </div>
 
 
+
 <div id="teamSettings" style="display:none;">
   <div class="ts-header">
     <button class="small-button" id="backToStart" onclick="closeTeamSettings()">⬅️ Zurück</button>
@@ -67,7 +74,7 @@
     <h3>Dein Team</h3>
     <div id="currentTeamBox" class="ts-card">
       <div>
-        <div class="ts-current-name" id="currentTeamName">—</div>
+        <div class="ts-current-name" id="currentTeamName">Kein Team</div>
         <div class="ts-current-members" id="currentTeamMembers">— Mitglieder</div>
       </div>
       <div>
@@ -82,15 +89,16 @@
       <input id="createTeamInput" type="text" placeholder="Teamname (z.B. Rote Füchse)" maxlength="24">
       <button id="createTeamBtn" onclick="createTeam()">➕ Erstellen & beitreten</button>
     </div>
-    <div class="hint">Tipp: Kurze, eindeutige Namen helfen allen.</div>
+    <div class="hint">Tipp: kurze, eindeutige Namen helfen allen.</div>
   </section>
 
   <section class="ts-list">
     <h3>Alle Teams</h3>
-    <div id="teamsEmpty" class="muted" style="display:none;">Noch keine Teams – leg gleich eines an!</div>
+    <div id="teamsEmpty" class="muted" style="display:none;">Noch keine Teams - leg gleich eines an!</div>
     <div id="teamList" class="ts-grid"></div>
   </section>
 </div>
+
 
 
   <!-- Mister X Ansicht -->
