@@ -1227,7 +1227,7 @@ document.addEventListener('DOMContentLoaded', initTeamModule);
 // --- View Switch ---
 function openTeamSettings() {
   show($('teamSettings'));
-  hide($('teamSettings'));
+  hide($('startView'));
   ensureTeamListeners(); // falls noch nicht aktiv
 }
 function closeTeamSettings() {
@@ -3136,6 +3136,7 @@ async function startScript() {
     startup_Header();
     initRefreshButton();
     autoCheckUpdatesOnResume();
+    ensureTeamListeners();
 
     
 
