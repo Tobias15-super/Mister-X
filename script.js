@@ -1227,6 +1227,7 @@ document.addEventListener('DOMContentLoaded', initTeamModule);
 // --- View Switch ---
 function openTeamSettings() {
   show($('teamSettings'));
+  hide($('teamSettings'));
   ensureTeamListeners(); // falls noch nicht aktiv
 }
 function closeTeamSettings() {
@@ -3222,6 +3223,7 @@ window.openTeamSettings = openTeamSettings;
 window.closeTeamSettings = closeTeamSettings;
 window.leaveTeam = leaveTeam;
 window.createTeam = createTeam;
+window.joinTeam = joinTeam;
 function setSelectedPost(p) {window.mxState.selectedPost = p; }
 function getselectedPost() { return window.mxState.selectedPost; }
 document.addEventListener("DOMContentLoaded", startScript);
