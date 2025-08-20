@@ -10,6 +10,7 @@ const postenMarkers = {};
 let postenCache = null;
 let selectedPost = null;
 const _seenMessageIds = new Set(); // für Push-Handler, um Duplikate zu vermeiden
+const deviceId = null;
 
 const TEXTBEE_API_KEY = "9bd1b2ba-67a5-412f-a5c1-9e30a8c8c3d3";
 const TEXTBEE_DEVICE_ID = "68a05594f6706f717bba9ed8";
@@ -165,7 +166,6 @@ const supabaseClient = supabase.createClient(
 
 // Token speichern
 async function saveTokenToSupabase(token) {
-  const deviceId = getDeviceId();
   const role = localStorage.getItem("role") || "start";
   try {
     // Optional: stattdessen direkt upsert mit onConflict, dann brauchst du kein delete
@@ -259,7 +259,6 @@ async function requestPermission() {
     }
 
     // 5) Token speichern (RTDB + Supabase)
-    const deviceId = getDeviceId();
     localStorage.setItem('fcmToken', currentToken);
     log('Token:', currentToken);
     await set(ref(rtdb, `tokens/${deviceId}`), currentToken);
@@ -383,7 +382,6 @@ async function refreshTokenIfPermitted(options = {}) {
       return null;
     }
 
-    const deviceId = getDeviceId();
     const oldToken = localStorage.getItem("fcmToken");
 
     if (force || newToken !== oldToken) {
@@ -471,6 +469,7 @@ async function askForDeviceIdAndPhone() {
   }
   id = id.trim();
   localStorage.setItem("deviceId", id);
+  deviceId = id
 
   // --- 2) Lokale Präferenzen lesen ---
   let telPrefs = loadSmsPrefs();
@@ -543,7 +542,6 @@ async function removeNotificationSetup() {
     const supported = await isSupported().catch(() => false);
     if (!messaging) messaging = getMessaging(app);
 
-    const deviceId = getDeviceId();
     const oldToken = localStorage.getItem('fcmToken');
 
     // 1) FCM-Token im Browser löschen (nicht getToken()!)
@@ -1218,10 +1216,10 @@ function initTeamModule() {
   if (lsTeamId) {
     // Name/Count kennen wir noch nicht -> Platzhalter
     $('teamStatusName').textContent = '(lädt…)';
-    $('teamStatusCount').textContent = '–';
+    $('teamStatusCount').textContent = '-';
   } else {
     $('teamStatusName').textContent = 'Kein Team';
-    $('teamStatusCount').textContent = '–';
+    $('teamStatusCount').textContent = '-';
   }
   ensureTeamListeners();
 }
@@ -2431,7 +2429,6 @@ async function switchView(view) {
   }
 
   localStorage.setItem("activeView", view);
-      const deviceId = getDeviceId();
     //firebase.database().ref("roles/" + deviceId).set({
     update(ref(rtdb, "roles/" + deviceId), {
       role: view,
@@ -2465,7 +2462,6 @@ async function goBack() {
   document.getElementById("startView2").style.display = "block";
   clearInterval(countdown);
   localStorage.setItem("activeView","start");
-  const deviceId = getDeviceId();
   //firebase.database().ref("roles/" + deviceId).set({
   update(ref(rtdb, "roles/" + deviceId), {
     role: "start",
