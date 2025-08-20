@@ -15,10 +15,10 @@ body {
 
 
   .team-status {
-    gap:8px; align-items:center;
+    display: flex; gap:8px; align-items:center;
     padding:8px 12px; background:#f6f8ff; color:#1d2a46;
     border-bottom:1px solid #e3e8ff; font-size:0.95rem; cursor:pointer;
-    position:sticky; top:0; z-index:10;
+    position:relative; top:0; z-index:10;
   }
   .team-status .sep { opacity:0.4 }
 
