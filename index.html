@@ -119,6 +119,8 @@
 
     <br><br>
     <p id="status"></p>
+    <br>
+    <button id="btnRequestAgents" onclick="triggerAgentLocationRequest()">📍 Standort von Agenten anfragen</button>
     <button id="startTimerButton" onclick="startTimer()">▶️ Timer starten</button>
     <button onclick="goBack()">🔙 Zurück</button>
   </div>
@@ -157,6 +159,15 @@
     <pre id="settingsLog" style="background:#eee; padding:8px; max-height:200px; overflow:auto;"></pre>
   </div>
   </div>
+  
+  <div id="agentReqStatus" class="agent-req-status" style="display:none;">
+    <strong id="agentReqProgress">Standort von 0/0 Teams</strong>
+    <label class="toggle-agent-locs">
+      <input type="checkbox" id="toggleAgentLocations">
+      Agenten-Standorte anzeigen
+    </label>
+  </div>
+
   <div id="map" style="width: 100%; height: 600px; margin-top: 1em;"></div>
     <label>
     <input type="checkbox" id="toggleTracking"> Meine Position anzeigen (Live)

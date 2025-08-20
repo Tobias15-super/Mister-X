@@ -30,6 +30,15 @@ let currentTeamId = null;             // Quelle: RTDB deviceTeams/{deviceId}
 let teamsSnapshotCache = {};          // {teamId: {name, members: {...}}}
 let listeners = { deviceTeam: null, teams: null };
 
+// === Agenten-Standort-Anfrage ===
+let activeAgentReq = null;          // Snapshot von agentLocationRequest
+let agentReqMarkers = [];           // Leaflet-Marker für Antworten
+const LS_SHOW_AGENT_LOCS = 'showAgentLocations';
+const LS_LAST_PROMPTED_REQ = 'lastPromptedAgentReqId';
+const LS_LAST_RESPONDED_REQ = 'lastRespondedAgentReqId';
+let showAgentLocations = (localStorage.getItem(LS_SHOW_AGENT_LOCS) ?? '1') === '1';
+
+
 
 
 
@@ -1356,12 +1365,18 @@ function renderTeamList() {
     const members = countMembers(team);
     const amMember = currentTeamId === teamId;
 
+    const chipsHtml = members.map(m => {
+    const isMe = m.id === deviceId;
+    const label = getDisplayName(m.id) + (isMe ? ' (Du)' : '');
+    return `<li class="ts-member ${isMe ? 'me' : ''}" title="${escapeHtml(m.id)}">${escapeHtml(label)}</li>`;
+  }).join('');
     const card = document.createElement('div');
     card.className = 'ts-team';
     card.innerHTML = `
       <div>
         <div style="font-weight:600">${escapeHtml(team.name || '(ohne Namen)')}</div>
-        <div class="muted"><span class="badge">${members}</span> Mitglied(er)</div>
+        <div class="muted">${members.length} Mitglied(er)</div>
+        <ul class="ts-member-list">${chipsHtml}</ul>
       </div>
       <div>
         ${
@@ -1567,6 +1582,11 @@ function showLocationHistory() {
       ensurePostenLayer();
       renderPostenMarkersFromCache();
       reattachUserLocationOnMap();
+
+      
+      renderAgentRequestOverlay();
+      updateAgentReqProgressUi();
+
 
       historyMarkers.forEach(marker => map.removeLayer(marker));
       historyMarkers = [];
@@ -2392,6 +2412,202 @@ function startup_Header() {
 };
 
 
+//========Agentlocation-Funktionen==========
+
+function updateAgentReqUiVisibility(currentView) {
+  const isMisterX = currentView === 'misterx';
+  const box = document.getElementById('agentReqStatus');
+  if (box) box.style.display = isMisterX ? '' : 'none';
+}
+
+async function triggerAgentLocationRequest() {
+  try {
+    // Teams zum Zeitpunkt der Anfrage erfassen
+    let teamsObj = teamsSnapshotCache;
+    if (!teamsObj || Object.keys(teamsObj).length === 0) {
+      const snap = await get(ref(rtdb, 'teams'));
+      teamsObj = snap.val() || {};
+    }
+
+    // Optional: Team von Mister X ausschließen (wahrscheinlich sinnvoll)
+    const teamsAtRequest = {};
+    for (const [teamId, team] of Object.entries(teamsObj)) {
+      // Falls du Mister X' Team ausschließen willst:
+      if (teamId === currentTeamId) continue;
+      // Nur Teams mit mind. 1 Mitglied
+      if (team?.members && Object.keys(team.members).length > 0) {
+        teamsAtRequest[teamId] = true;
+      }
+    }
+
+    const reqId = String(Date.now()); // ausreichend eindeutig
+    await set(ref(rtdb, 'agentLocationRequest'), {
+      id: reqId,
+      createdAt: serverTimestamp(),
+      createdBy: deviceId,
+      teamsAtRequest
+    });
+
+    // Push an alle außer Mister X (deine Hilfsfunktion)
+    sendNotificationToRoles(
+      'Mister X hat deinen Standort angefragt',
+      'Bitte öffne die App und gib deinen Standort frei!',
+      new Set(['agent','settings','start'])
+    );
+  } catch (e) {
+    console.error('Anfrage fehlgeschlagen', e);
+    alert('Konnte die Anfrage nicht auslösen.');
+  }
+}
+
+function startAgentLocationRequestListener() {
+  const reqRef = ref(rtdb, 'agentLocationRequest');
+  onValue(reqRef, (snap) => {
+    activeAgentReq = snap.exists() ? snap.val() : null;
+    updateAgentReqProgressUi();
+    renderAgentRequestOverlay();
+
+    // Agenten‑Prompt nur, wenn:
+    // - Es eine aktive Anfrage gibt
+    // - Dieses Gerät NICHT der Ersteller ist
+    // - Gerät ist in einem Team
+    if (activeAgentReq && activeAgentReq.createdBy !== deviceId && currentTeamId) {
+      maybePromptForLocation(activeAgentReq);
+    }
+  });
+}
+
+function updateAgentReqProgressUi() {
+  const el = document.getElementById('agentReqProgress');
+  if (!el) return;
+  if (!activeAgentReq) {
+    el.textContent = 'Kein Standort angefragt';
+    return;
+  }
+  const total = Object.keys(activeAgentReq.teamsAtRequest || {}).length;
+  const done = Object.keys(activeAgentReq.responses || {}).length;
+  el.textContent = `Standort von ${done}/${total} Teams`;
+}
+
+// Nur 1x pro Anfrage „bestätigen & senden“
+function maybePromptForLocation(req) {
+  const lastPrompted = localStorage.getItem(LS_LAST_PROMPTED_REQ) || '';
+  const lastResponded = localStorage.getItem(LS_LAST_RESPONDED_REQ) || '';
+  if (req.id === lastResponded) return; // bereits geantwortet
+  if (req.id === lastPrompted) return;  // bereits gefragt
+
+  // Nur reagieren, wenn das Team überhaupt angesprochen wurde
+  if (req.teamsAtRequest && !req.teamsAtRequest[currentTeamId]) return;
+
+  // Prompt (Bestätigungsdialog statt reines alert, damit Opt‑out möglich)
+  const ok = confirm('Mister X hat deinen Standort angefragt. Jetzt Standort freigeben?');
+  try { localStorage.setItem(LS_LAST_PROMPTED_REQ, req.id); } catch {}
+
+  if (ok) {
+    shareTeamLocationForRequest(req).catch(err => {
+      console.error('Standortfreigabe fehlgeschlagen', err);
+      alert('Konnte Standort nicht freigeben.');
+    });
+  }
+}
+
+
+async function shareTeamLocationForRequest(req) {
+  if (!currentTeamId) {
+    alert('Du bist in keinem Team. Standortfreigabe abgebrochen.');
+    return;
+  }
+
+  // Vorab prüfen, ob Team schon geantwortet hat (race-sicherer Schutz folgt per Transaktion)
+  const teamRespRef = ref(rtdb, `agentLocationRequest/responses/${currentTeamId}`);
+  const existing = await get(teamRespRef);
+  if (existing.exists()) {
+    // Schon vorhanden – nichts mehr senden
+    try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+    return;
+  }
+
+  // Geolocation abfragen
+  const position = await new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('Geolocation nicht verfügbar'));
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true, timeout: 15000, maximumAge: 0
+    });
+  });
+
+  const lat = position.coords.latitude;
+  const lon = position.coords.longitude;
+
+  // Teamname ermitteln (nice to have)
+  const teamName = (teamsSnapshotCache?.[currentTeamId]?.name) || 'Team';
+
+  // Transaktion: nur schreiben, wenn noch keine Antwort des Teams existiert
+  await runTransaction(teamRespRef, (current) => {
+    if (current) {
+      // Jemand war schneller – nichts überschreiben
+      return current;
+    }
+    return {
+      teamId: currentTeamId,
+      teamName,
+      lat, lon,
+      deviceId,
+      timestamp: serverTimestamp()
+    };
+  });
+
+  try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+}
+
+function renderAgentRequestOverlay() {
+  // ggf. alte Marker entfernen
+  if (agentReqMarkers && agentReqMarkers.length && window.map) {
+    agentReqMarkers.forEach(m => map.removeLayer(m));
+  }
+  agentReqMarkers = [];
+
+  if (!activeAgentReq || !showAgentLocations) return;
+
+  const responses = activeAgentReq.responses || {};
+  const entries = Object.values(responses);
+
+  if (!entries.length) {
+    // Keine Antworten -> nichts zu rendern
+    return;
+  }
+
+  // Falls noch keine Karte da ist, aber Antworten existieren -> Karte öffnen
+  if (!window.map) {
+    const first = entries[0];
+    if (first.lat != null && first.lon != null) {
+      createOrReuseMap(first.lat, first.lon);
+    }
+  }
+  if (!window.map) return;
+
+  // Stabiler Farbindicator pro Team (einfacher Hash -> Farbklasse)
+  const colorClasses = ['','orange','green','purple'];
+  const classForTeam = (teamId) => colorClasses[(hashCode(teamId) % (colorClasses.length))];
+
+  for (const resp of entries) {
+    if (resp.lat == null || resp.lon == null) continue;
+
+    const icon = L.divIcon({
+      className: `square-marker ${classForTeam(resp.teamId)}`,
+      iconSize: [14, 14]
+    });
+    const marker = L.marker([resp.lat, resp.lon], { icon }).addTo(map);
+    const popupHtml = `<strong>${escapeHtml(resp.teamName || 'Team')}</strong>`;
+    marker.bindPopup(popupHtml);
+    agentReqMarkers.push(marker);
+  }
+}
+
+// kleiner Hash für Farbauswahl
+function hashCode(s = '') {
+  let h = 0; for (let i=0; i<s.length; i++) h = (h<<5) - h + s.charCodeAt(i) | 0;
+  return Math.abs(h);
+}
 
 
 
@@ -2469,6 +2685,7 @@ async function switchView(view) {
     showLocationHistory();
     initPostenListener();
     wireSearchUI();
+    updateAgentReqUiVisibility("misterx");
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
     showLocationHistory();
@@ -3187,7 +3404,21 @@ async function startScript() {
     autoCheckUpdatesOnResume();
     ensureTeamListeners();
 
+
+    //für Agentlocation:
     
+    const toggle = document.getElementById('toggleAgentLocations');
+      if (toggle) {
+        toggle.checked = showAgentLocations;
+        toggle.addEventListener('change', () => {
+          showAgentLocations = !!toggle.checked;
+          try { localStorage.setItem(LS_SHOW_AGENT_LOCS, showAgentLocations ? '1' : '0'); } catch {}
+          renderAgentRequestOverlay();    // Ein-/Ausblenden anwenden
+        });
+      }
+
+      // RTDB-Listener starten
+      startAgentLocationRequestListener();    
 
     // Event-Handler für Karte
     document.getElementById('toggleTracking')?.addEventListener('change', (e) => {
@@ -3274,6 +3505,7 @@ window.closeTeamSettings = closeTeamSettings;
 window.leaveTeam = leaveTeam;
 window.createTeam = createTeam;
 window.joinTeam = joinTeam;
+window.triggerAgentLocationRequest = triggerAgentLocationRequest;
 function setSelectedPost(p) {window.mxState.selectedPost = p; }
 function getselectedPost() { return window.mxState.selectedPost; }
 document.addEventListener("DOMContentLoaded", startScript);
