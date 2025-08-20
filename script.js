@@ -1191,6 +1191,24 @@ const getLocalTeamId = () => {
   try { return localStorage.getItem(LS_KEY) || ''; } catch { return ''; }
 };
 
+
+function normalizeTimestamp(ts) {
+  if (typeof ts === 'number') return ts;
+  if (ts && typeof ts === 'object' && typeof ts.seconds === 'number') {
+    // (eher Firestore-Format, hier nur als Fallback)
+    return ts.seconds * 1000;
+  }
+  return 0;
+}
+
+
+function getDisplayName(devId) {
+  if (!devId) return 'Unbekannt';
+  const last4 = String(devId).slice(-4);
+  return `Gerät ${last4}`;
+}
+
+
 function sanitizeTeamName(raw) {
   const s = (raw || '').trim();
   if (s.length < 2) throw new Error('Der Teamname muss mindestens 2 Zeichen lang sein.');
@@ -1269,22 +1287,53 @@ function removeTeamListeners() {
 }
 
 // --- Rendering ---
+
 function renderCurrentTeamBox() {
   const nameEl = $('currentTeamName');
   const memEl = $('currentTeamMembers');
   const leaveBtn = $('leaveTeamBtn');
 
   const team = currentTeamId ? teamsSnapshotCache[currentTeamId] : null;
+
   if (!team) {
     nameEl.textContent = 'Kein Team';
-    memEl.textContent = '— Mitglieder';
+    if (memEl) memEl.innerHTML = '— Mitglieder';
     if (leaveBtn) leaveBtn.disabled = true;
     return;
   }
+
   nameEl.textContent = team.name || '(ohne Namen)';
-  memEl.textContent = `${countMembers(team)} Mitglied(er)`;
+
+  // Mitglieder sammeln & sortieren (nach joinedAt, dann deviceId)
+  const members = Object.entries(team.members || {}).map(([id, data]) => ({
+    id,
+    joinedAt: normalizeTimestamp(data?.joinedAt)
+  })).sort((a, b) => {
+    if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
+    return a.id.localeCompare(b.id);
+  });
+
+  // Member-Chips bauen
+  const chipsHtml = members.map(m => {
+    const isMe = m.id === deviceId;
+    const label = getDisplayName(m.id) + (isMe ? ' (Du)' : '');
+    return `<li class="ts-member ${isMe ? 'me' : ''}" title="${escapeHtml(m.id)}">${escapeHtml(label)}</li>`;
+  }).join('');
+
+  if (memEl) {
+    memEl.innerHTML = `
+      <div class="muted">${members.length} Mitglied(er)</div>
+      ${
+        members.length > 0
+          ? `<ul class="ts-member-list">${chipsHtml}</ul>`
+          : `<div class="muted">Noch keine Mitglieder</div>`
+      }
+    `;
+  }
+
   if (leaveBtn) leaveBtn.disabled = !isMemberOf(team);
 }
+
 
 function renderTeamList() {
   const listEl = $('teamList');
