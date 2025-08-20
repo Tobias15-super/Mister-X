@@ -10,7 +10,7 @@ const postenMarkers = {};
 let postenCache = null;
 let selectedPost = null;
 const _seenMessageIds = new Set(); // für Push-Handler, um Duplikate zu vermeiden
-const deviceId = null;
+const deviceId = localStorage.getItem("deviceId") || null;
 
 const TEXTBEE_API_KEY = "9bd1b2ba-67a5-412f-a5c1-9e30a8c8c3d3";
 const TEXTBEE_DEVICE_ID = "68a05594f6706f717bba9ed8";
@@ -469,7 +469,6 @@ async function askForDeviceIdAndPhone() {
   }
   id = id.trim();
   localStorage.setItem("deviceId", id);
-  deviceId = id
 
   // --- 2) Lokale Präferenzen lesen ---
   let telPrefs = loadSmsPrefs();
