@@ -1204,7 +1204,7 @@ function normalizeTimestamp(ts) {
 
 function getDisplayName(devId) {
   if (!devId) return 'Unbekannt';
-  const last4 = String(devId).slice(-4);
+  const last4 = String(devId);
   return `Gerät ${last4}`;
 }
 
