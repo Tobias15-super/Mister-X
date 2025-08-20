@@ -23,6 +23,14 @@ let followMe = false;  // optional: Karte folgt der Position
 
 const LS_SHOW_HEADER = "showNotifHeader";
 
+let currentTeam = null;
+let teamsSnapshotCache = {};
+
+let unsubs = {
+  deviceTeam: null,
+  teams: null,
+};
+
 
 
 
@@ -140,9 +148,9 @@ const COLOR_MAP = {
 import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
-import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast } from 'firebase/database';
+import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
-import { startU3Realtime, stopU3Realtime } from './u3-realtime.js';
+
 
 
 window.onerror = function(message, source, lineno, colno, error) {
@@ -188,7 +196,7 @@ async function saveTokenToSupabase(token) {
 }
 
 
-export function getDeviceId() {
+function getDeviceId() {
   let id = localStorage.getItem("deviceId");
   while (!id || id.trim() === "") {
     id = prompt("Bitte gib deinen Namen ein");
@@ -1171,6 +1179,244 @@ async function saveTelToRTDB(deviceId, tel, allowSmsFallback) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+}
+
+//=======Funktionen für Teams =======
+
+// --- Helpers ---
+function $(id) { return document.getElementById(id); }
+function show(el) { el.style.display = ''; }
+function hide(el) { el.style.display = 'none'; }
+
+function sanitizeTeamName(raw) {
+  const s = (raw || '').trim();
+  // einfache Validierung
+  if (s.length < 2) throw new Error('Der Teamname muss mindestens 2 Zeichen lang sein.');
+  if (s.length > 24) throw new Error('Der Teamname darf maximal 24 Zeichen lang sein.');
+  return s;
+}
+
+function countMembers(team) {
+  const m = team?.members || {};
+  return Object.keys(m).length;
+}
+
+function isMemberOf(team, devId = deviceId) {
+  return !!team?.members && !!team.members[devId];
+}
+
+// --- View steuern ---
+function openTeamSettings() {
+  show($('teamSettings'));
+  ensureTeamListeners();
+}
+
+
+function closeTeamSettings() {
+  show($('startView'));
+  hide($('teamSettings'));
+  // Du kannst Listener weiterlaufen lassen (geringes Volumen),
+  // oder hier mit removeTeamListeners() abmelden.
+}
+
+
+async function ensureTeamListeners() {
+  // 1) Hör auf meine Teamzuordnung
+  if (!unsubs.deviceTeam) {
+    const deviceTeamRef = ref(rtdb, `deviceTeams/${deviceId}`);
+    const handler = (snap) => {
+      currentTeamId = snap.val() || null;
+      renderCurrentTeamBox();
+      renderTeamList(); // Buttons/Badges aktualisieren
+    };
+    onValue(deviceTeamRef, handler);
+    unsubs.deviceTeam = { ref: deviceTeamRef, handler };
+  }
+
+  // 2) Hör auf Teams-Liste
+  if (!unsubs.teams) {
+    const teamsRef = ref(rtdb, 'teams');
+    const handler = (snap) => {
+      teamsSnapshotCache = snap.val() || {};
+      renderTeamList();
+      renderCurrentTeamBox();
+    };
+    onValue(teamsRef, handler);
+    unsubs.teams = { ref: teamsRef, handler };
+  }
+}
+
+function removeTeamListeners() {
+  const { deviceTeam, teams } = unsubs;
+  if (deviceTeam) { off(deviceTeam.ref, 'value', deviceTeam.handler); unsubs.deviceTeam = null; }
+  if (teams) { off(teams.ref, 'value', teams.handler); unsubs.teams = null; }
+}
+
+
+// --- Rendering ---
+function renderCurrentTeamBox() {
+  const nameEl = $('currentTeamName');
+  const memEl = $('currentTeamMembers');
+  const leaveBtn = $('leaveTeamBtn');
+
+  if (!currentTeamId || !teamsSnapshotCache[currentTeamId]) {
+    nameEl.textContent = 'Kein Team';
+    memEl.textContent = '— Mitglieder';
+    leaveBtn.disabled = true;
+    return;
+    }
+
+  const team = teamsSnapshotCache[currentTeamId];
+  nameEl.textContent = team.name || '(ohne Namen)';
+  memEl.textContent = `${countMembers(team)} Mitglied(er)`;
+  leaveBtn.disabled = !isMemberOf(team);
+}
+
+function renderTeamList() {
+  const listEl = $('teamList');
+  const emptyEl = $('teamsEmpty');
+  listEl.innerHTML = '';
+
+  const entries = Object.entries(teamsSnapshotCache);
+  if (entries.length === 0) {
+    show(emptyEl);
+    return;
+  }
+  hide(emptyEl);
+
+  // sortiere nach Mitgliederzahl (desc), dann Name (asc)
+  entries.sort((a, b) => {
+    const cntA = countMembers(a[1]);
+    const cntB = countMembers(b[1]);
+    if (cntA !== cntB) return cntB - cntA;
+    const nameA = (a[1].name || '').toLowerCase();
+    const nameB = (b[1].name || '').toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+
+  for (const [teamId, team] of entries) {
+    const members = countMembers(team);
+    const amMember = currentTeamId === teamId;
+
+    const card = document.createElement('div');
+    card.className = 'ts-team';
+    card.innerHTML = `
+      <div>
+        <div style="font-weight:600">${escapeHtml(team.name || '(ohne Namen)')}</div>
+        <div class="muted"><span class="badge">${members}</span> Mitglied(er)</div>
+      </div>
+      <div>
+        ${
+          amMember
+            ? `<button class="danger" onclick="leaveTeam()">Verlassen</button>`
+            : `<button onclick="joinTeam('${teamId}')" ${isMemberOf(team, deviceId) ? 'disabled' : ''}>Beitreten</button>`
+        }
+      </div>
+    `;
+    listEl.appendChild(card);
+  }
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// --- Aktionen ---
+async function createTeam() {
+  const btn = $('createTeamBtn');
+  const input = $('createTeamInput');
+  try {
+    btn.disabled = true;
+
+    const name = sanitizeTeamName(input.value);
+
+    // Wenn bereits in einem Team: zuerst verlassen
+    if (currentTeamId) {
+      await leaveTeam(currentTeamId);
+    }
+
+    const teamsRoot = ref(rtdb, 'teams');
+    const newTeamRef = push(teamsRoot);
+    const teamId = newTeamRef.key;
+
+    const updates = {};
+    updates[`teams/${teamId}`] = {
+      name,
+      createdAt: serverTimestamp(),
+      createdBy: deviceId,
+      members: {
+        [deviceId]: { joinedAt: serverTimestamp() }
+      }
+    };
+    updates[`deviceTeams/${deviceId}`] = teamId;
+
+    await update(ref(rtdb), updates);
+
+    input.value = '';
+  } catch (err) {
+    alert(err?.message || 'Team konnte nicht erstellt werden.');
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function joinTeam(teamId) {
+  if (!teamId) return;
+  const team = teamsSnapshotCache[teamId];
+  if (!team) {
+    alert('Team existiert nicht mehr.');
+    return;
+  }
+
+  const joinBtn = event?.target instanceof HTMLButtonElement ? event.target : null;
+  if (joinBtn) joinBtn.disabled = true;
+
+  try {
+    // Falls ich bereits in einem Team bin: verlassen
+    if (currentTeamId && currentTeamId !== teamId) {
+      await leaveTeam(currentTeamId);
+    }
+
+    // Mitglied hinzufügen + Mapping setzen
+    const updates = {};
+    updates[`teams/${teamId}/members/${deviceId}`] = { joinedAt: serverTimestamp() };
+    updates[`deviceTeams/${deviceId}`] = teamId;
+    await update(ref(rtdb), updates);
+  } catch (err) {
+    alert(err?.message || 'Beitritt nicht möglich.');
+    console.error(err);
+  } finally {
+    if (joinBtn) joinBtn.disabled = false;
+  }
+}
+
+/**
+ * Verlässt das angegebene Team oder – wenn leer – das aktuelle.
+ * Löscht das Team automatisch, wenn danach 0 Mitglieder verbleiben.
+ */
+async function leaveTeam(teamId = null) {
+  const id = teamId || currentTeamId;
+  if (!id) return;
+
+  // Transaktion auf dem Team-Root:
+  // - Entfernt mein Mitglied
+  // - Wenn danach keine Mitglieder: return null -> löscht den Knoten "teams/{id}"
+  const teamRef = ref(rtdb, `teams/${id}`);
+  await runTransaction(teamRef, (team) => {
+    if (!team) return team; // bereits gelöscht
+    if (team.members && team.members[deviceId]) {
+      delete team.members[deviceId];
+      const left = Object.keys(team.members).length;
+      if (left === 0) {
+        return null; // löscht das Team
+      }
+    }
+    return team;
+  });
+
+  // Mein Mapping auflösen (separat, Transaktion deckt das Team ab)
+  await set(ref(rtdb, `deviceTeams/${deviceId}`), null);
 }
 
 

@@ -52,8 +52,46 @@
     <button onclick="switchView('misterx')">🕵️ Mister X</button>
     <button onclick="switchView('agent')">🧭 Agent</button>
     <button onclick="switchView('settings')">⚙️ Einstellungen</button>
+    <button id="openTeamSettings" onclick="openTeamSettings()">Team-Einstellungen</button>
     <button class ="small-button" id="permissionButton" onclick="requestPermission()" style="display:none;">Benachrichtigungen aktivieren</button>
   </div>
+
+
+<div id="teamSettings" style="display:none;">
+  <div class="ts-header">
+    <button class="small-button" id="backToStart" onclick="closeTeamSettings()">⬅️ Zurück</button>
+    <h2>Team-Einstellungen</h2>
+  </div>
+
+  <section class="ts-current">
+    <h3>Dein Team</h3>
+    <div id="currentTeamBox" class="ts-card">
+      <div>
+        <div class="ts-current-name" id="currentTeamName">—</div>
+        <div class="ts-current-members" id="currentTeamMembers">— Mitglieder</div>
+      </div>
+      <div>
+        <button id="leaveTeamBtn" class="danger" onclick="leaveTeam()" disabled>Team verlassen</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="ts-create">
+    <h3>Neues Team erstellen</h3>
+    <div class="ts-create-row">
+      <input id="createTeamInput" type="text" placeholder="Teamname (z.B. Rote Füchse)" maxlength="24">
+      <button id="createTeamBtn" onclick="createTeam()">➕ Erstellen & beitreten</button>
+    </div>
+    <div class="hint">Tipp: Kurze, eindeutige Namen helfen allen.</div>
+  </section>
+
+  <section class="ts-list">
+    <h3>Alle Teams</h3>
+    <div id="teamsEmpty" class="muted" style="display:none;">Noch keine Teams – leg gleich eines an!</div>
+    <div id="teamList" class="ts-grid"></div>
+  </section>
+</div>
+
 
   <!-- Mister X Ansicht -->
   <div id="misterxView" class="view" style="display:none;">
