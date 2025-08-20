@@ -2530,14 +2530,14 @@ async function shareTeamLocationForRequest(req) {
 
   // Teamname ermitteln (nice to have)
   const teamName = (teamsSnapshotCache?.[currentTeamId]?.name) || 'Team';
-
+  alert("Dein Standort wird jetzt freigegeben")
   // Transaktion: nur schreiben, wenn noch keine Antwort des Teams existiert
   await runTransaction(teamRespRef, (current) => {
     if (current) {
       // Jemand war schneller – nichts überschreiben
       return current;
     }
-    log ("Standort für AgentLocation ausgsendet")
+    log ("Standort für AgentLocation ausgesendet")
     return {
       teamId: currentTeamId,
       teamName,
