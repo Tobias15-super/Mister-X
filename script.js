@@ -429,10 +429,6 @@ async function refreshTokenIfPermitted(options = {}) {
   } catch (err) {
     log("❌ Fehler beim Token-Refresh:", err);
     return null;
-  } finally {
-    if (localStorage.getItem(mutexKey) === nowStamp) {
-      localStorage.removeItem(mutexKey);
-    }
   }
 }
 
@@ -1036,7 +1032,7 @@ async function sendLocationWithPhoto() {
 
   // 5) Benachrichtigung an Agents
   const notificationText = `${title} (${color.toUpperCase()})`;
-  sendNotificationToRoles?.("Mister X hat sich gezeigt!", notificationText, "agent");
+  sendNotificationToRoles?.("Mister X hat sich gezeigt!", notificationText, ['agent', 'settings', 'start']);
 
   // 6) Foto im Hintergrund hochladen und URL aktualisieren
   uploadToCloudinary(file, async ({ url }) => {
@@ -3085,7 +3081,7 @@ function getLocation() {
           lon,
           timestamp,
         });
-        sendNotificationToRoles("Mister X hat sich gezeigt!", "Automatische Standort-Übermittlung.", "agent")
+        sendNotificationToRoles("Mister X hat sich gezeigt!", "Automatische Standort-Übermittlung.", ['agent', 'settings', 'start'])
 
         showLocationHistory();
       },
