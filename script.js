@@ -2537,7 +2537,7 @@ async function shareTeamLocationForRequest(req) {
       // Jemand war schneller – nichts überschreiben
       return current;
     }
-    log ("Standort für AgentLocation ausgesendet")
+    log ("Standort für AgentLocation ausgsendet")
     return {
       teamId: currentTeamId,
       teamName,
@@ -2553,9 +2553,15 @@ async function shareTeamLocationForRequest(req) {
 function resetAgentLocations(){
   remove(ref(rtdb,"agentLocationRequest"))
   hideAgentReqUi();
-  clearAgentReqMarkers?.();
+  clearAgentReqMarkers();
 }
 
+function clearAgentReqMarkers() {
+  if (Array.isArray(agentReqMarkers) && agentReqMarkers.length && window.map) {
+    agentReqMarkers.forEach(m => map.removeLayer(m));
+  }
+  agentReqMarkers = [];
+}
 
 function attachAgentReqListener() {
   const reqRef = ref(rtdb, 'agentLocationRequest');
