@@ -37,6 +37,9 @@ const LS_SHOW_AGENT_LOCS = 'showAgentLocations';
 const LS_LAST_PROMPTED_REQ = 'lastPromptedAgentReqId';
 const LS_LAST_RESPONDED_REQ = 'lastRespondedAgentReqId';
 let showAgentLocations = (localStorage.getItem(LS_SHOW_AGENT_LOCS) ?? '1') === '1';
+let unsubscribeAgentReq = null;
+const currentTeamName = 'Mein Team'; // Teamname
+
 
 
 
@@ -2435,115 +2438,70 @@ function startup_Header() {
 
 //========Agentlocation-Funktionen==========
 
-async function updateAgentReqUiVisibility(currentView) {
-  const isMisterX = currentView === 'misterx';
-  const box = document.getElementById('agentReqStatus');
-
-  if (!box) return;
-
-  if (!isMisterX) {
-    box.style.display = 'none';
-    return;
-  }
-
-  // Firebase prüfen
-  const snapshot = await get(agentLocationRequestRef); // z. B. ref(database, 'agentLocationRequest')
-  const data = snapshot.val();
-
-  box.style.display = data ? '' : 'none';
-}
-
 
 async function triggerAgentLocationRequest() {
   try {
-    // Teams zum Zeitpunkt der Anfrage erfassen
+    // 1) Teams zum Zeitpunkt der Anfrage erfassen (Cache oder Fallback)
     let teamsObj = teamsSnapshotCache;
     if (!teamsObj || Object.keys(teamsObj).length === 0) {
       const snap = await get(ref(rtdb, 'teams'));
       teamsObj = snap.val() || {};
     }
 
-    // Optional: Team von Mister X ausschließen (wahrscheinlich sinnvoll)
+    // 2) Teams filtern (z. B. Mister X' Team ausschließen und nur Teams mit Mitgliedern)
     const teamsAtRequest = {};
     for (const [teamId, team] of Object.entries(teamsObj)) {
-      // Falls du Mister X' Team ausschließen willst:
+      // Mister X' Team NICHT anschreiben (ggf. entfernen, wenn du M.X. einschließen willst)
       if (teamId === currentTeamId) continue;
+
       // Nur Teams mit mind. 1 Mitglied
-      if (team?.members && Object.keys(team.members).length > 0) {
+      const memberCount = team?.members ? Object.keys(team.members).length : 0;
+      if (memberCount > 0) {
+        // boolean-map reicht für Zähler (x/x)
         teamsAtRequest[teamId] = true;
       }
     }
 
-    const reqId = String(Date.now()); // ausreichend eindeutig
-    await set(ref(rtdb, 'agentLocationRequest'), {
+    if (Object.keys(teamsAtRequest).length === 0) {
+      log?.('[triggerAgentLocationRequest] Abbruch: keine adressierbaren Teams gefunden.');
+      alert('Keine Teams gefunden, die angefragt werden können.');
+      return;
+    }
+
+    // 3) Anfrageobjekt erstellen
+    // Deine bisherige ID war Date.now(). Das ist okay.
+    // Alternativ etwas robuster: const reqId = (crypto?.randomUUID?.() || String(Date.now()));
+    const reqId = String(Date.now());
+
+    const requestPayload = {
       id: reqId,
       createdAt: serverTimestamp(),
       createdBy: deviceId,
-      teamsAtRequest
-    });
+      teamsAtRequest,     // zählbarer Nenner für x/x
+      responses: {}       // Antworten-Container: teamId -> {lat, lon, teamName, ...}
+      // optional: status: 'open'
+    };
 
-    // Push an alle außer Mister X (deine Hilfsfunktion)
+    // 4) Schreiben: Einzelner „current“-Knoten wird überschrieben (simpler Flow)
+    await set(ref(rtdb, 'agentLocationRequest'), requestPayload);
+
+    // 5) Push-Benachrichtigung (angepasster Text: Standort wird automatisch geteilt)
+    // Rollen-Filter kannst du beibehalten; Inhalt angepasst, da keine Bestätigung nötig ist.
     sendNotificationToRoles(
       'Mister X hat deinen Standort angefragt',
-      'Bitte öffne die App und gib deinen Standort frei!',
-      ['agent','settings','start']
+      'Öffne die App – dein Standort wird jetzt automatisch geteilt.',
+      ['agent', 'settings', 'start']
     );
+
+    log?.('[triggerAgentLocationRequest] Anfrage ausgelöst', { reqId, totalTeams: Object.keys(teamsAtRequest).length });
+    return reqId;
   } catch (e) {
-    log('Anfrage fehlgeschlagen', e);
+    log?.('[triggerAgentLocationRequest] Anfrage fehlgeschlagen', e);
     alert('Konnte die Anfrage nicht auslösen.');
+    throw e;
   }
 }
 
-function startAgentLocationRequestListener() {
-  const reqRef = ref(rtdb, 'agentLocationRequest');
-  onValue(reqRef, (snap) => {
-    activeAgentReq = snap.exists() ? snap.val() : null;
-    updateAgentReqProgressUi();
-    renderAgentRequestOverlay();
-
-    // Agenten‑Prompt nur, wenn:
-    // - Es eine aktive Anfrage gibt
-    // - Dieses Gerät NICHT der Ersteller ist
-    // - Gerät ist in einem Team
-    if (activeAgentReq && activeAgentReq.createdBy !== deviceId && currentTeamId) {
-      maybePromptForLocation(activeAgentReq);
-    }
-  });
-}
-
-function updateAgentReqProgressUi() {
-  const el = document.getElementById('agentReqProgress');
-  if (!el) return;
-  if (!activeAgentReq) {
-    el.textContent = 'Kein Standort angefragt';
-    return;
-  }
-  const total = Object.keys(activeAgentReq.teamsAtRequest || {}).length;
-  const done = Object.keys(activeAgentReq.responses || {}).length;
-  el.textContent = `Standort von ${done}/${total} Teams`;
-}
-
-// Nur 1x pro Anfrage „bestätigen & senden“
-function maybePromptForLocation(req) {
-  const lastPrompted = localStorage.getItem(LS_LAST_PROMPTED_REQ) || '';
-  const lastResponded = localStorage.getItem(LS_LAST_RESPONDED_REQ) || '';
-  if (req.id === lastResponded) return; // bereits geantwortet
-  if (req.id === lastPrompted) return;  // bereits gefragt
-
-  // Nur reagieren, wenn das Team überhaupt angesprochen wurde
-  if (req.teamsAtRequest && !req.teamsAtRequest[currentTeamId]) return;
-
-  // Prompt (Bestätigungsdialog statt reines alert, damit Opt‑out möglich)
-  const ok = confirm('Mister X hat deinen Standort angefragt. Jetzt Standort freigeben?');
-  try { localStorage.setItem(LS_LAST_PROMPTED_REQ, req.id); } catch {}
-
-  if (ok) {
-    shareTeamLocationForRequest(req).catch(err => {
-      lgo('Standortfreigabe fehlgeschlagen', err);
-      alert('Konnte Standort nicht freigeben.');
-    });
-  }
-}
 
 
 async function shareTeamLocationForRequest(req) {
@@ -2594,56 +2552,79 @@ async function shareTeamLocationForRequest(req) {
 }
 
 function resetAgentLocations(){
-  delete(ref(rtdb,"agentLocationRequest"))
+  remove(ref(rtdb,"agentLocationRequest"))
+  hideAgentReqUi();
+  clearAgentReqMarkers?.();
 }
 
 
-async function renderAgentRequestOverlay() {
-  // Firebase-Daten abrufen
-  const snapshot = await get(agentLocationRequestRef); // z. B. ref(database, 'agentLocationRequest')
-  const data = snapshot.val();
+function attachAgentReqListener() {
+  const reqRef = ref(rtdb, 'agentLocationRequest');
 
+  const cb = (snap) => {
+    const data = snap.exists() ? snap.val() : null;
+    activeAgentReq = data;
+
+    renderAgentRequestOverlay(data);
+
+    // Wenn eine Anfrage aktiv ist und dieses Gerät NICHT der Ersteller ist → Standort sofort teilen
+    if (data && data.createdBy !== deviceId && currentTeamId) {
+      autoShareLocation(data);
+    }
+  };
+
+  onValue(reqRef, cb);
+  unsubscribeAgentReq = () => off(reqRef, 'value', cb);
+}
+
+
+function hideAgentReqUi() {
+  const box = document.getElementById('agentReqStatus');
+  if (box) box.style.display = 'none';
+}
+
+
+async function autoShareLocation(req) {
+  try {
+    await shareTeamLocationForRequest(req);
+    log('Standort automatisch geteilt.');
+  } catch (err) {
+    log('Standortfreigabe fehlgeschlagen', err);
+  }
+}
+
+
+
+function renderAgentRequestOverlay(data) {
   const statusBox = document.getElementById('agentReqStatus');
   const progressText = document.getElementById('agentReqProgress');
+  if (!statusBox || !progressText) return;
 
   if (!data) {
     statusBox.style.display = 'none';
+    clearAgentReqMarkers();
     return;
   }
 
-  // Uhrzeit anzeigen
-  const createdAt = data.createdAt ? new Date(data.createdAt).toLocaleTimeString() : 'Unbekannt';
+  const createdAt =
+    typeof data.createdAt === 'number'
+      ? new Date(data.createdAt).toLocaleTimeString()
+      : 'Unbekannt';
+
   const responses = data.responses || {};
   const entries = Object.values(responses);
-  const total = Object.keys(data.expectedTeams || {}).length || entries.length;
+
+  const expectedMap = data.teamsAtRequest || {};
+  const total = Object.keys(expectedMap).length || entries.length;
   const received = entries.length;
 
-  progressText.innerHTML = `Standort von ${received}/${total} Teams – ${createdAt}`;
+  progressText.textContent = `Standort von ${received}/${total} Teams – ${createdAt}`;
   statusBox.style.display = 'block';
 
-  // ggf. alte Marker entfernen
-  if (agentReqMarkers && agentReqMarkers.length && window.map) {
-    agentReqMarkers.forEach(m => map.removeLayer(m));
-  }
-  agentReqMarkers = [];
+  clearAgentReqMarkers();
+  if (!showAgentLocations || entries.length === 0) return;
 
-  if (!showAgentLocations || !entries.length) return;
-
-  // Karte ggf. initialisieren
-  if (!window.map) {
-    const first = entries[0];
-    if (first.lat != null && first.lon != null) {
-      createOrReuseMap(first.lat, first.lon);
-    }
-  }
-  if (!window.map) return;
-
-  // Mehr Farben für Teams
-  const colorClasses = [
-    '', 'orange', 'green', 'purple', 'blue', 'red', 'yellow', 'cyan', 'pink', 'lime', 'teal', 'brown'
-  ];
-  const classForTeam = (teamId) =>
-    colorClasses[Math.abs(hashCode(teamId)) % colorClasses.length];
+  ensureMapCentered(entries);
 
   for (const resp of entries) {
     if (resp.lat == null || resp.lon == null) continue;
@@ -2652,18 +2633,58 @@ async function renderAgentRequestOverlay() {
       className: `square-marker ${classForTeam(resp.teamId)}`,
       iconSize: [14, 14]
     });
+
     const marker = L.marker([resp.lat, resp.lon], { icon }).addTo(map);
-    const popupHtml = `<strong>${escapeHtml(resp.teamName || 'Team')}</strong>`;
-    marker.bindPopup(popupHtml);
+    marker.bindPopup(`<strong>${escapeHtml(resp.teamName || 'Team')}</strong>`);
     agentReqMarkers.push(marker);
   }
 }
 
 
-// kleiner Hash für Farbauswahl
-function hashCode(s = '') {
-  let h = 0; for (let i=0; i<s.length; i++) h = (h<<5) - h + s.charCodeAt(i) | 0;
-  return Math.abs(h);
+
+function clearAgentReqMarkers() {
+  if (Array.isArray(agentReqMarkers) && agentReqMarkers.length && window.map) {
+    agentReqMarkers.forEach(m => map.removeLayer(m));
+  }
+  agentReqMarkers = [];
+}
+
+
+
+function ensureMapCentered(entries) {
+  if (!window.map) {
+    const first = entries.find(e => e.lat != null && e.lon != null);
+    if (first) {
+      createOrReuseMap(first.lat, first.lon);
+    }
+  }
+}
+
+
+
+function classForTeam(teamId) {
+  const colorClasses = ['', 'orange', 'green', 'purple', 'blue', 'red', 'yellow', 'cyan', 'pink', 'lime', 'teal', 'brown'];
+  const idx = Math.abs(hashCode(String(teamId))) % colorClasses.length;
+  return colorClasses[idx];
+}
+
+
+function escapeHtml(str) {
+  return str.replace(/[&<>"']/g, (m) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[m]));
+}
+
+
+
+
+function hashCode(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
 }
 
 
@@ -3459,7 +3480,7 @@ async function startScript() {
     initRefreshButton();
     autoCheckUpdatesOnResume();
     ensureTeamListeners();
-    updateAgentReqUiVisibility("misterx");
+    attachAgentReqListener()
 
 
     //für Agentlocation:
