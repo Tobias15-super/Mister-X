@@ -74,6 +74,20 @@ async function getDeviceName() {
   }
 }
 
+// Helper: Warten bis Notification mit bestimmtem Tag sichtbar ist
+async function waitUntilNotificationVisible(tag, {
+  tries = 10,          // max. Versuche
+  intervalMs = 100     // Abstand zwischen Versuchen
+} = {}) {
+  for (let i = 0; i < tries; i++) {
+    const list = await self.registration.getNotifications({ tag });
+    if (Array.isArray(list) && list.length > 0) return true;
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false; // ggf. Timeout -> Fallback-Entscheidung nötig
+}
+
+
 async function markDelivered(messageId, deviceName) {
   if (!messageId || !deviceName) return;
   const safeName = sanitizeKey(deviceName);
@@ -121,36 +135,38 @@ self.addEventListener('push', (event) => {
     if (visibleClient) {
       try { visibleClient.postMessage({ type: 'PUSH', payload: d }); } catch {}
 
-      if (isIOS) {
-        // iOS verlangt sichtbare Notification im FG
-        const fgTag = `${tagBase}-fg`;
-        const opts = {
-          body,
-          icon: '/Mister-X/icons/android-chrome-192x192.png',
-          badge: '/Mister-X/icons/Mister_X_Badge.png',
-          tag: fgTag,
-          renotify: true,
-          silent: true, // im FG i.d.R. stumm, um Doppelung zu vermeiden
-          requireInteraction: false,
-          timestamp: d.timestamp || Date.now(),
-          data: { url, messageId, tag: fgTag, fg: true }
-        };
-        await self.registration.showNotification(title, opts);
-        // kurz zeigen und schließen
-        await new Promise((r) => setTimeout(r, 80));
-        const notes = await self.registration.getNotifications({ tag: fgTag });
-        notes.forEach((n) => n.close());
-      }
+     
+    if (isIOS) {
+      const fgTag = `${tagBase}-fg`;
+      const opts = {
+        body,
+        icon: '/Mister-X/icons/android-chrome-192x192.png',
+        badge: '/Mister-X/icons/Mister_X_Badge.png',
+        tag: fgTag,
+        renotify: true,
+        silent: true,
+        requireInteraction: false,
+        timestamp: d.timestamp || Date.now(),
+        data: { url, messageId, tag: fgTag, fg: true }
+      };
 
-      // Erst NACH Anzeige (oder Post) markieren
+      await self.registration.showNotification(title, opts);                      // anzeigen  [4](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification)
+      await waitUntilNotificationVisible(fgTag, { tries: 10, intervalMs: 50 });   // sichtbar?  [1](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/getNotifications)
+      // kurz zeigen und schließen (200–500ms sind oft zuverlässiger als 80ms)
+      await new Promise(r => setTimeout(r, 250));
+      const notes = await self.registration.getNotifications({ tag: fgTag });     //  [1](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/getNotifications)
+      notes.forEach(n => n.close());
+
+      // Danach erst "delivered"
       try { await markDelivered(messageId, await getDeviceName()); } catch (e) {
         console.error('[SW] markDelivered failed:', e);
       }
       return;
-    }
+    }}
+
+
 
     // --- BACKGROUND ---
-    // eigener Tag pro Nachricht -> keine stille Ersetzung
     const bgTag = `${tagBase}-${messageId}`;
     const opts = {
       body,
@@ -158,17 +174,22 @@ self.addEventListener('push', (event) => {
       badge: '/Mister-X/icons/Mister_X_Badge.png',
       tag: bgTag,
       renotify: true,
-      silent: (d.silent !== undefined) ? !!d.silent : false, // Standard: NICHT stumm
+      silent: (d.silent !== undefined) ? !!d.silent : false,
       requireInteraction: d.requireInteraction ?? false,
-      vibrate: d.vibrate ?? [120, 60, 120], // Hinweis; OS kann ignorieren
+      vibrate: d.vibrate ?? [120, 60, 120],
       timestamp: d.timestamp || Date.now(),
       data: { url, messageId, tag: bgTag, fg: false }
     };
 
-    await self.registration.showNotification(title, opts);
+    await self.registration.showNotification(title, opts); // 1) Anzeige anstoßen  [4](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification)
 
-    // Danach Zustellung markieren
-    try { await markDelivered(messageId, await getDeviceName()); } catch (e) {
+    // 2) Sichtbarkeit bestätigen (sofern Plattform es meldet)
+    const shown = await waitUntilNotificationVisible(bgTag, { tries: 10, intervalMs: 100 }); // ~1s total  [1](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/getNotifications)
+    // 3) Erst jetzt "delivered" markieren (bei Timeout: optional trotzdem markieren)
+    try {
+      const name = await getDeviceName();
+      await markDelivered(messageId, name);
+    } catch (e) {
       console.error('[SW] markDelivered failed:', e);
     }
   })());

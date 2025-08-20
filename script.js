@@ -1214,7 +1214,7 @@ function normalizeTimestamp(ts) {
 function getDisplayName(devId) {
   if (!devId) return 'Unbekannt';
   const last4 = String(devId);
-  return `Gerät ${last4}`;
+  return `${last4}`;
 }
 
 
@@ -2435,11 +2435,24 @@ function startup_Header() {
 
 //========Agentlocation-Funktionen==========
 
-function updateAgentReqUiVisibility(currentView) {
+async function updateAgentReqUiVisibility(currentView) {
   const isMisterX = currentView === 'misterx';
   const box = document.getElementById('agentReqStatus');
-  if (box) box.style.display = isMisterX ? '' : 'none';
+
+  if (!box) return;
+
+  if (!isMisterX) {
+    box.style.display = 'none';
+    return;
+  }
+
+  // Firebase prüfen
+  const snapshot = await get(agentLocationRequestRef); // z. B. ref(database, 'agentLocationRequest')
+  const data = snapshot.val();
+
+  box.style.display = data ? '' : 'none';
 }
+
 
 async function triggerAgentLocationRequest() {
   try {
@@ -2580,24 +2593,43 @@ async function shareTeamLocationForRequest(req) {
   try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
 }
 
-function renderAgentRequestOverlay() {
+function resetAgentLocations(){
+  delete(ref(rtdb,"agentLocationRequest"))
+}
+
+
+async function renderAgentRequestOverlay() {
+  // Firebase-Daten abrufen
+  const snapshot = await get(agentLocationRequestRef); // z. B. ref(database, 'agentLocationRequest')
+  const data = snapshot.val();
+
+  const statusBox = document.getElementById('agentReqStatus');
+  const progressText = document.getElementById('agentReqProgress');
+
+  if (!data) {
+    statusBox.style.display = 'none';
+    return;
+  }
+
+  // Uhrzeit anzeigen
+  const createdAt = data.createdAt ? new Date(data.createdAt).toLocaleTimeString() : 'Unbekannt';
+  const responses = data.responses || {};
+  const entries = Object.values(responses);
+  const total = Object.keys(data.expectedTeams || {}).length || entries.length;
+  const received = entries.length;
+
+  progressText.innerHTML = `Standort von ${received}/${total} Teams – ${createdAt}`;
+  statusBox.style.display = 'block';
+
   // ggf. alte Marker entfernen
   if (agentReqMarkers && agentReqMarkers.length && window.map) {
     agentReqMarkers.forEach(m => map.removeLayer(m));
   }
   agentReqMarkers = [];
 
-  if (!activeAgentReq || !showAgentLocations) return;
+  if (!showAgentLocations || !entries.length) return;
 
-  const responses = activeAgentReq.responses || {};
-  const entries = Object.values(responses);
-
-  if (!entries.length) {
-    // Keine Antworten -> nichts zu rendern
-    return;
-  }
-
-  // Falls noch keine Karte da ist, aber Antworten existieren -> Karte öffnen
+  // Karte ggf. initialisieren
   if (!window.map) {
     const first = entries[0];
     if (first.lat != null && first.lon != null) {
@@ -2606,9 +2638,12 @@ function renderAgentRequestOverlay() {
   }
   if (!window.map) return;
 
-  // Stabiler Farbindicator pro Team (einfacher Hash -> Farbklasse)
-  const colorClasses = ['','orange','green','purple'];
-  const classForTeam = (teamId) => colorClasses[(hashCode(teamId) % (colorClasses.length))];
+  // Mehr Farben für Teams
+  const colorClasses = [
+    '', 'orange', 'green', 'purple', 'blue', 'red', 'yellow', 'cyan', 'pink', 'lime', 'teal', 'brown'
+  ];
+  const classForTeam = (teamId) =>
+    colorClasses[Math.abs(hashCode(teamId)) % colorClasses.length];
 
   for (const resp of entries) {
     if (resp.lat == null || resp.lon == null) continue;
@@ -2623,6 +2658,7 @@ function renderAgentRequestOverlay() {
     agentReqMarkers.push(marker);
   }
 }
+
 
 // kleiner Hash für Farbauswahl
 function hashCode(s = '') {
@@ -2706,7 +2742,6 @@ async function switchView(view) {
     showLocationHistory();
     initPostenListener();
     wireSearchUI();
-    updateAgentReqUiVisibility("misterx");
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
     showLocationHistory();
@@ -3424,6 +3459,7 @@ async function startScript() {
     initRefreshButton();
     autoCheckUpdatesOnResume();
     ensureTeamListeners();
+    updateAgentReqUiVisibility("misterx");
 
 
     //für Agentlocation:
@@ -3527,6 +3563,7 @@ window.leaveTeam = leaveTeam;
 window.createTeam = createTeam;
 window.joinTeam = joinTeam;
 window.triggerAgentLocationRequest = triggerAgentLocationRequest;
+window.resetAgentLocations = resetAgentLocations;
 function setSelectedPost(p) {window.mxState.selectedPost = p; }
 function getselectedPost() { return window.mxState.selectedPost; }
 document.addEventListener("DOMContentLoaded", startScript);
