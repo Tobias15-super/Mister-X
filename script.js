@@ -365,6 +365,7 @@ async function refreshTokenIfPermitted(options = {}) {
     return null;
   }
 
+  /*
   // Mutex, um parallele Aufrufe zu verhindern
   const mutexKey = "fcmTokenRefreshLock";
   const nowStamp = String(Date.now());
@@ -374,6 +375,7 @@ async function refreshTokenIfPermitted(options = {}) {
     return null;
   }
   localStorage.setItem(mutexKey, nowStamp);
+  */
 
   try {
     const registration = await navigator.serviceWorker.ready;
@@ -1564,7 +1566,7 @@ function createOrReuseMap(lat, lon) {
       "Jawg Street": jawgStreet,
       "Reduziert": cartoLight,
       "Satellit": satellite,
-      "Gezeichneter Plan": TopPlusOpen_Color,
+      "Plan": TopPlusOpen_Color,
     };
 
     osm.addTo(map); // Standard aktivieren
@@ -1606,9 +1608,6 @@ function showLocationHistory() {
       ensurePostenLayer();
       renderPostenMarkersFromCache();
       reattachUserLocationOnMap();
-
-      
-      renderAgentRequestOverlay();
 
 
       historyMarkers.forEach(marker => map.removeLayer(marker));
@@ -2488,7 +2487,7 @@ async function triggerAgentLocationRequest() {
     // Rollen-Filter kannst du beibehalten; Inhalt angepasst, da keine Bestätigung nötig ist.
     sendNotificationToRoles(
       'Mister X hat deinen Standort angefragt',
-      'Öffne die App – dein Standort wird jetzt automatisch geteilt.',
+      'Öffne die App, um deinen Standort freizugeben.',
       ['agent', 'settings', 'start']
     );
 
@@ -2538,6 +2537,7 @@ async function shareTeamLocationForRequest(req) {
       // Jemand war schneller – nichts überschreiben
       return current;
     }
+    log ("Standort für AgentLocation ausgesendet")
     return {
       teamId: currentTeamId,
       teamName,
@@ -2586,7 +2586,6 @@ function hideAgentReqUi() {
 async function autoShareLocation(req) {
   try {
     await shareTeamLocationForRequest(req);
-    log('Standort automatisch geteilt.');
   } catch (err) {
     log('Standortfreigabe fehlgeschlagen', err);
   }
@@ -2594,12 +2593,14 @@ async function autoShareLocation(req) {
 
 
 
-function renderAgentRequestOverlay(data) {
+
+function renderAgentRequestOverlay(data = activeAgentReq) {
   const statusBox = document.getElementById('agentReqStatus');
   const progressText = document.getElementById('agentReqProgress');
   if (!statusBox || !progressText) return;
 
   if (!data) {
+    // Es gibt aktuell keine Anfrage -> Box ausblenden (Toggle evtl. außerhalb platzieren, siehe Fix 3)
     statusBox.style.display = 'none';
     clearAgentReqMarkers();
     return;
@@ -2620,7 +2621,10 @@ function renderAgentRequestOverlay(data) {
   progressText.textContent = `Standort von ${received}/${total} Teams – ${createdAt}`;
   statusBox.style.display = 'block';
 
+  // Marker erneuern
   clearAgentReqMarkers();
+
+  // Nur Marker rendern, wenn Anzeige gewünscht und Daten vorhanden
   if (!showAgentLocations || entries.length === 0) return;
 
   ensureMapCentered(entries);
@@ -2639,14 +2643,6 @@ function renderAgentRequestOverlay(data) {
   }
 }
 
-
-
-function clearAgentReqMarkers() {
-  if (Array.isArray(agentReqMarkers) && agentReqMarkers.length && window.map) {
-    agentReqMarkers.forEach(m => map.removeLayer(m));
-  }
-  agentReqMarkers = [];
-}
 
 
 
