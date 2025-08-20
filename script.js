@@ -3488,9 +3488,6 @@ async function startScript() {
         });
       }
 
-      // RTDB-Listener starten
-      startAgentLocationRequestListener();    
-
     // Event-Handler für Karte
     document.getElementById('toggleTracking')?.addEventListener('change', (e) => {
       if (e.target.checked) startUserLocationTracking();
