@@ -1642,7 +1642,7 @@ function showLocationHistory() {
     const feed = document.getElementById("locationFeed");
     feed.innerHTML = "";
 
-    if (entries !== undefined){
+    if (typeof entries !== undefined){
       entries.forEach((loc, index) => {
         const entryTitle = loc.title ? loc.title : "Automatischer Standort";
         const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
