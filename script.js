@@ -1634,29 +1634,17 @@ function renderHistory(validEntries) {
   ensureLayerGroups();
   historyLayer.clearLayers();
 
-  // Icon ohne Shadow + mit expliziten (Retina-)URLs
-  const noShadowIcon = L.icon({
-    iconUrl: '/assets/leaflet/marker-icon.png',
-    iconRetinaUrl: '/assets/leaflet/marker-icon-2x.png',   // wichtig für iOS/Retina
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    tooltipAnchor: [16, -28],
 
-    // Shadow komplett aus:
-    shadowUrl: null,
-    shadowRetinaUrl: null,
-    shadowSize: null,
-    shadowAnchor: null,
-    // optional: bei CDN o.ä. CORS vermeiden
-    crossOrigin: false
-  });
+const icon = new L.Icon.Default();
+icon.options.shadowSize = [0,0];
+
 
   validEntries.forEach(loc => {
-    L.marker([loc.lat, loc.lon], { pane: 'historyPane', icon: noShadowIcon })
+    L.marker([loc.lat, loc.lon], { pane: 'historyPane', icon })
       .addTo(historyLayer)
       .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
   });
+
 
   const coords = validEntries.map(loc => [loc.lat, loc.lon]);
   if (coords.length > 1) {
@@ -3028,7 +3016,12 @@ function listenToTimer() {
 // Countdown anzeigen
 function updateCountdown(startTime, duration) {
   clearInterval(countdown);
-  countdown = setInterval(() => {
+  let ticking = false;
+  countdown = setInterval(async() => {
+    
+    if (ticking) return;      // laufende Arbeit? Dann diesen Tick überspringen.
+    ticking = true;
+
     const now = Date.now();
     const elapsed = Math.floor((now - startTime) / 1000);
     const remaining = duration - elapsed;
@@ -3081,35 +3074,146 @@ function updateCountdown(startTime, duration) {
           elem.style.animation = "";
         }
       });
-      if (localStorage.getItem("activeView")==="misterx"){
-        get(ref(rtdb, "timer")).then(snapshot => {
-          const data = snapshot.val();
-          const durationInput = data?.durationInput;
-          const durationInput2 = data?.durationInput2;
-          if (duration === durationInput && durationInput2 > 0){
-            alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
-            getLocation();
-          } else if (duration === durationInput2||(duration === durationInput && durationInput2 === 0)){
-            alert("Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen (der Timer ist bis zum nächsten Posten deaktiviert)")
-            remove(ref(rtdb, "timer/duration"));
-            remove(ref(rtdb, "timer/startTime"));
-            remove(ref(rtdb, "timerMessage"));
-            clearInterval(countdown);
-            updateStartButtonState(false);
-            const misterxTimer = document.getElementById("timer");
-            const agentTimer = document.getElementById("agentTimer");
-            const settingsTimer = document.getElementById("settingsTimer");
-            if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
-            if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
-            if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
-            sendNotificationToRoles("Zeit abgelaufen!", "Mister X muss sich per Live-Standort zeigen", "all");
-          }
-        })
+      
+if (localStorage.getItem("activeView") === "misterx") {
+    try {
+      // 1) hole aktuelle Timer-Daten (um zu wissen, welche Nachricht angezeigt wird
+      const snap = await get(ref(rtdb, "timer"));
+      const data = snap.val() || {};
+      const { startTime, duration, durationInput, durationInput2 } = data || {};
+
+      if (typeof startTime !== "number" || typeof duration !== "number") {
+        // Timer schon weg → nichts tun
+        return;
       }
+
+      const expKey = makeExpirationKey(startTime, duration);
+
+      // 2) Alert nur 1× pro Gerät zeigen
+      if (!shouldShowAlertOncePerDevice(expKey)) {
+        return; // wir haben für diese Ablauf-Runde schon einen Alert gezeigt
+      }
+
+      // 3) Nachricht je nach Pfad bestimmen
+      const isLocationPhase = (duration === durationInput && (durationInput2 ?? 0) > 0);
+      const message = isLocationPhase
+        ? "Zeit abgelaufen, dein Standort wird einmalig geteilt.\nTippe auf OK, um fortzufahren."
+        : "Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen.\nOK: fortfahren (Timer wird deaktiviert)";
+
+      // 4) Alert auf *beiden* Geräten anzeigen
+      alert(message);
+
+      // 5) Erst *jetzt* versuchen wir exklusiv zu handeln
+      const won = await doOncePerExpiration(rtdb, async (freshData) => {
+        // immer mit frischen Daten aus der Transaktion arbeiten
+        const di1 = freshData?.durationInput;
+        const di2 = freshData?.durationInput2;
+
+        const locationPhase = (duration === di1 && (di2 ?? 0) > 0);
+
+        if (locationPhase) {
+          // Nur EIN Gerät ruft getLocation() auf
+          await getLocation(); // deine bestehende Funktion (mit Second Look)
+          // getLocation() startet am Ende ggf. wieder den zweiten Timer via durationInput2
+          // (Du machst das dort bereits abhängig von durationInput2)
+        } else {
+          // Nur EIN Gerät räumt Timer auf + sendet Notification
+          await Promise.all([
+            remove(ref(rtdb, "timer/duration")),
+            remove(ref(rtdb, "timer/startTime")),
+            remove(ref(rtdb, "timerMessage")),
+          ]);
+
+          clearInterval(countdown);
+          updateStartButtonState(false);
+
+          const misterxTimer = document.getElementById("timer");
+          const agentTimer = document.getElementById("agentTimer");
+          const settingsTimer = document.getElementById("settingsTimer");
+          if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
+          if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
+          if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
+
+          sendNotificationToRoles(
+            "Zeit abgelaufen!",
+            "Mister X muss sich per Live-Standort zeigen",
+            "all"
+          );
+        }
+      });
+
+      // 6) Verlierer zeigen nur eine kurze Info (optional)
+      if (!won) {
+        notifyAlreadyHandled();
+      }
+    } catch (err) {
+      console.error("Fehler im Ablauf-Handling:", err);
     }
   }
+}
+}
   , 1000);
 }
+
+
+function makeExpirationKey(startTime, duration) {
+  return `${startTime}_${duration}`;
+}
+
+function shouldShowAlertOncePerDevice(expKey) {
+  const key = `alertShown_${expKey}`;
+  if (localStorage.getItem(key) === "1") return false;
+  localStorage.setItem(key, "1");
+  return true;
+}
+
+
+
+
+async function doOncePerExpiration(rtdb, actionIfWinner) {
+  const snap = await get(ref(rtdb, "timer"));
+  const data = snap.val() || {};
+  const { startTime, duration } = data;
+
+  if (typeof startTime !== "number" || typeof duration !== "number") {
+    // Timer evtl. schon entfernt → nichts mehr zu tun
+    return false;
+  }
+
+  const expKey = makeExpirationKey(startTime, duration);
+  const claimRef = ref(rtdb, `timerClaims/${expKey}`);
+  const me = getDeviceId();
+
+  const txRes = await runTransaction(
+    claimRef,
+    (current) => {
+      if (current && current.claimed) {
+        return current; // schon vergeben
+      }
+      return { claimed: true, by: me, at: serverTimestamp() };
+    },
+    { applyLocally: false }
+  );
+
+  const committed = txRes.committed;
+  const val = txRes.snapshot?.val();
+  const iAmWinner = committed && val && val.by === me;
+
+  if (!iAmWinner) return false;
+
+  await actionIfWinner(data);
+  return true;
+}
+
+/** Optional: kleine Helfer-UI für Verlierer */
+function notifyAlreadyHandled() {
+  // Minimal-Variante:
+  console.log("Bereits von anderem Gerät erledigt.");
+  // Oder non-blocking Toast, wenn du eine UI-Bibliothek verwendest.
+}
+
+
+
 
 function setTimerInputFromFirebase(){
   //firebase.database().ref("timer").once("value").then(snapshot => {
