@@ -1636,10 +1636,7 @@ function renderHistory(validEntries) {
   
 
   L.Icon.Default.mergeOptions({
-    shadowUrl: null,
-    shadowRetinaUrl: null,
-    shadowSize: null,
-    shadowAnchor: null
+    shadowUrl: undefined,
   });
   validEntries.forEach(loc => {
     L.marker([loc.lat, loc.lon], {pane:'userPane'})
@@ -2111,6 +2108,11 @@ function renderPostenMarkersFromCache() {
 
         // style ist ein Objekt wie { color, fillColor, radius, weight, opacity, fillOpacity, ... }
         m.setStyle(style); // KEIN {style, ...}
+        
+        if (postenLayer && !postenLayer.hasLayer(m)) {
+            m.addTo(postenLayer);
+          }
+
 
         // Optional: sicherstellen, dass Posten über History/Mask liegen (falls gleiches Pane)
         if (m.bringToFront) m.bringToFront();
