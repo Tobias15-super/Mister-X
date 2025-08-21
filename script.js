@@ -1636,18 +1636,17 @@ function renderHistory(validEntries) {
   
 
 
-  const transparentPng =
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+qsS8AAAAASUVORK5CYII=';
 
-  L.Icon.Default.mergeOptions({
-    shadowUrl: transparentPng, // "gültiges" Bild, aber unsichtbar
-  });
+// Icon ohne Shadow nur für ausgewählte Marker
+const noShadowIcon = new L.Icon.Default({
+  shadowUrl: null,
+});
 
-  validEntries.forEach(loc => {
-    L.marker([loc.lat, loc.lon], {pane:'userPane'})
-      .addTo(historyLayer)
-      .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
-  });
+validEntries.forEach(loc => {
+  L.marker([loc.lat, loc.lon], { pane: 'historyPane', icon: noShadowIcon })
+    .addTo(historyLayer)
+    .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
+});
 
   // Linie
   const coords = validEntries.map(loc => [loc.lat, loc.lon]);
@@ -1697,8 +1696,7 @@ function showLocationHistory() {
 
     // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
     ensurePostenLayer();
-    renderPostenMarkersFromCache();
-    Object.values(postenMarkers || {}).forEach(m => m.bringToFront?.());
+    renderPostenMarkersFromCache({ nonDestructive: true });
 
     console.log('map id', map?._leaflet_id);
     console.log('postenPane exists?', !!map?.getPane('postenPane'));
@@ -2093,18 +2091,24 @@ function ensurePostenLayer() {
   if (map && !map.hasLayer(postenLayer)) postenLayer.addTo(map);
 }
 
-function renderPostenMarkersFromCache() {
+function renderPostenMarkersFromCache(options = {}) {
+  const { nonDestructive = false } = options;
+
   if (!map || !postenCache) return;
 
+  ensurePanes();
   ensurePostenLayer();
 
   const seen = new Set();
+  let validCount = 0;
 
   Object.entries(postenCache).forEach(([color, group]) => {
     if (!group || typeof group !== "object") return;
 
     const isActiveColor = !!group.active;
-    const posts = Object.fromEntries(Object.entries(group).filter(([k]) => k !== "active"));
+    const posts = Object.fromEntries(
+      Object.entries(group).filter(([k]) => k !== "active")
+    );
 
     Object.entries(posts).forEach(([key, loc]) => {
       if (!loc || typeof loc !== "object") return;
@@ -2112,45 +2116,45 @@ function renderPostenMarkersFromCache() {
       const { lat, lon } = extractLatLon(loc);
       if (lat == null || lon == null) return;
 
+      validCount++;
       const markerKey = `${color}/${key}`;
       seen.add(markerKey);
 
       const style = styleForPosten(color, isActiveColor, !!loc.visited);
+
       if (postenMarkers[markerKey]) {
         const m = postenMarkers[markerKey];
         m.setLatLng([lat, lon]);
-
-        // style ist ein Objekt wie { color, fillColor, radius, weight, opacity, fillOpacity, ... }
-        m.setStyle(style); // KEIN {style, ...}
-        
-        if (postenLayer && !postenLayer.hasLayer(m)) {
-            m.addTo(postenLayer);
-          }
-
-
-        // Optional: sicherstellen, dass Posten über History/Mask liegen (falls gleiches Pane)
-        if (m.bringToFront) m.bringToFront();
-
-        if (m.getPopup()) {
-          m.getPopup().setContent(makePostenPopupHTML(color, key, loc, isActiveColor));
-        }
+        m.setStyle(style);
+        if (postenLayer && !postenLayer.hasLayer(m)) m.addTo(postenLayer);
+        m.bringToFront?.();
+        m.getPopup()?.setContent(makePostenPopupHTML(color, key, loc, isActiveColor));
       } else {
-        // WICHTIG: pane beim Erstellen setzen – nicht in setStyle
-        const m = L.circleMarker([lat, lon], {
-          ...style,              // Spread, nicht verschachtelt
-          pane: 'postenPane'     // Pane hier festlegen
-        })
-        .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor))
-        .on('click', () => {
-          // optional
-        });
-
+        const m = L.circleMarker([lat, lon], { ...style, pane: 'postenPane' })
+          .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor));
         m.addTo(postenLayer);
         postenMarkers[markerKey] = m;
       }
-
     });
   });
+
+  // ⟵ WICHTIG: Cleanup nur wenn sinnvoll
+  if (nonDestructive) return;
+
+  if (validCount === 0) {
+    console.warn('[posten] Kein gültiger Posten geparst – Cleanup übersprungen.');
+    return;
+  }
+
+  // Normales Aufräumen
+  Object.keys(postenMarkers).forEach((k) => {
+    if (!seen.has(k)) {
+      postenLayer.removeLayer(postenMarkers[k]);
+      delete postenMarkers[k];
+    }
+  });
+}
+
 
   // Entferne Marker, die nicht mehr in der DB sind
   Object.keys(postenMarkers).forEach((k) => {
@@ -2159,7 +2163,7 @@ function renderPostenMarkersFromCache() {
       delete postenMarkers[k];
     }
   });
-}
+
 
 async function resetPostenStatus(defaultActive = true) {
   const postenRef = ref(rtdb, "posten");
