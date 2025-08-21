@@ -1,6 +1,6 @@
 let countdown;
 let timerListenerRegistered = false;
-let map;
+let map = L.map('map', { preferCanvas: true })
 let marker;
 let historyMarkers = [];
 let fotoHochgeladen = false;
