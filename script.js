@@ -1634,22 +1634,17 @@ function renderHistory(validEntries) {
 
   // Marker
   
-  const historyIcon = L.icon({
-    iconUrl: L.Icon.Default.imagePath + '/marker-icon.png',
-    iconRetinaUrl: L.Icon.Default.imagePath + '/marker-icon-2x.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowUrl: undefined, shadowRetinaUrl: undefined,
-    shadowSize: undefined, shadowAnchor: undefined
+
+  L.Icon.Default.mergeOptions({
+    shadowUrl: null,
+    shadowRetinaUrl: null,
+    shadowSize: null,
+    shadowAnchor: null
   });
-
-
-
   validEntries.forEach(loc => {
-    L.marker([loc.lat, loc.lon], { icon: historyIcon /*, pane:'userPane' optional */ })
+    L.marker([loc.lat, loc.lon], {pane:'userPane'})
       .addTo(historyLayer)
-      .bindPopup(`📍 ${new Date(ts).toLocaleTimeString()}`);
+      .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
   });
 
   // Linie
