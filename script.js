@@ -1593,7 +1593,7 @@ function ensurePanes() {
 
   if (!map.getPane('historyPane')) {
     map.createPane('historyPane');
-    map.getPane('historyPane').style.zIndex = 350; // Pfade/History
+    map.getPane('historyPane').style.zIndex = 410; // Pfade/History
   }
 
   if (!map.getPane('postenPane')) {
