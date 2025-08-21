@@ -3021,7 +3021,7 @@ function updateCountdown(startTime, duration) {
     
     if (ticking) return;      // laufende Arbeit? Dann diesen Tick überspringen.
     ticking = true;
-
+    try{
     const now = Date.now();
     const elapsed = Math.floor((now - startTime) / 1000);
     const remaining = duration - elapsed;
@@ -3150,6 +3150,9 @@ if (localStorage.getItem("activeView") === "misterx") {
       console.error("Fehler im Ablauf-Handling:", err);
     }
   }
+}
+} finally {
+  ticking = false
 }
 }
   , 1000);
