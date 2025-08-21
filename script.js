@@ -1592,7 +1592,7 @@ function showLocationHistory() {
     }
     catch {no_locations = true}
     if (no_locations){
-      createOrReuseMap(48.20799729051118,16.366545907175926);
+      createOrReuseMap(48.208672092667435,16.372477270381918);
 
       ensurePostenLayer();
       renderPostenMarkersFromCache();
