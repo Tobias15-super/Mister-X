@@ -150,6 +150,10 @@ button {
 
 
 
+.leaflet-pane.historyPane .leaflet-marker-shadow {
+  display: none !important;
+}
+
 
 
 input[type="file"] {

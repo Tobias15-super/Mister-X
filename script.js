@@ -1636,14 +1636,8 @@ function renderHistory(validEntries) {
   
 
 
-
-// Icon ohne Shadow nur für ausgewählte Marker
-const noShadowIcon = new L.Icon.Default({
-  shadowUrl: null,
-});
-
 validEntries.forEach(loc => {
-  L.marker([loc.lat, loc.lon], { pane: 'historyPane', icon: noShadowIcon })
+  L.marker([loc.lat, loc.lon], { pane: 'historyPane'})
     .addTo(historyLayer)
     .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
 });
