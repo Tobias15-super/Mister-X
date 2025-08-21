@@ -1647,7 +1647,7 @@ function renderHistory(validEntries) {
 
 
   validEntries.forEach(loc => {
-    L.marker([lat, lon], { icon: historyIcon /*, pane:'userPane' optional */ })
+    L.marker([loc.lat, loc.lon], { icon: historyIcon /*, pane:'userPane' optional */ })
       .addTo(historyLayer)
       .bindPopup(`📍 ${new Date(ts).toLocaleTimeString()}`);
   });
