@@ -1642,20 +1642,22 @@ function showLocationHistory() {
     const feed = document.getElementById("locationFeed");
     feed.innerHTML = "";
 
-    entries.forEach((loc, index) => {
-      const entryTitle = loc.title ? loc.title : "Automatischer Standort";
-      const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
-      const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" class="zoomable-photo" style="max-width: 100%; max-height: 60vh; border: 1px solid #ccc; margin-top: 5px; cursor: zoom-in;" data-index="${index}">` : "";
+    if (entries !== undefined){
+      entries.forEach((loc, index) => {
+        const entryTitle = loc.title ? loc.title : "Automatischer Standort";
+        const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
+        const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" class="zoomable-photo" style="max-width: 100%; max-height: 60vh; border: 1px solid #ccc; margin-top: 5px; cursor: zoom-in;" data-index="${index}">` : "";
 
-      const entryDiv = document.createElement("div");
-      entryDiv.style.marginBottom = "1em";
-      entryDiv.innerHTML = `
-        <strong class="location-title" data-lat="${loc.lat}" data-lon="${loc.lon}" style="cursor: pointer;">${entryTitle} (${entryTime})</strong><br>
-        ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
-        ${photoHTML}
-      `;
-      feed.appendChild(entryDiv);
-    });
+        const entryDiv = document.createElement("div");
+        entryDiv.style.marginBottom = "1em";
+        entryDiv.innerHTML = `
+          <strong class="location-title" data-lat="${loc.lat}" data-lon="${loc.lon}" style="cursor: pointer;">${entryTitle} (${entryTime})</strong><br>
+          ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
+          ${photoHTML}
+        `;
+        feed.appendChild(entryDiv);
+      });
+    }
 
     document.querySelectorAll(".location-title").forEach(el => {
       el.addEventListener("click", () => {
