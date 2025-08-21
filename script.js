@@ -1696,6 +1696,7 @@ function showLocationHistory() {
     // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
     ensurePostenLayer();
     renderPostenMarkersFromCache();
+    Object.values(postenMarkers || {}).forEach(m => m.bringToFront?.());
 
     // 4) Mask optional (Pane beachten!)
     if (typeof mask !== 'undefined') {
