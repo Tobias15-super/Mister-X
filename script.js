@@ -2756,7 +2756,6 @@ async function switchView(view) {
   if (view === "misterx") {
     document.getElementById("misterxView").style.display = "block";
     showLocationHistory();
-    initPostenListener();
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
     showLocationHistory();
@@ -3475,6 +3474,7 @@ async function startScript() {
     autoCheckUpdatesOnResume();
     ensureTeamListeners();
     attachAgentReqListener();
+    initPostenListener();
     wireSearchUI();
 
 
