@@ -1633,10 +1633,23 @@ function renderHistory(validEntries) {
   historyLayer.clearLayers();
 
   // Marker
+  
+  const historyIcon = L.icon({
+    iconUrl: L.Icon.Default.imagePath + '/marker-icon.png',
+    iconRetinaUrl: L.Icon.Default.imagePath + '/marker-icon-2x.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowUrl: undefined, shadowRetinaUrl: undefined,
+    shadowSize: undefined, shadowAnchor: undefined
+  });
+
+
+
   validEntries.forEach(loc => {
-    L.marker([loc.lat, loc.lon], { pane: 'historyPane' })
-      .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`)
-      .addTo(historyLayer);
+    L.marker([lat, lon], { icon: historyIcon /*, pane:'userPane' optional */ })
+      .addTo(historyLayer)
+      .bindPopup(`📍 ${new Date(ts).toLocaleTimeString()}`);
   });
 
   // Linie
