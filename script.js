@@ -144,6 +144,7 @@ const mask = L.polygon([outerBounds, spielbereich],{
   fillColor: 'rgba(255, 0, 0, 0.3)', // leicht roter Schleier
   fillOpacity: 0.35,
   interactive: false,
+  pane: 'maskPane',
   dashArray: '5, 5' // gestrichelte Linie
 })
 
@@ -1600,6 +1601,11 @@ function ensurePanes() {
     map.getPane('postenPane').style.zIndex = 400; // Posten
   }
 
+  if (!map.getPane('agentenPane')) {
+    map.createPane('agentenPane');
+    map.getPane('agentenPane').style.zIndex = 420; // Agenten-Locations
+  }
+
   if (!map.getPane('userPane')) {
     map.createPane('userPane');
     map.getPane('userPane').style.zIndex = 450; // User-Marker
@@ -1682,7 +1688,6 @@ function showLocationHistory() {
     // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
     ensurePostenLayer();
     renderPostenMarkersFromCache();
-    Object.values(postenMarkers || {}).forEach(m => m.bringToFront?.());
 
     // 4) Mask optional (Pane beachten!)
     if (typeof mask !== 'undefined') {
@@ -1783,7 +1788,7 @@ function startUserLocationTracking() {
 
       // Marker anlegen oder aktualisieren
       if (!userMarker) {
-        userMarker = L.circleMarker([latitude, longitude], markerStyle)
+        userMarker = L.circleMarker([latitude, longitude], {markerStyle, pane: 'userPane'})
           .bindPopup(`<strong>Dein Standort</strong><br>Genauigkeit: ±${Math.round(accuracy)} m`)
           .addTo(map);
       } else {
@@ -1795,7 +1800,7 @@ function startUserLocationTracking() {
 
       // Genauigkeitskreis anlegen oder aktualisieren
       if (!userAccuracyCircle) {
-        userAccuracyCircle = L.circle([latitude, longitude], accuracyStyle).addTo(map);
+        userAccuracyCircle = L.circle([latitude, longitude], {accuracyStyle, pane: 'historyPane'}).addTo(map);
       } else {
         userAccuracyCircle.setLatLng([latitude, longitude]);
         userAccuracyCircle.setRadius(accuracy);
@@ -2705,7 +2710,7 @@ function renderAgentRequestOverlay(data = activeAgentReq) {
       iconSize: [14, 14]
     });
 
-    const marker = L.marker([resp.lat, resp.lon], { icon }).addTo(map);
+    const marker = L.marker([resp.lat, resp.lon], { icon, pane: 'agentenPane' }).addTo(map);
     marker.bindPopup(`<strong>${escapeHtml(resp.teamName || 'Team')}</strong>`);
     agentReqMarkers.push(marker);
   }
@@ -3045,7 +3050,6 @@ function updateCountdown(startTime, duration) {
           if (duration === durationInput && durationInput2 > 0){
             alert("Zeit abgelaufen, dein Standort wird einmalig geteilt");
             getLocation();
-            startTimer(durationInput2);
           } else if (duration === durationInput2||(duration === durationInput && durationInput2 === 0)){
             alert("Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen (der Timer ist bis zum nächsten Posten deaktiviert)")
             remove(ref(rtdb, "timer/duration"));
@@ -3101,14 +3105,15 @@ document.head.appendChild(style);
 
 // Standort abrufen
 function getLocation() {
+  const durationInput2 = null;
     get(ref(rtdb, "timer"), (snapshot) => {
     const data = snapshot.val() || {};
     const {
       startTime = null,
       duration = null,
       durationInput = null,
-      durationInput2 = null
     } = data;
+    durationInput2 = data.durationInput2
 
     if (startTime + duration * 1000 > Date.now()) {
       return 
@@ -3146,6 +3151,7 @@ function getLocation() {
         sendNotificationToRoles("Mister X hat sich gezeigt!", "Automatische Standort-Übermittlung.", ['agent', 'settings', 'start'])
 
         showLocationHistory();
+        startTimer(durationInput2);
       },
       showError
     );
