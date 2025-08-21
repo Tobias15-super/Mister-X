@@ -1581,14 +1581,14 @@ function createOrReuseMap(lat, lon) {
 
 function showLocationHistory() {
   onValue(ref(rtdb, "locations"), (snapshot) => {
-
+    let noc_locations = null;
     const data = snapshot.val() || null;
     try {
       const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
       const validEntries = entries.filter(e => e.lat != null && e.lon != null);
-      const no_locations = false;
+      no_locations = false;
     }
-    catch {const no_locations = true}
+    catch {no_locations = true}
     if (no_locations){
       createOrReuseMap(48.20799729051118,16.366545907175926);
 
