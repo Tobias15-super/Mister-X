@@ -1628,23 +1628,36 @@ function ensureLayerGroups() {
 }
 
 
+
 function renderHistory(validEntries) {
   if (!map) return;
   ensureLayerGroups();
-
   historyLayer.clearLayers();
 
-  // Marker
-  
+  // Icon ohne Shadow + mit expliziten (Retina-)URLs
+  const noShadowIcon = L.icon({
+    iconUrl: '/assets/leaflet/marker-icon.png',
+    iconRetinaUrl: '/assets/leaflet/marker-icon-2x.png',   // wichtig für iOS/Retina
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    tooltipAnchor: [16, -28],
 
+    // Shadow komplett aus:
+    shadowUrl: null,
+    shadowRetinaUrl: null,
+    shadowSize: null,
+    shadowAnchor: null,
+    // optional: bei CDN o.ä. CORS vermeiden
+    crossOrigin: false
+  });
 
   validEntries.forEach(loc => {
-    L.marker([loc.lat, loc.lon], { pane: 'historyPane'})
+    L.marker([loc.lat, loc.lon], { pane: 'historyPane', icon: noShadowIcon })
       .addTo(historyLayer)
       .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
   });
 
-  // Linie
   const coords = validEntries.map(loc => [loc.lat, loc.lon]);
   if (coords.length > 1) {
     L.polyline(coords, {
@@ -1656,6 +1669,7 @@ function renderHistory(validEntries) {
     }).addTo(historyLayer);
   }
 }
+
 
 
 
@@ -3129,61 +3143,109 @@ style.innerHTML = `
 document.head.appendChild(style);
 
 // Standort abrufen
-function getLocation() {
-  const durationInput2 = null;
-    get(ref(rtdb, "timer"), (snapshot) => {
-    const data = snapshot.val() || {};
-    const {
-      startTime = null,
-      duration = null,
-      durationInput = null,
-    } = data;
-    durationInput2 = data.durationInput2
 
-    if (startTime + duration * 1000 > Date.now()) {
-      return 
-    };});
-  
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        // Diese Funktion wird nur für den Timer verwendet, speichert aber keinen Titel/Foto
-        // Daher wird hier kein Upload durchgeführt, sondern nur ein Dummy-Eintrag erstellt
-        const lat = position.coords.latitude;
-        const lon = position.coords.longitude;
-        const accuracy = position.coords.accuracy;
-        const timestamp = Date.now();
+async function getLocation() {
+  // 1) Timer-Check: aktuelle Daten laden (richtiges get())
+  let durationInput2;
+  try {
+    const snap = await get(ref(rtdb, "timer"));
+    const data = snap.val() || {};
+    const { startTime, duration } = data;
+    durationInput2 = data.durationInput2;
 
-        if (accuracy > 100) {
-          document.getElementById("status").innerText =
-            "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
-            let standortbeschreibung = prompt("Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben)") || "wurde nicht angegeben!";
-            //firebase.database().ref("locations").push({
-            push(ref(rtdb, "locations"), {
-              description: standortbeschreibung.trim(),
-              timestamp,
-            })
-          return;
+    // Null/NaN-sicher prüfen
+    const now = Date.now();
+    if (typeof startTime === "number" && typeof duration === "number") {
+      const expiresAt = startTime + duration * 1000;
+      // Wenn der Timer *noch läuft* (evtl. verlängert), dann abbrechen:
+      if (expiresAt > now) {
+        console.log("Timer wurde verlängert – Abbruch.");
+        return;
+      }
+    }
+  } catch (err) {
+    console.error("Timer lesen fehlgeschlagen:", err);
+    // Je nach gewünschtem Verhalten ggf. hier abbrechen:
+    return;
+  }
+
+  // 2) Geolocation prüfen/nutzen
+  if (!("geolocation" in navigator)) {
+    document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      // (Optional aber empfehlenswert) 3) SECOND-LOOK: direkt vor dem Schreiben *nochmal* Timer prüfen,
+      // falls während der Standortabfrage verlängert wurde.
+      try {
+        const snap2 = await get(ref(rtdb, "timer"));
+        const d2 = snap2.val() || {};
+        const { startTime: st2, duration: dur2 } = d2;
+        const now2 = Date.now();
+        if (typeof st2 === "number" && typeof dur2 === "number") {
+          const expiresAt2 = st2 + dur2 * 1000;
+          if (expiresAt2 > now2) {
+            console.log("Timer wurde in der Zwischenzeit verlängert – Abbruch vor dem Schreiben.");
+            return;
+          }
         }
+      } catch (err) {
+        console.warn("Zweiter Timer-Check fehlgeschlagen:", err);
+        // Bei Fehler lieber abbrechen, um falsche Einträge zu vermeiden
+        return;
+      }
 
-        //firebase.database().ref("locations").push({
-        push(ref(rtdb, "locations"), {
-          title: "Automatischer Standort",
-          lat,
-          lon,
+      // 4) Standort verarbeiten
+      const { latitude: lat, longitude: lon, accuracy } = position.coords;
+      const timestamp = Date.now();
+
+      if (accuracy > 100) {
+        document.getElementById("status").innerText =
+          "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
+        const standortbeschreibung =
+          prompt("Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben)") ||
+          "wurde nicht angegeben!";
+        await push(ref(rtdb, "locations"), {
+          description: standortbeschreibung.trim(),
           timestamp,
         });
-        sendNotificationToRoles("Mister X hat sich gezeigt!", "Automatische Standort-Übermittlung.", ['agent', 'settings', 'start'])
+        return;
+      }
 
-        showLocationHistory();
+      await push(ref(rtdb, "locations"), {
+        title: "Automatischer Standort",
+        lat,
+        lon,
+        timestamp,
+      });
+
+      sendNotificationToRoles(
+        "Mister X hat sich gezeigt!",
+        "Automatische Standort-Übermittlung.",
+        ["agent", "settings", "start"]
+      );
+
+      showLocationHistory();
+
+      // durationInput2 kommt aus dem ersten get()
+      if (durationInput2 != null) {
         startTimer(durationInput2);
-      },
-      showError
-    );
-  } else {
-    document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
-  }
-};
+      } else {
+        // Fallback, falls nicht im Datensatz vorhanden
+        console.warn("durationInput2 war nicht vorhanden – Timer wird nicht neu gestartet.");
+      }
+    },
+    showError,
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 15000,
+    }
+  );
+}
+
 
 function showError(error) {
   let message = "❌ Fehler beim Abrufen des Standorts.";
