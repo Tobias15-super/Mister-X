@@ -1635,9 +1635,14 @@ function renderHistory(validEntries) {
   // Marker
   
 
+
+  const transparentPng =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+qsS8AAAAASUVORK5CYII=';
+
   L.Icon.Default.mergeOptions({
-    shadowUrl: undefined,
+    shadowUrl: transparentPng, // "gültiges" Bild, aber unsichtbar
   });
+
   validEntries.forEach(loc => {
     L.marker([loc.lat, loc.lon], {pane:'userPane'})
       .addTo(historyLayer)
@@ -1694,6 +1699,15 @@ function showLocationHistory() {
     ensurePostenLayer();
     renderPostenMarkersFromCache();
     Object.values(postenMarkers || {}).forEach(m => m.bringToFront?.());
+
+    console.log('map id', map?._leaflet_id);
+    console.log('postenPane exists?', !!map?.getPane('postenPane'));
+    console.log('postenPane zIndex', map?.getPane('postenPane')?.style?.zIndex);
+    console.log('historyPane zIndex', map?.getPane('historyPane')?.style?.zIndex);
+    console.log('userPane zIndex', map?.getPane('userPane')?.style?.zIndex);
+    console.log('postenLayer on map?', map?.hasLayer(postenLayer));
+    console.log('postenMarkers count', Object.keys(postenMarkers || {}).length);
+
 
     // 4) Mask optional (Pane beachten!)
     if (typeof mask !== 'undefined') {
