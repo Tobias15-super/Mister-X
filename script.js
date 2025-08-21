@@ -1535,7 +1535,7 @@ function ensureMapVisible() {
 function createOrReuseMap(lat, lon) {
   ensureMapVisible();
   if (!map) {
-    map = L.map('map', { preferCanvas: true }).setView([lat, lon], 15);
+    map = L.map('map').setView([lat, lon], 15);
 
   // Karten-Layer definieren
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
