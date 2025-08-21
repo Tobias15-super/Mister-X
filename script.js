@@ -1583,9 +1583,11 @@ function showLocationHistory() {
   onValue(ref(rtdb, "locations"), (snapshot) => {
     let no_locations = null;
     const data = snapshot.val() || null;
+    let entries = [];
+    let validEntries = [];
     try {
-      const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
-      const validEntries = entries.filter(e => e.lat != null && e.lon != null);
+      entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
+      validEntries = entries.filter(e => e.lat != null && e.lon != null);
       no_locations = false;
     }
     catch {no_locations = true}
@@ -1642,7 +1644,7 @@ function showLocationHistory() {
     const feed = document.getElementById("locationFeed");
     feed.innerHTML = "";
 
-    if (typeof entries !== undefined){
+    if (entries.length > 0){
       entries.forEach((loc, index) => {
         const entryTitle = loc.title ? loc.title : "Automatischer Standort";
         const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
