@@ -1581,7 +1581,7 @@ function createOrReuseMap(lat, lon) {
 
 function showLocationHistory() {
   onValue(ref(rtdb, "locations"), (snapshot) => {
-    let noc_locations = null;
+    let no_locations = null;
     const data = snapshot.val() || null;
     try {
       const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
