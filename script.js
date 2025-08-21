@@ -1,6 +1,6 @@
 let countdown;
 let timerListenerRegistered = false;
-let map = L.map('map', { preferCanvas: true })
+let map;
 let marker;
 let historyMarkers = [];
 let fotoHochgeladen = false;
@@ -3463,8 +3463,8 @@ async function startScript() {
     // (D) Dein bestehendes App-Setup ohne Push:
     const savedView = localStorage.getItem('activeView') || 'start';
     if (savedView !=='start'){switchView(savedView);}
-    await ensurePostenLoadedOnce();
     showLocationHistory();
+    await ensurePostenLoadedOnce();
     listenToTimer();
     setTimerInputFromFirebase();
     showButtons();
