@@ -5,7 +5,7 @@ let marker;
 let historyMarkers = [];
 let fotoHochgeladen = false;
 let messaging
-let postenLayer = null;
+
 const postenMarkers = {};
 let postenCache = null;
 let selectedPost = null;
@@ -39,6 +39,8 @@ const LS_LAST_RESPONDED_REQ = 'lastRespondedAgentReqId';
 let showAgentLocations = (localStorage.getItem(LS_SHOW_AGENT_LOCS) ?? '1') === '1';
 let unsubscribeAgentReq = null;
 const currentTeamName = 'Mein Team'; // Teamname
+
+let postenLayer, historyLayer, userLayer;
 
 
 
@@ -1568,78 +1570,127 @@ function createOrReuseMap(lat, lon) {
     osm.addTo(map); // Standard aktivieren
     L.control.layers(baseMaps).addTo(map); // Umschaltmenü
     setTimeout(() => map.invalidateSize(),0);
+    ensurePanes();
+    ensureLayerGroups();
   } else {
     map.setView([lat, lon], 15);
     map.invalidateSize();
+    ensurePanes();
+    ensureLayerGroups();
   }
   ensurePostenLayer();
 }
 
+function ensurePanes() {
+  if (!map) return;
+
+  // Reihenfolge: Base < Mask < Linien/Polygone < Posten (CircleMarker) < Marker
+  if (!map.getPane('maskPane')) {
+    map.createPane('maskPane');
+    map.getPane('maskPane').style.zIndex = 300;
+  }
+
+  if (!map.getPane('historyPane')) {
+    map.createPane('historyPane');
+    map.getPane('historyPane').style.zIndex = 350; // Pfade/History
+  }
+
+  if (!map.getPane('postenPane')) {
+    map.createPane('postenPane');
+    map.getPane('postenPane').style.zIndex = 400; // Posten
+  }
+
+  if (!map.getPane('userPane')) {
+    map.createPane('userPane');
+    map.getPane('userPane').style.zIndex = 450; // User-Marker
+  }
+}
+
+
+function ensureLayerGroups() {
+  if (!postenLayer) postenLayer = L.layerGroup();
+  if (!historyLayer) historyLayer = L.layerGroup();
+  if (!userLayer) userLayer = L.layerGroup();
+
+  if (map) {
+    if (!map.hasLayer(postenLayer)) postenLayer.addTo(map);
+    if (!map.hasLayer(historyLayer)) historyLayer.addTo(map);
+    if (!map.hasLayer(userLayer)) userLayer.addTo(map);
+  }
+}
+
+
+function renderHistory(validEntries) {
+  if (!map) return;
+  ensureLayerGroups();
+
+  historyLayer.clearLayers();
+
+  // Marker
+  validEntries.forEach(loc => {
+    L.marker([loc.lat, loc.lon], { pane: 'historyPane' })
+      .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`)
+      .addTo(historyLayer);
+  });
+
+  // Linie
+  const coords = validEntries.map(loc => [loc.lat, loc.lon]);
+  if (coords.length > 1) {
+    L.polyline(coords, {
+      color: 'blue',
+      weight: 3,
+      opacity: 0.7,
+      smoothFactor: 1,
+      pane: 'historyPane'
+    }).addTo(historyLayer);
+  }
+}
 
 
 
 
 function showLocationHistory() {
   onValue(ref(rtdb, "locations"), (snapshot) => {
-    let no_locations = null;
     const data = snapshot.val() || null;
     let entries = [];
     let validEntries = [];
+    let no_locations = null;
+
     try {
-      entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
+      entries = Object.values(data).sort((a,b) => b.timestamp - a.timestamp);
       validEntries = entries.filter(e => e.lat != null && e.lon != null);
       no_locations = false;
-    }
-    catch {no_locations = true}
-    if (no_locations){
-      createOrReuseMap(48.208672092667435,16.372477270381918);
+    } catch { no_locations = true; }
 
-      ensurePostenLayer();
-      renderPostenMarkersFromCache();
-      reattachUserLocationOnMap();
-
-      historyMarkers.forEach(marker => map.removeLayer(marker));
-      historyMarkers = [];
-
-       if (typeof mask !== 'undefined') {
-        mask.addTo(map);
-      }
-
-    }else if (validEntries.length > 0) {
+    if (no_locations) {
+      createOrReuseMap(48.208672092667435, 16.372477270381918);
+    } else if (validEntries.length > 0) {
       const { lat, lon } = validEntries[0];
-
       createOrReuseMap(lat, lon);
-
-      ensurePostenLayer();
-      renderPostenMarkersFromCache();
-      reattachUserLocationOnMap();
-
-
-      historyMarkers.forEach(marker => map.removeLayer(marker));
-      historyMarkers = [];
-
-      validEntries.forEach(loc => {
-        const m = L.marker([loc.lat, loc.lon]).addTo(map).bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
-        historyMarkers.push(m);
-      });
-
-      const pathCoordinates = validEntries.map(loc => [loc.lat, loc.lon]);
-      if (pathCoordinates.length > 1) {
-        const pathLine = L.polyline(pathCoordinates, {
-          color: 'blue',
-          weight: 3,
-          opacity: 0.7,
-          smoothFactor: 1
-        }).addTo(map);
-      }
-
-      // Sperrgebietsmaske hinzufügen (falls definiert)
-      if (typeof mask !== 'undefined') {
-        mask.addTo(map);
-      }
-
-      document.getElementById("map").style.display = "block";
     }
+
+    // 1) User-Layer updaten (ohne andere zu löschen!)
+    reattachUserLocationOnMap();
+
+    // 2) History frisch zeichnen
+    if (validEntries.length > 0) {
+      renderHistory(validEntries);
+    } else if (historyLayer) {
+      historyLayer.clearLayers();
+    }
+
+    // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
+    ensurePostenLayer();
+    renderPostenMarkersFromCache();
+    Object.values(postenMarkers || {}).forEach(m => m.bringToFront?.());
+
+    // 4) Mask optional (Pane beachten!)
+    if (typeof mask !== 'undefined') {
+      mask.addTo(map);
+    }
+
+
+    document.getElementById("map").style.display = "block";
 
     const feed = document.getElementById("locationFeed");
     feed.innerHTML = "";
@@ -2040,24 +2091,34 @@ function renderPostenMarkersFromCache() {
       seen.add(markerKey);
 
       const style = styleForPosten(color, isActiveColor, !!loc.visited);
-
       if (postenMarkers[markerKey]) {
         const m = postenMarkers[markerKey];
         m.setLatLng([lat, lon]);
-        m.setStyle(style);
+
+        // style ist ein Objekt wie { color, fillColor, radius, weight, opacity, fillOpacity, ... }
+        m.setStyle(style); // KEIN {style, ...}
+
+        // Optional: sicherstellen, dass Posten über History/Mask liegen (falls gleiches Pane)
+        if (m.bringToFront) m.bringToFront();
+
         if (m.getPopup()) {
           m.getPopup().setContent(makePostenPopupHTML(color, key, loc, isActiveColor));
         }
       } else {
-        const m = L.circleMarker([lat, lon], style)
-          .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor))
-          .on("click", () => {
-            // Optional: bei Klick Karte zentrieren
-            //map.setView([lat, lon], Math.max(map.getZoom(), 16));
-          });
+        // WICHTIG: pane beim Erstellen setzen – nicht in setStyle
+        const m = L.circleMarker([lat, lon], {
+          ...style,              // Spread, nicht verschachtelt
+          pane: 'postenPane'     // Pane hier festlegen
+        })
+        .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor))
+        .on('click', () => {
+          // optional
+        });
+
         m.addTo(postenLayer);
         postenMarkers[markerKey] = m;
       }
+
     });
   });
 
@@ -2755,10 +2816,8 @@ async function switchView(view) {
 
   if (view === "misterx") {
     document.getElementById("misterxView").style.display = "block";
-    showLocationHistory();
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
-    showLocationHistory();
   } else if (view === "settings") {
     document.getElementById("settingsView").style.display = "block";
     load_max_mister_x();
@@ -3146,8 +3205,6 @@ async function deleteAllLocations() {
       map.remove();
       map = null;
     }
-    document.getElementById("map").style.display = "none";
-    document.getElementById("locationFeed").innerHTML = "";
     historyMarkers = [];
 
     // Optional: Status zurücksetzen
@@ -3474,7 +3531,7 @@ async function startScript() {
     autoCheckUpdatesOnResume();
     ensureTeamListeners();
     attachAgentReqListener();
-    initPostenListener();
+    await initPostenListener();
     wireSearchUI();
 
 
