@@ -1037,6 +1037,8 @@ async function sendLocationWithPhoto() {
   const notificationText = `${title} (${color.toUpperCase()})`;
   sendNotificationToRoles?.("Mister X hat sich gezeigt!", notificationText, ['agent', 'settings', 'start']);
 
+  startTimer();
+
   // 6) Foto im Hintergrund hochladen und URL aktualisieren
   uploadToCloudinary(file, async ({ url }) => {
     try {
@@ -1636,11 +1638,11 @@ function renderHistory(validEntries) {
   
 
 
-validEntries.forEach(loc => {
-  L.marker([loc.lat, loc.lon], { pane: 'historyPane'})
-    .addTo(historyLayer)
-    .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
-});
+  validEntries.forEach(loc => {
+    L.marker([loc.lat, loc.lon], { pane: 'historyPane'})
+      .addTo(historyLayer)
+      .bindPopup(`📍 ${new Date(loc.timestamp).toLocaleTimeString()}`);
+  });
 
   // Linie
   const coords = validEntries.map(loc => [loc.lat, loc.lon]);

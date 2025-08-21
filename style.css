@@ -150,9 +150,11 @@ button {
 
 
 
-.leaflet-pane.historyPane .leaflet-marker-shadow {
+
+.leaflet-historyPane-pane .leaflet-marker-shadow {
   display: none !important;
 }
+
 
 
 
