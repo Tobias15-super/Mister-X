@@ -1581,22 +1581,25 @@ function createOrReuseMap(lat, lon) {
 
 function showLocationHistory() {
   onValue(ref(rtdb, "locations"), (snapshot) => {
-    if (!snapshot.exists()) {
-      if (map) {
-        map.remove();
-        map = null;
-      }
-      document.getElementById("map").style.display = "none";
-      document.getElementById("locationFeed").innerHTML = "";
-      historyMarkers = [];
-      return;
-    }
 
     const data = snapshot.val();
     const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
     const validEntries = entries.filter(e => e.lat != null && e.lon != null);
+    if (validEntries.length === 0){
+      createOrReuseMap(lat, lon);
 
-    if (validEntries.length > 0) {
+      ensurePostenLayer();
+      renderPostenMarkersFromCache();
+      reattachUserLocationOnMap();
+
+      historyMarkers.forEach(marker => map.removeLayer(marker));
+      historyMarkers = [];
+
+       if (typeof mask !== 'undefined') {
+        mask.addTo(map);
+      }
+
+    }else if (validEntries.length > 0) {
       const { lat, lon } = validEntries[0];
 
       createOrReuseMap(lat, lon);
@@ -1630,12 +1633,6 @@ function showLocationHistory() {
       }
 
       document.getElementById("map").style.display = "block";
-    } else {
-      if (map) {
-        map.remove();
-        map = null;
-      }
-      document.getElementById("map").style.display = "none";
     }
 
     const feed = document.getElementById("locationFeed");
