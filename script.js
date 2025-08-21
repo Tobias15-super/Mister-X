@@ -3213,12 +3213,6 @@ async function deleteAllLocations() {
   try {
     await remove(ref(rtdb, "locations"));
     alert("Alle Standorte wurden gelöscht.");
-
-    // Karte und Feed lokal ausblenden
-    if (map) {
-      map.remove();
-      map = null;
-    }
     historyMarkers = [];
 
     // Optional: Status zurücksetzen
