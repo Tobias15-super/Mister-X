@@ -1582,11 +1582,15 @@ function createOrReuseMap(lat, lon) {
 function showLocationHistory() {
   onValue(ref(rtdb, "locations"), (snapshot) => {
 
-    const data = snapshot.val();
-    const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
-    const validEntries = entries.filter(e => e.lat != null && e.lon != null);
-    if (validEntries.length === 0){
-      createOrReuseMap(lat, lon);
+    const data = snapshot.val() || null;
+    try {
+      const entries = Object.values(data).sort((a, b) => b.timestamp - a.timestamp);
+      const validEntries = entries.filter(e => e.lat != null && e.lon != null);
+      const no_locations = false;
+    }
+    catch {const no_locations = true}
+    if (no_locations){
+      createOrReuseMap(48.20799729051118,16.366545907175926);
 
       ensurePostenLayer();
       renderPostenMarkersFromCache();
