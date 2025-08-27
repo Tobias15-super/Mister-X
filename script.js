@@ -1235,6 +1235,11 @@ function sanitizeTeamName(raw) {
 function escapeHtml(s) {
   return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+
+function escapeAttr(s = "") {
+  return escapeHtml(s).replace(/`/g, "&#096;");
+}
+
 function countMembers(team) {
   const m = team?.members || {};
   return Object.keys(m).length;
@@ -1697,6 +1702,7 @@ function showLocationHistory() {
     // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
     ensurePostenLayer();
     renderPostenMarkersFromCache({ nonDestructive: true });
+    attachPopupEvents();
 
     console.log('map id', map?._leaflet_id);
     console.log('postenPane exists?', !!map?.getPane('postenPane'));
@@ -2044,20 +2050,57 @@ function styleForPosten(colorName, isActiveColor, visited) {
   };
 }
 
+
 // Popup-HTML für einen Posten
 function makePostenPopupHTML(color, key, loc, isActiveColor) {
   const title = loc.title || key;
   const visited = !!loc.visited;
   const activeTxt = isActiveColor ? "aktiv" : "inaktiv";
   const visitedTxt = visited ? "✅ besucht" : "🕒 offen";
+
+  const hasImage =
+    !!(loc.imageUrl || loc.imagePath || loc.imageThumbUrl || loc.imageThumbPath);
+
+  // Daten für spätere Event-Handler in data-Attributen ablegen
+  const dataAttrs = hasImage
+    ? `data-image-url="${escapeAttr(loc.imageUrl || "")}"
+       data-image-path="${escapeAttr(loc.imagePath || "")}"
+       data-thumb-url="${escapeAttr(loc.imageThumbUrl || "")}"
+       data-thumb-path="${escapeAttr(loc.imageThumbPath || "")}"`
+    : "";
+
+  // A) Slot für automatische Vorschau (lädt erst bei popupopen)
+  const previewHtml = hasImage
+    ? `
+      <div class="posten-preview">
+        <div class="img-slot" ${dataAttrs} style="display:none"></div>
+      </div>
+    `
+    : "";
+
+  // B) Button zum großen Bild (Lightbox/Modal)
+  const buttonHtml = hasImage
+    ? `
+      <div class="posten-image-actions" style="margin-top:6px">
+        <button class="open-image-btn" ${dataAttrs}
+          style="padding:6px 10px;border-radius:6px;border:1px solid #ccc;background:#fff;cursor:pointer">
+          Bild anzeigen
+        </button>
+      </div>
+    `
+    : "";
+
   return `
-    <div style="min-width:180px">
-      <strong>${title}</strong><br>
-      <small>Farbe: ${color} (${activeTxt})</small><br>
+    <div class="posten-popup" style="min-width:200px">
+      <strong>${escapeHtml(title)}</strong><br>
+      <small>Farbe: ${escapeHtml(color)} (${activeTxt})</small><br>
       <small>Status: ${visitedTxt}</small>
+      ${previewHtml}
+      ${buttonHtml}
     </div>
   `;
 }
+
 
 // Hilfsfunktion: robust lat/lon holen
 function extractLatLon(loc) {
@@ -2086,6 +2129,60 @@ async function ensurePostenLoadedOnce() {
 }
 
 
+function setupLightboxOnce(){
+  const box = document.getElementById('img-lightbox');
+  const btn = document.getElementById('img-lightbox-close');
+  if (!box || !btn) return;
+  btn.addEventListener('click', () => box.style.display = "none");
+  box.addEventListener('click', (e) => {
+    if (e.target === box) box.style.display = "none";
+  });
+}
+
+
+function attachPopupClickForImages() {
+  if (!postenLayer) return;
+
+  postenLayer.off('popupopen.imgbtn').on('popupopen.imgbtn', (e) => {
+    const popupEl = e.popup.getElement();
+    if (!popupEl) return;
+
+    // Delegation: klickt der/die Nutzer:in auf den Button?
+    popupEl.addEventListener('click', async (evt) => {
+      const btn = evt.target.closest('.open-image-btn');
+      if (!btn) return;
+
+      const dataset = {
+        imageUrl: btn.getAttribute('data-image-url') || "",
+        imagePath: btn.getAttribute('data-image-path') || "",
+        thumbUrl:  btn.getAttribute('data-thumb-url') || "",
+        thumbPath: btn.getAttribute('data-thumb-path') || ""
+      };
+
+      // Für Vollbild bevorzugen wir die "große" URL (nicht Thumb)
+      const fullUrl = await resolveUrl({
+        url: dataset.imageUrl?.trim(),
+        path: dataset.imagePath?.trim()
+      }) || await pickBestPreviewUrl(dataset);
+
+      if (fullUrl) {
+        const titleEl = popupEl.querySelector('strong');
+        openImageModal(fullUrl, titleEl?.textContent || "Bild");
+      }
+    }, { once: false });
+  });
+}
+
+
+function openImageModal(src, alt = "") {
+  const box = document.getElementById('img-lightbox');
+  const img = document.getElementById('img-lightbox-img');
+  img.src = src;
+  img.alt = alt || "Bild";
+  box.style.display = "flex";
+}
+
+
 function ensurePostenLayer() {
   if (!postenLayer) postenLayer = L.layerGroup();
   if (map && !map.hasLayer(postenLayer)) postenLayer.addTo(map);
@@ -2098,6 +2195,7 @@ function renderPostenMarkersFromCache(options = {}) {
 
   ensurePanes();
   ensurePostenLayer();
+  attachPopupEvents();
 
   const seen = new Set();
   let validCount = 0;
@@ -2122,16 +2220,21 @@ function renderPostenMarkersFromCache(options = {}) {
 
       const style = styleForPosten(color, isActiveColor, !!loc.visited);
 
+
       if (postenMarkers[markerKey]) {
         const m = postenMarkers[markerKey];
         m.setLatLng([lat, lon]);
         m.setStyle(style);
+        m._postenLoc = loc;     // <— wichtig
+        m._postenId = markerKey;
         if (postenLayer && !postenLayer.hasLayer(m)) m.addTo(postenLayer);
         m.bringToFront?.();
         m.getPopup()?.setContent(makePostenPopupHTML(color, key, loc, isActiveColor));
       } else {
         const m = L.circleMarker([lat, lon], { ...style, pane: 'postenPane' })
           .bindPopup(makePostenPopupHTML(color, key, loc, isActiveColor));
+        m._postenLoc = loc;     // <— wichtig
+        m._postenId = markerKey;
         m.addTo(postenLayer);
         postenMarkers[markerKey] = m;
       }
@@ -2154,6 +2257,43 @@ function renderPostenMarkersFromCache(options = {}) {
     }
   });
 }
+
+function attachPopupEvents() {
+  if (!postenLayer) return;
+
+  postenLayer.off('popupopen').on('popupopen', async (e) => {
+    const popupEl = e.popup.getElement();
+    if (!popupEl) return;
+    const slot = popupEl.querySelector('.img-slot');
+    if (!slot) return;
+
+    // Bereits geladen?
+    if (slot.dataset.loaded === "1") return;
+
+    // Daten lesen
+    const dataset = {
+      imageUrl: slot.getAttribute('data-image-url') || "",
+      imagePath: slot.getAttribute('data-image-path') || "",
+      thumbUrl:  slot.getAttribute('data-thumb-url') || "",
+      thumbPath: slot.getAttribute('data-thumb-path') || ""
+    };
+
+    // URL ermitteln (Thumbnail bevorzugt)
+    const previewUrl = await pickBestPreviewUrl(dataset);
+    if (!previewUrl) return;
+
+    // HTML einsetzen
+    slot.style.display = 'block';
+    slot.innerHTML = `
+      <img src="${escapeAttr(previewUrl)}"
+           alt="Vorschau"
+           loading="lazy"
+           style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;cursor:pointer" />
+    `;
+    slot.dataset.loaded = "1";
+  });
+}
+
 
 
   // Entferne Marker, die nicht mehr in der DB sind
@@ -3723,6 +3863,8 @@ async function startScript() {
     attachAgentReqListener();
     await initPostenListener();
     wireSearchUI();
+    setupLightboxOnce();
+    attachPopupClickForImages();
 
 
     //für Agentlocation:
