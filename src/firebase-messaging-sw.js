@@ -60,6 +60,16 @@ function openDbEnsureStore(dbName, storeName) {
   });
 }
 
+function mustPresentOnThisPlatform(ua) {
+  const s = ua || '';
+  // „echtes“ Safari erkennen (kein Chrome/Edge/Firefox auf iOS)
+  const isSafari = /Safari/i.test(s) && !/(Chrome|CriOS|EdgiOS|FxiOS)/i.test(s);
+  // iOS-/iPadOS-Heuristik (inkl. iPadOS „Macintosh“ + „Mobile“)
+  const isiOSLike = /iPhone|iPad|iPod/.test(s) || (/Macintosh/.test(s) && /Mobile/.test(s));
+  // Auf Safari (macOS & iOS) gilt die „immer sichtbar“ Vorgabe
+  return isSafari || isiOSLike;
+}
+
 async function getDeviceName() {
   try {
     const db = await openDbEnsureStore('app-db', 'settings');
@@ -132,40 +142,48 @@ self.addEventListener('push', (event) => {
     const visibleClient = windows.find((w) => w.visibilityState === 'visible');
 
     const ua = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
-    const isIOS = isIOSLikeUA(ua);
+    const mustShow = mustPresentOnThisPlatform(ua);
 
     // --- FOREGROUND ---
+
     if (visibleClient) {
       try { visibleClient.postMessage({ type: 'PUSH', payload: d }); } catch {}
 
-     
-    if (isIOS) {
-      const fgTag = `${tagBase}-fg`;
-      const opts = {
-        body,
-        icon: '/Mister-X/icons/android-chrome-192x192.png',
-        badge: '/Mister-X/icons/Mister_X_Badge.png',
-        tag: fgTag,
-        renotify: true,
-        silent: true,
-        requireInteraction: false,
-        timestamp: d.timestamp || Date.now(),
-        data: { url, messageId, tag: fgTag, fg: true }
-      };
+      if (mustShow) {
+        const fgTag = `${tagBase}-fg`;
+        const opts = {
+          body,
+          icon: '/Mister-X/icons/android-chrome-192x192.png',
+          badge: '/Mister-X/icons/Mister_X_Badge.png',
+          tag: fgTag,
+          renotify: true,
+          silent: true,                 // kein Ton, aber sichtbar
+          requireInteraction: false,
+          timestamp: d.timestamp || Date.now(),
+          data: { url, messageId, tag: fgTag, fg: true }
+        };
 
-      await self.registration.showNotification(title, opts);                      // anzeigen  [4](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification)
-      await waitUntilNotificationVisible(fgTag, { tries: 10, intervalMs: 50 });   // sichtbar?  [1](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/getNotifications)
-      // kurz zeigen und schließen (200–500ms sind oft zuverlässiger als 80ms)
-      await new Promise(r => setTimeout(r, 250));
-      const notes = await self.registration.getNotifications({ tag: fgTag });     //  [1](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/getNotifications)
-      notes.forEach(n => n.close());
+        // WICHTIG: showNotification im waitUntil-Promise ausführen
+        // (sonst kann Safari die Subscription nach wenigen Pushes kappen)
+        await self.registration.showNotification(title, opts);           // sichtbar zeigen
+        await waitUntilNotificationVisible(fgTag, { tries: 10, intervalMs: 50 });
 
-      // Danach erst "delivered"
-      try { await markDelivered(messageId, await getDeviceName()); } catch (e) {
-        console.error('[SW] markDelivered failed:', e);
+        // Etwas länger sichtbar lassen – 600–1200 ms hat sich bewährt
+        await new Promise(r => setTimeout(r, 900));
+
+        const notes = await self.registration.getNotifications({ tag: fgTag });
+        notes.forEach(n => n.close());
+
+        try { await markDelivered(messageId, await getDeviceName()); } catch (e) {
+          console.error('[SW] markDelivered failed:', e);
+        }
+        return;
       }
+
+      // Android/sonstige: KEIN OS-Banner
       return;
-    }}
+    }
+
 
 
 
@@ -234,17 +252,30 @@ async function setSwFlag(key, val) {
   });
 }
 
-// Wichtig: Token-/Subscription-Wechsel signalisieren **und** persistieren
+
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil((async () => {
-    // Flag persistieren
-    try { await setSwFlag('pushSubscriptionChangedAt', Date.now()); } catch {}
+    try {
+      // Mit denselben Optionen neu subscriben (inkl. applicationServerKey)
+      const newSub = await self.registration.pushManager.subscribe(
+        event.oldSubscription ? event.oldSubscription.options : { userVisibleOnly: true /* + applicationServerKey */ }
+      );
 
-    // an offene Clients posten (falls vorhanden)
-    const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-    windows.forEach((c) => {
-      try { c.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED' }); } catch {}
-    });
+      // An Server melden (falls du VAPID/WebPush direkt nutzt)
+      // await fetch('/api/push/subscribe', { method:'POST', body: JSON.stringify(newSub) });
+
+      // Offene Clients informieren (für FCM-Token-Refresh im Fenster)
+      const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+      windows.forEach((c) => {
+        try { c.postMessage({ type: 'PUSH_SUBSCRIPTION_CHANGED', payload: { /* optional: newSub */ } }); } catch {}
+      });
+
+      // Optional: Flag persistieren
+      try { await setSwFlag('pushSubscriptionChangedAt', Date.now()); } catch {}
+    } catch (err) {
+      console.error('[SW] re-subscribe failed:', err);
+    }
   })());
 });
+
 
