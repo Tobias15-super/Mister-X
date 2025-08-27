@@ -3814,7 +3814,7 @@ async function startScript() {
     attachAgentReqListener();
     await initPostenListener();
     wireSearchUI();
-    attachPopupClickForImages();
+    attachPopupImageClick();
 
 
     //für Agentlocation:

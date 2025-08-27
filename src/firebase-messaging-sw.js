@@ -2,7 +2,6 @@
 import { initializeApp } from 'firebase/app';
 import { getMessaging } from 'firebase/messaging/sw';
 import { precacheAndRoute } from 'workbox-precaching';
-import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { getDatabase, ref, set } from 'firebase/database';
 
 // Workbox: damit auch Icons offline/schnell verfügbar sind
@@ -23,10 +22,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 getMessaging(app); // Initialisiert FCM im SW-Kontext (keinen Listener hier registrieren)
 
-const appCheck = initializeAppCheck(app, {
-  provider: new ReCaptchaV3Provider('6LcVXbQrAAAAAI5Wgi8DenjAM4cz-ubrfcwIRPVJ'),
-  isTokenAutoRefreshEnabled: true
-})
 // --- Helpers ---
 const RTDB_BASE = firebaseConfig.databaseURL;
 
@@ -95,16 +90,20 @@ async function waitUntilNotificationVisible(tag, {
 
 
 
+
 async function markDelivered(messageId, deviceName) {
-  if (!messageId || !deviceName) return;
-  const safeName = sanitizeKey(deviceName);
-  const db = getDatabase(app);
   try {
-    await set(ref(db, `notifications/${messageId}/recipients/${safeName}`), true);
+    await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messageId, deviceName, timestamp: Date.now() }),
+    });
   } catch (e) {
-    console.error('[SW] RTDB update failed:', e);
+    // Optional: in IndexedDB puffern und später erneut senden
+    console.error("[SW] ack failed:", e);
   }
 }
+
 
 
 // --- iOS-/Safari-Erkennung (Heuristik) ---
