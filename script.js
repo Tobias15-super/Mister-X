@@ -1714,9 +1714,17 @@ function showLocationHistory() {
 
 
     // 4) Mask optional (Pane beachten!)
-    if (typeof mask !== 'undefined') {
-      mask.addTo(map);
+
+
+    if (map && mask && typeof mask.addTo === 'function') {
+      try {
+        mask.addTo(map);
+      } catch (err) {
+        log('Fehler beim Hinzufügen von mask:', err);
+      }
     }
+
+
 
 
     document.getElementById("map").style.display = "block";
@@ -2242,7 +2250,7 @@ function renderPostenMarkersFromCache(options = {}) {
   if (nonDestructive) return;
 
   if (validCount === 0) {
-    console.warn('[posten] Kein gültiger Posten geparst – Cleanup übersprungen.');
+    log('[posten] Kein gültiger Posten geparst – Cleanup übersprungen.');
     return;
   }
 
@@ -3249,7 +3257,7 @@ if (localStorage.getItem("activeView") === "misterx") {
         notifyAlreadyHandled();
       }
     } catch (err) {
-      console.error("Fehler im Ablauf-Handling:", err);
+      log("Fehler im Ablauf-Handling:", err);
     }
   }
 }
@@ -3313,7 +3321,7 @@ async function doOncePerExpiration(rtdb, actionIfWinner) {
 /** Optional: kleine Helfer-UI für Verlierer */
 function notifyAlreadyHandled() {
   // Minimal-Variante:
-  console.log("Bereits von anderem Gerät erledigt.");
+  log("Bereits von anderem Gerät erledigt.");
   // Oder non-blocking Toast, wenn du eine UI-Bibliothek verwendest.
 }
 
@@ -3368,7 +3376,7 @@ async function getLocation() {
       const expiresAt = startTime + duration * 1000;
       // Wenn der Timer *noch läuft* (evtl. verlängert), dann abbrechen:
       if (expiresAt > now) {
-        console.log("Timer wurde verlängert – Abbruch.");
+        log("Timer wurde verlängert – Abbruch.");
         return;
       }
     }
@@ -3396,12 +3404,12 @@ async function getLocation() {
         if (typeof st2 === "number" && typeof dur2 === "number") {
           const expiresAt2 = st2 + dur2 * 1000;
           if (expiresAt2 > now2) {
-            console.log("Timer wurde in der Zwischenzeit verlängert – Abbruch vor dem Schreiben.");
+            log("Timer wurde in der Zwischenzeit verlängert – Abbruch vor dem Schreiben.");
             return;
           }
         }
       } catch (err) {
-        console.warn("Zweiter Timer-Check fehlgeschlagen:", err);
+        log("Zweiter Timer-Check fehlgeschlagen:", err);
         // Bei Fehler lieber abbrechen, um falsche Einträge zu vermeiden
         return;
       }
@@ -3443,7 +3451,7 @@ async function getLocation() {
         startTimer(durationInput2);
       } else {
         // Fallback, falls nicht im Datensatz vorhanden
-        console.warn("durationInput2 war nicht vorhanden – Timer wird nicht neu gestartet.");
+        log("durationInput2 war nicht vorhanden – Timer wird nicht neu gestartet.");
       }
     },
     showError,
