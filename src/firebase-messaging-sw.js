@@ -178,8 +178,8 @@ self.addEventListener('push', (event) => {
       tag: bgTag,
       renotify: true,
       silent: (d.silent !== undefined) ? !!d.silent : false,
-      requireInteraction: d.requireInteraction ?? false,
-      vibrate: d.vibrate ?? [120, 60, 120],
+      requireInteraction: d.requireInteraction ?? true,
+      vibrate: d.vibrate ?? [200, 100, 200],
       timestamp: d.timestamp || Date.now(),
       data: { url, messageId, tag: bgTag, fg: false }
     };
