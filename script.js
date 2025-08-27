@@ -1679,11 +1679,12 @@ function showLocationHistory() {
     try {
       entries = Object.values(data).sort((a,b) => b.timestamp - a.timestamp);
       validEntries = entries.filter(e => e.lat != null && e.lon != null);
-      no_locations = false;
+      no_locations = validEntries.length === 0;
     } catch { no_locations = true; }
 
     if (no_locations) {
       createOrReuseMap(48.208672092667435, 16.372477270381918);
+      console.log("Keine Locations");
     } else if (validEntries.length > 0) {
       const { lat, lon } = validEntries[0];
       createOrReuseMap(lat, lon);
@@ -2250,7 +2251,7 @@ function renderPostenMarkersFromCache(options = {}) {
   if (nonDestructive) return;
 
   if (validCount === 0) {
-    log('[posten] Kein gültiger Posten geparst – Cleanup übersprungen.');
+    log('[posten] Kein gültiger Posten geparst - Cleanup übersprungen.');
     return;
   }
 
