@@ -1701,8 +1701,9 @@ function showLocationHistory() {
 
     // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
     ensurePostenLayer();
+    attachPopupImageClick();
     renderPostenMarkersFromCache({ nonDestructive: true });
-    attachPopupEvents();
+    
 
     console.log('map id', map?._leaflet_id);
     console.log('postenPane exists?', !!map?.getPane('postenPane'));
@@ -2052,40 +2053,26 @@ function styleForPosten(colorName, isActiveColor, visited) {
 
 
 // Popup-HTML für einen Posten
+
 function makePostenPopupHTML(color, key, loc, isActiveColor) {
   const title = loc.title || key;
   const visited = !!loc.visited;
   const activeTxt = isActiveColor ? "aktiv" : "inaktiv";
   const visitedTxt = visited ? "✅ besucht" : "🕒 offen";
 
-  const hasImage =
-    !!(loc.imageUrl || loc.imagePath || loc.imageThumbUrl || loc.imageThumbPath);
-
-  // Daten für spätere Event-Handler in data-Attributen ablegen
-  const dataAttrs = hasImage
-    ? `data-image-url="${escapeAttr(loc.imageUrl || "")}"
-       data-image-path="${escapeAttr(loc.imagePath || "")}"
-       data-thumb-url="${escapeAttr(loc.imageThumbUrl || "")}"
-       data-thumb-path="${escapeAttr(loc.imageThumbPath || "")}"`
-    : "";
-
-  // A) Slot für automatische Vorschau (lädt erst bei popupopen)
-  const previewHtml = hasImage
+  // Vorschau-Image direkt ins Popup (falls vorhanden)
+  const imageHtml = loc.imageUrl
     ? `
-      <div class="posten-preview">
-        <div class="img-slot" ${dataAttrs} style="display:none"></div>
-      </div>
-    `
-    : "";
-
-  // B) Button zum großen Bild (Lightbox/Modal)
-  const buttonHtml = hasImage
-    ? `
-      <div class="posten-image-actions" style="margin-top:6px">
-        <button class="open-image-btn" ${dataAttrs}
-          style="padding:6px 10px;border-radius:6px;border:1px solid #ccc;background:#fff;cursor:pointer">
-          Bild anzeigen
-        </button>
+      <div class="posten-preview" style="margin-top:6px">
+        <img
+          class="posten-preview-img"
+          src="${escapeAttr(loc.imageUrl)}"
+          data-fullsrc="${escapeAttr(loc.imageUrl)}"
+          alt="${escapeAttr(title)}"
+          loading="lazy"
+          style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;cursor:zoom-in;display:block"
+          referrerpolicy="no-referrer"
+        />
       </div>
     `
     : "";
@@ -2095,11 +2082,11 @@ function makePostenPopupHTML(color, key, loc, isActiveColor) {
       <strong>${escapeHtml(title)}</strong><br>
       <small>Farbe: ${escapeHtml(color)} (${activeTxt})</small><br>
       <small>Status: ${visitedTxt}</small>
-      ${previewHtml}
-      ${buttonHtml}
+      ${imageHtml}
     </div>
   `;
 }
+
 
 
 // Hilfsfunktion: robust lat/lon holen
@@ -2129,7 +2116,8 @@ async function ensurePostenLoadedOnce() {
 }
 
 
-function setupLightboxOnce(){
+
+(function setupLightboxOnce() {
   const box = document.getElementById('img-lightbox');
   const btn = document.getElementById('img-lightbox-close');
   if (!box || !btn) return;
@@ -2137,50 +2125,50 @@ function setupLightboxOnce(){
   box.addEventListener('click', (e) => {
     if (e.target === box) box.style.display = "none";
   });
-}
+})();
 
 
-function attachPopupClickForImages() {
-  if (!postenLayer) return;
 
-  postenLayer.off('popupopen.imgbtn').on('popupopen.imgbtn', (e) => {
-    const popupEl = e.popup.getElement();
+
+function attachPopupImageClick() {
+  // Nimm die Ebene, auf der deine Posten liegen (falls vorhanden)
+  const target = postenLayer || map;
+  if (!target) return;
+
+  // erst alte Listener ab, dann neu an – verhindert doppelte Registration
+  target.off('popupopen.postenimg').on('popupopen.postenimg', (e) => {
+    const popupEl = e.popup?.getElement();
     if (!popupEl) return;
 
-    // Delegation: klickt der/die Nutzer:in auf den Button?
-    popupEl.addEventListener('click', async (evt) => {
-      const btn = evt.target.closest('.open-image-btn');
-      if (!btn) return;
+    const img = popupEl.querySelector('.posten-preview-img');
+    if (!img) return;
 
-      const dataset = {
-        imageUrl: btn.getAttribute('data-image-url') || "",
-        imagePath: btn.getAttribute('data-image-path') || "",
-        thumbUrl:  btn.getAttribute('data-thumb-url') || "",
-        thumbPath: btn.getAttribute('data-thumb-path') || ""
-      };
+    // Optional: besseres Alt aus dem Popup-Titel
+    const titleEl = popupEl.querySelector('strong');
+    const alt = titleEl?.textContent || "Bild";
 
-      // Für Vollbild bevorzugen wir die "große" URL (nicht Thumb)
-      const fullUrl = await resolveUrl({
-        url: dataset.imageUrl?.trim(),
-        path: dataset.imagePath?.trim()
-      }) || await pickBestPreviewUrl(dataset);
-
-      if (fullUrl) {
-        const titleEl = popupEl.querySelector('strong');
-        openImageModal(fullUrl, titleEl?.textContent || "Bild");
-      }
-    }, { once: false });
+    // Einmal-Listener für dieses DOM-Image
+    img.addEventListener('click', () => {
+      const full = img.getAttribute('data-fullsrc') || img.src;
+      if (full) openImageModal(full, alt);
+      // Fallback: neues Tab
+      // else window.open(full, '_blank', 'noopener');
+    }, { once: true });
   });
 }
+
+
 
 
 function openImageModal(src, alt = "") {
   const box = document.getElementById('img-lightbox');
   const img = document.getElementById('img-lightbox-img');
+  if (!box || !img) return;
   img.src = src;
   img.alt = alt || "Bild";
   box.style.display = "flex";
 }
+
 
 
 function ensurePostenLayer() {
@@ -2195,7 +2183,7 @@ function renderPostenMarkersFromCache(options = {}) {
 
   ensurePanes();
   ensurePostenLayer();
-  attachPopupEvents();
+  attachPopupImageClick()
 
   const seen = new Set();
   let validCount = 0;
@@ -2257,43 +2245,6 @@ function renderPostenMarkersFromCache(options = {}) {
     }
   });
 }
-
-function attachPopupEvents() {
-  if (!postenLayer) return;
-
-  postenLayer.off('popupopen').on('popupopen', async (e) => {
-    const popupEl = e.popup.getElement();
-    if (!popupEl) return;
-    const slot = popupEl.querySelector('.img-slot');
-    if (!slot) return;
-
-    // Bereits geladen?
-    if (slot.dataset.loaded === "1") return;
-
-    // Daten lesen
-    const dataset = {
-      imageUrl: slot.getAttribute('data-image-url') || "",
-      imagePath: slot.getAttribute('data-image-path') || "",
-      thumbUrl:  slot.getAttribute('data-thumb-url') || "",
-      thumbPath: slot.getAttribute('data-thumb-path') || ""
-    };
-
-    // URL ermitteln (Thumbnail bevorzugt)
-    const previewUrl = await pickBestPreviewUrl(dataset);
-    if (!previewUrl) return;
-
-    // HTML einsetzen
-    slot.style.display = 'block';
-    slot.innerHTML = `
-      <img src="${escapeAttr(previewUrl)}"
-           alt="Vorschau"
-           loading="lazy"
-           style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;cursor:pointer" />
-    `;
-    slot.dataset.loaded = "1";
-  });
-}
-
 
 
   // Entferne Marker, die nicht mehr in der DB sind
@@ -3863,7 +3814,6 @@ async function startScript() {
     attachAgentReqListener();
     await initPostenListener();
     wireSearchUI();
-    setupLightboxOnce();
     attachPopupClickForImages();
 
 
