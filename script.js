@@ -1701,7 +1701,6 @@ function showLocationHistory() {
 
     // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
     ensurePostenLayer();
-    attachPopupImageClick();
     renderPostenMarkersFromCache({ nonDestructive: true });
     
 
@@ -2116,53 +2115,68 @@ async function ensurePostenLoadedOnce() {
 }
 
 
-
-(function setupLightboxOnce() {
+function setupLightboxOnce() {
   const box = document.getElementById('img-lightbox');
   const btn = document.getElementById('img-lightbox-close');
   if (!box || !btn) return;
-  btn.addEventListener('click', () => box.style.display = "none");
-  box.addEventListener('click', (e) => {
-    if (e.target === box) box.style.display = "none";
-  });
-})();
+
+  const close = () => box.style.display = "none";
+  btn.addEventListener('click', close);
+  box.addEventListener('click', (e) => { if (e.target === box) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+};
 
 
 
 
-function attachPopupImageClick() {
-  if (!map) return;
-  map.off('popupopen.postenimg').on('popupopen.postenimg', (e) => {
-    const popupEl = e.popup?.getElement();
-    if (!popupEl) return;
 
-    const img = popupEl.querySelector('.posten-preview-img');
+// Am besten nach map-Initialisierung ausführen (oder ganz am Ende deiner JS-Datei)(function attachDelegatedImageClick() {
+  
+function attachDelegatedImageClick() {
+  const handler = (e) => {
+    const img = e.target.closest('.posten-preview-img');
     if (!img) return;
 
-    const titleEl = popupEl.querySelector('strong');
-    const alt = titleEl?.textContent || "Bild";
+    // Falls Leaflet/Popup das „schluckt“: im Capture-Phase hören
+    e.preventDefault();
+    e.stopPropagation();
 
-    // Nicht nur einmal – sonst geht der zweite Klick nicht mehr
-    img.addEventListener('click', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const full = img.getAttribute('data-fullsrc') || img.src;
-      if (full) openImageModal(full, alt);
-    });
-  });
-}
+    const alt = img.getAttribute('alt') || "Bild";
+    const full = img.getAttribute('data-fullsrc') || img.getAttribute('src');
+    if (full) openImageModal(full, alt);
+  };
 
-
+  // Capture = true macht es sehr robust gegen stopPropagation in Bubbling-Phase
+  document.addEventListener('click', handler, { capture: true });
+};
 
 
-function openImageModal(src, alt = "") {
+
+
+
+
+unction openImageModal(src, alt = "") {
   const box = document.getElementById('img-lightbox');
   const img = document.getElementById('img-lightbox-img');
   if (!box || !img) return;
-  img.src = src;
-  img.alt = alt || "Bild";
+
+  // 1) Sofort anzeigen
   box.style.display = "flex";
+
+  // 2) onload optional nur noch für spätere Effekte
+  img.onload = null;  // nicht zwingend nötig
+  img.onerror = null;
+
+  // 3) Alt setzen
+  img.alt = alt || "Bild";
+
+  // 4) gleichen src-Fall behandeln: zurücksetzen, dann neu setzen
+  if (img.src === src) {
+    img.src = "";     // Reset triggert ein frisches Laden
+  }
+  img.src = src;
 }
+
 
 
 
@@ -2178,7 +2192,7 @@ function renderPostenMarkersFromCache(options = {}) {
 
   ensurePanes();
   ensurePostenLayer();
-  attachPopupImageClick()
+  
 
   const seen = new Set();
   let validCount = 0;
@@ -3809,7 +3823,8 @@ async function startScript() {
     attachAgentReqListener();
     await initPostenListener();
     wireSearchUI();
-    attachPopupImageClick();
+    attachDelegatedImageClick();
+    setupLightboxOnce();
 
 
     //für Agentlocation:

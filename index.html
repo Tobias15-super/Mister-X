@@ -15,6 +15,18 @@
   <link rel="icon" href="favicon.ico" type="image/x-icon">
 </head>
 <body>
+    <div id="img-lightbox"
+        style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);
+                z-index:2147483647;align-items:center;justify-content:center;padding:20px">
+      <img id="img-lightbox-img" src="" alt=""
+          referrerpolicy="no-referrer"
+          style="max-width:90vw;max-height:85vh;border-radius:8px;
+                  box-shadow:0 10px 30px rgba(0,0,0,.5)"/>
+      <button id="img-lightbox-close" aria-label="Close"
+              style="position:absolute;top:14px;right:16px;font-size:24px;color:#fff;
+                    background:none;border:none;cursor:pointer">✕</button>
+    </div>
+
 <div id="teamStatusBar" class="team-status">
   <span id="teamStatusName">Kein Team</span>
   <span class="sep">•</span>
@@ -182,25 +194,6 @@
     <br><br><br><br><br><br><br><br><br><br>
   <button class ="small-button" id="permissionButton2" onclick="removeNotificationSetup()" style="display: none;">Benachrichtigungen deaktivieren</button>
   </div>
-
-
-<!-- Lightweight Image Modal -->
-  <div id="img-lightbox"
-      style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);
-              z-index:9999;align-items:center;justify-content:center;padding:20px">
-
-    <img id="img-lightbox-img" src="" alt=""
-        referrerpolicy="no-referrer"
-        style="max-width:90vw;max-height:85vh;border-radius:8px;
-                box-shadow:0 10px 30px rgba(0,0,0,.5)"/>
-
-    <button id="img-lightbox-close" aria-label="Close"
-            style="position:absolute;top:14px;right:16px;font-size:24px;color:#fff;
-                  background:none;border:none;cursor:pointer">✕</button>
-  </div>
-
-
-
 
 <script src="script.js" type="module" defer></script>
 </body>
