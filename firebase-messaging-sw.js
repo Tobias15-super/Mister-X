@@ -10401,26 +10401,26 @@ self.addEventListener("push", (n) => {
         u.postMessage({ type: "PUSH", payload: s });
       } catch {
       }
-      if (d) {
-        const E = `${c}-fg`, x = {
-          body: r,
-          icon: "/Mister-X/icons/android-chrome-192x192.png",
-          badge: "/Mister-X/icons/Mister_X_Badge.png",
-          tag: E,
-          renotify: !0,
-          silent: !0,
-          requireInteraction: !1,
-          timestamp: s.timestamp || Date.now(),
-          data: { url: o, messageId: a, tag: E, fg: !0 }
-        };
-        await self.registration.showNotification(i, x), await Gs(E, { tries: 10, intervalMs: 50 }), await new Promise((V) => setTimeout(V, 250)), (await self.registration.getNotifications({ tag: E })).forEach((V) => V.close());
-        try {
-          await zs(a, await js());
-        } catch (V) {
-          console.error("[SW] markDelivered failed:", V);
-        }
+      if (!d)
         return;
+      const E = `${c}-fg`, x = {
+        body: r,
+        icon: "/Mister-X/icons/android-chrome-192x192.png",
+        badge: "/Mister-X/icons/Mister_X_Badge.png",
+        tag: E,
+        renotify: !0,
+        silent: !0,
+        requireInteraction: !1,
+        timestamp: s.timestamp || Date.now(),
+        data: { url: o, messageId: a, tag: E, fg: !0 }
+      };
+      await self.registration.showNotification(i, x), await Gs(E, { tries: 10, intervalMs: 50 }), await new Promise((V) => setTimeout(V, 250)), (await self.registration.getNotifications({ tag: E })).forEach((V) => V.close());
+      try {
+        await zs(a, await js());
+      } catch (V) {
+        console.error("[SW] markDelivered failed:", V);
       }
+      return;
     }
     const p = `${c}-${a}`, g = {
       body: r,
