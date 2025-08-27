@@ -1181,20 +1181,18 @@ export function normalizeAtPhoneNumber(input) {
 }
 
 
+
 async function saveTelToRTDB(deviceId, tel, allowSmsFallback) {
   const safeId = sanitizeKey(deviceId);
-  const url = `${RTDB_BASE}/roles/${safeId}.json`;
-  const payload = {
+  const db = getDatabase(app);
+  const updates = {
     tel: tel ?? null,
     allowSmsFallback: !!allowSmsFallback,
     ...(tel ? { telUpdatedAt: Date.now() } : {}),
   };
-  await fetch(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  await update(ref(rtdb, `roles/${safeId}`), updates);
 }
+
 
 //=======Funktionen für Teams =======
 
@@ -3582,14 +3580,8 @@ async function detectSupport() {
 
 
 async function markDeliveredFromPage(messageId) {
-  const deviceName = getDeviceId();
-  if (!messageId || !deviceName) return;
-  const rtdbBase = "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app";
-  await fetch(`${rtdbBase}/notifications/${messageId}/recipients/${deviceName}.json`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(true),
-  });
+  if (!messageId || !deviceId) return;
+  await set(ref(rtdb, `notifications/${messageId}/recipients/${deviceId}`), true);
 }
 
 
