@@ -10429,8 +10429,8 @@ self.addEventListener("push", (n) => {
       tag: p,
       renotify: !0,
       silent: s.silent !== void 0 ? !!s.silent : !1,
-      requireInteraction: s.requireInteraction ?? !1,
-      vibrate: s.vibrate ?? [120, 60, 120],
+      requireInteraction: s.requireInteraction ?? !0,
+      vibrate: s.vibrate ?? [200, 100, 200],
       timestamp: s.timestamp || Date.now(),
       data: { url: o, messageId: a, tag: p, fg: !1 }
     };
