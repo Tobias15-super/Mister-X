@@ -47,7 +47,6 @@ let postenLayer, historyLayer, userLayer;
 
 
 
-
 // Optional: ein eigenes Icon für "ich" (sonst Leaflet-Default)
 const meIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1/dist/images/marker-icon.png',
@@ -165,8 +164,12 @@ import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'fir
 import { rtdb, storage } from './firebase.js';
 import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
-
+const appCheck = initializeAppCheck(app, {
+  provider: new ReCaptchaV3Provider('6LcVXbQrAAAAAI5Wgi8DenjAM4cz-ubrfcwIRPVJ'),
+  isTokenAutoRefreshEnabled: true
+})
 
 window.onerror = function(message, source, lineno, colno, error) {
   alert("JS-Fehler: " + message + " in " + source + " Zeile " + lineno);
@@ -482,6 +485,7 @@ async function askForDeviceIdAndPhone() {
   }
   id = id.trim();
   localStorage.setItem("deviceId", id);
+  deviceId = id;
 
   // --- 2) Lokale Präferenzen lesen ---
   let telPrefs = loadSmsPrefs();
