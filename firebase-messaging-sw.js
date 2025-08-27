@@ -10474,14 +10474,26 @@ async function vd(n, e) {
 self.addEventListener("pushsubscriptionchange", (n) => {
   n.waitUntil((async () => {
     try {
-      await vd("pushSubscriptionChangedAt", Date.now());
-    } catch {
-    }
-    (await clients.matchAll({ type: "window", includeUncontrolled: !0 })).forEach((t) => {
+      const e = await self.registration.pushManager.subscribe(
+        n.oldSubscription ? n.oldSubscription.options : {
+          userVisibleOnly: !0
+          /* + applicationServerKey */
+        }
+      );
+      (await clients.matchAll({ type: "window", includeUncontrolled: !0 })).forEach((s) => {
+        try {
+          s.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED", payload: {
+            /* optional: newSub */
+          } });
+        } catch {
+        }
+      });
       try {
-        t.postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED" });
+        await vd("pushSubscriptionChangedAt", Date.now());
       } catch {
       }
-    });
+    } catch (e) {
+      console.error("[SW] re-subscribe failed:", e);
+    }
   })());
 });
