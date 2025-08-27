@@ -2155,7 +2155,7 @@ function attachDelegatedImageClick() {
 
 
 
-unction openImageModal(src, alt = "") {
+function openImageModal(src, alt = "") {
   const box = document.getElementById('img-lightbox');
   const img = document.getElementById('img-lightbox-img');
   if (!box || !img) return;
