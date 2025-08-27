@@ -2070,7 +2070,7 @@ function makePostenPopupHTML(color, key, loc, isActiveColor) {
           data-fullsrc="${escapeAttr(loc.imageUrl)}"
           alt="${escapeAttr(title)}"
           loading="lazy"
-          style="width:100%;max-height:180px;object-fit:cover;border-radius:8px;cursor:zoom-in;display:block"
+          style="width:100%;height:auto;max-height:120px;object-fit:contain;border-radius:8px;cursor:zoom-in;display:block"
           referrerpolicy="no-referrer"
         />
       </div>
@@ -2131,29 +2131,24 @@ async function ensurePostenLoadedOnce() {
 
 
 function attachPopupImageClick() {
-  // Nimm die Ebene, auf der deine Posten liegen (falls vorhanden)
-  const target = postenLayer || map;
-  if (!target) return;
-
-  // erst alte Listener ab, dann neu an – verhindert doppelte Registration
-  target.off('popupopen.postenimg').on('popupopen.postenimg', (e) => {
+  if (!map) return;
+  map.off('popupopen.postenimg').on('popupopen.postenimg', (e) => {
     const popupEl = e.popup?.getElement();
     if (!popupEl) return;
 
     const img = popupEl.querySelector('.posten-preview-img');
     if (!img) return;
 
-    // Optional: besseres Alt aus dem Popup-Titel
     const titleEl = popupEl.querySelector('strong');
     const alt = titleEl?.textContent || "Bild";
 
-    // Einmal-Listener für dieses DOM-Image
-    img.addEventListener('click', () => {
+    // Nicht nur einmal – sonst geht der zweite Klick nicht mehr
+    img.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
       const full = img.getAttribute('data-fullsrc') || img.src;
       if (full) openImageModal(full, alt);
-      // Fallback: neues Tab
-      // else window.open(full, '_blank', 'noopener');
-    }, { once: true });
+    });
   });
 }
 
