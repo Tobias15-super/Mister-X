@@ -280,7 +280,7 @@ async function requestPermission() {
     localStorage.setItem('fcmToken', currentToken);
     log('Token:', currentToken);
     await set(ref(rtdb, `tokens/${deviceId}`), currentToken);
-    await update(ref(rtdb, 'roles/${deviceId}/role'), 'start')
+    await update(ref(rtdb, `roles/${deviceId}/role`), 'start')
     await saveTokenToSupabase(currentToken);
 
     // 6) UI aktualisieren
