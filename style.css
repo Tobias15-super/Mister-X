@@ -190,10 +190,22 @@ input[type="file"] {
 }
 
 
-/* Expanded darf wachsen */
-.notif-header.expanded {
-  padding-bottom: .5rem;
+
+/* Im expanded Mode: Text soll umbrechen und alles anzeigen */
+.notif-header.expanded .notif-summary {
+  white-space: normal;       /* erlaubt Zeilenumbruch */
+  overflow: visible;         /* kein Abschneiden */
+  text-overflow: clip;       /* keine Ellipsis */
+  align-items: flex-start;   /* Text oben ausrichten */
+  flex-wrap: wrap;           /* mehrere Zeilen erlauben */
+  height: auto;              /* Höhe dynamisch */
+  padding: .5rem 0;          /* etwas mehr Platz */
 }
+
+.notif-header.expanded #notifBody {
+  white-space: normal;       /* Body darf umbrechen */
+}
+
 
 
 /* Toggle-Button: feste Breite, nicht wachsen */
