@@ -2071,7 +2071,7 @@ function makePostenPopupHTML(color, key, loc, isActiveColor) {
   // Vorschau-Image direkt ins Popup (falls vorhanden)
   const imageHtml = loc.imageUrl
     ? `
-      <div class="posten-preview" style="margin-top:6px; border-radius:8px; overflow:hidden">
+      <div class="posten-preview" style="margin-top:6px">
         <img
           class="posten-preview-img"
           src="${escapeAttr(loc.imageUrl)}"
