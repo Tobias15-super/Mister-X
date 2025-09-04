@@ -3095,7 +3095,7 @@ Diese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderb
             width:100%;
             height:auto;               /* respektiert die natürliche Proportion */
             max-height:180px;
-        />
+        >
       </div>
     `:"";return`
     <div class="posten-popup" style="min-width:200px">
