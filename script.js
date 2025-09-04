@@ -3284,7 +3284,47 @@ function shouldShowAlertOncePerDevice(expKey) {
 
 
 
-async function doOncePerExpiration(rtdb, actionIfWinner) {
+// Import (Firebase v9 modular):
+// import { ref, get, runTransaction, serverTimestamp, update, query, orderByChild, endAt } from "firebase/database";
+
+async function gcOldTimerClaims(rtdb, maxAgeMs = 5 * 60 * 1000) {
+  // 1) Serverzeit bestimmen (mit Offset)
+  let serverNow = Date.now();
+  try {
+    const offsetSnap = await get(ref(rtdb, ".info/serverTimeOffset"));
+    const offset = typeof offsetSnap.val() === "number" ? offsetSnap.val() : 0;
+    serverNow += offset;
+  } catch {
+    // Best effort – ignorieren, falls nicht verfügbar
+  }
+
+  const threshold = serverNow - maxAgeMs;
+
+  // 2) Nur alte Einträge (at <= threshold) holen
+  const q = query(ref(rtdb, "timerClaims"), orderByChild("at"), endAt(threshold));
+  const oldSnap = await get(q);
+  if (!oldSnap.exists()) return;
+
+  // 3) Batch-Delete via update({path: null})
+  const updates = {};
+  oldSnap.forEach(child => {
+    updates[`timerClaims/${child.key}`] = null;
+  });
+
+  if (Object.keys(updates).length) {
+    await update(ref(rtdb), updates);
+  }
+}
+
+export async function doOncePerExpiration(rtdb, actionIfWinner) {
+  // Best-effort GC vor dem Claim (kein Listener, nur einmal pro Aufruf)
+  try {
+    await gcOldTimerClaims(rtdb, 5 * 60 * 1000);
+  } catch (e) {
+    // Aufräumen soll nie den Hauptflow blockieren
+    console.warn("GC timerClaims fehlgeschlagen:", e);
+  }
+
   const snap = await get(ref(rtdb, "timer"));
   const data = snap.val() || {};
   const { startTime, duration } = data;
