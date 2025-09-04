@@ -2692,7 +2692,7 @@ async function triggerAgentLocationRequest() {
     // Rollen-Filter kannst du beibehalten; Inhalt angepasst, da keine Bestätigung nötig ist.
     sendNotificationToRoles(
       'Mister X hat deinen Standort angefragt',
-      'Öffne die App, um deinen Standort freizugeben.',
+      'Öffne die App, um deinen Standort freizugeben!',
       ['agent', 'settings', 'start']
     );
 
@@ -3209,7 +3209,7 @@ if (localStorage.getItem("activeView") === "misterx") {
       const isLocationPhase = (duration === durationInput && (durationInput2 ?? 0) > 0);
       const message = isLocationPhase
         ? "Zeit abgelaufen, dein Standort wird einmalig geteilt.\nTippe auf OK, um fortzufahren."
-        : "Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen.\nOK: fortfahren (Timer wird deaktiviert)";
+        : "Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen.\n(Der Timer bleibt bis zu deinem nächsten Posten deaktiviert)";
 
       // 4) Alert auf *beiden* Geräten anzeigen
       alert(message);
@@ -3441,7 +3441,7 @@ async function getLocation() {
 
       sendNotificationToRoles(
         "Mister X hat sich gezeigt!",
-        "Automatische Standort-Übermittlung.",
+        "Automatische Standort-Übermittlung",
         ["agent", "settings", "start"]
       );
 
