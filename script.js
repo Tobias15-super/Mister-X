@@ -3295,8 +3295,8 @@ function makeExpirationKey(startTime, duration) {
 
 function shouldShowAlertOncePerDevice(expKey) {
   const key = `alertShown_${expKey}`;
-  if (localStorage.getItem(key) === "1") return false;
-  localStorage.setItem(key, "1");
+  if (sessionStorage.getItem(key) === "1") return false;
+  sessionStorage.setItem(key, "1");
   return true;
 }
 
@@ -3315,17 +3315,14 @@ async function gcOldTimerClaims(rtdb, maxAgeMs = 5 * 60 * 1000) {
   } catch {}
 
   const threshold = serverNow - maxAgeMs;
-  console.log('[GC] serverNow:', serverNow, 'threshold:', threshold, new Date(threshold).toISOString());
 
   const q = query(ref(rtdb, "timerClaims"), orderByChild("at"), endAt(threshold));
   const oldSnap = await get(q);
-  console.log('[GC] candidates exists:', oldSnap.exists());
 
   const updates = {};
   if (oldSnap.exists()) {
     oldSnap.forEach(child => {
       const v = child.val();
-      console.log('[GC] candidate', child.key, 'at:', v?.at, 'type:', typeof v?.at);
       // Zusätzlicher Type-Guard (hilft bei Alt-Daten):
       if (typeof v?.at === 'number' && v.at <= threshold) {
         updates[`timerClaims/${child.key}`] = null;
@@ -3334,10 +3331,8 @@ async function gcOldTimerClaims(rtdb, maxAgeMs = 5 * 60 * 1000) {
   }
 
   const toDelete = Object.keys(updates).length;
-  console.log('[GC] toDelete:', toDelete);
   if (toDelete) {
     await update(ref(rtdb), updates);
-    console.log('[GC] deleted:', toDelete);
   }
 }
 
