@@ -162,7 +162,7 @@ const COLOR_MAP = {
 import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
-import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp } from 'firebase/database';
+import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp, endAt } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
@@ -3452,7 +3452,7 @@ async function getLocation() {
         if (typeof st2 === "number" && typeof dur2 === "number") {
           const expiresAt2 = st2 + dur2 * 1000;
           if (expiresAt2 > now2) {
-            log("Timer wurde in der Zwischenzeit verlängert – Abbruch vor dem Schreiben.");
+            log("Timer wurde in der Zwischenzeit verlängert - Abbruch vor dem Schreiben.");
             return;
           }
         }
@@ -3476,6 +3476,11 @@ async function getLocation() {
           description: standortbeschreibung.trim(),
           timestamp,
         });
+        sendNotificationToRoles(
+        "Mister X hat sich gezeigt!",
+        "Automatische Standort-Übermittlung",
+        ["agent", "settings", "start"]
+      );
         return;
       }
 
