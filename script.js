@@ -1063,6 +1063,25 @@ async function sendLocationWithPhoto() {
   startTimer?.();
 }
 
+function showError(error) {
+  let message = "❌ Fehler beim Abrufen des Standorts.";
+
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      message += " Zugriff verweigert.";
+      break;
+    case error.POSITION_UNAVAILABLE:
+      message += " Standortinformationen nicht verfügbar.";
+      break;
+    case error.TIMEOUT:
+      message += " Zeitüberschreitung bei der Standortabfrage.";
+      break;
+  }
+
+  message += " Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
+  document.getElementById("status").innerText = message;
+}
+
 //=======SMS-Funktionen=======
 
 function isValidAtE164(n) {
@@ -3409,141 +3428,187 @@ document.head.appendChild(style);
 
 // Standort abrufen
 
-async function getLocation() {
-  // 1) Timer-Check: aktuelle Daten laden (richtiges get())
-  let durationInput2;
-  try {
-    const snap = await get(ref(rtdb, "timer"));
-    const data = snap.val() || {};
-    const { startTime, duration } = data;
-    durationInput2 = data.durationInput2;
 
-    // Null/NaN-sicher prüfen
-    const now = Date.now();
-    if (typeof startTime === "number" && typeof duration === "number") {
-      const expiresAt = startTime + duration * 1000;
-      // Wenn der Timer *noch läuft* (evtl. verlängert), dann abbrechen:
-      if (expiresAt > now) {
-        log("Timer wurde verlängert – Abbruch.");
-        return;
-      }
-    }
-  } catch (err) {
-    log("Timer lesen fehlgeschlagen:", err);
-    // Je nach gewünschtem Verhalten ggf. hier abbrechen:
-    return;
-  }
+// --- Helper: Timer lesen + prüfen ---
+async function readTimer() {
+  const snap = await get(ref(rtdb, "timer"));
+  return snap.val() || {};
+}
 
-  // 2) Geolocation prüfen/nutzen
-  if (!("geolocation" in navigator)) {
-    document.getElementById("status").innerText = "Geolocation wird nicht unterstützt.";
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    async (position) => {
-      // (Optional aber empfehlenswert) 3) SECOND-LOOK: direkt vor dem Schreiben *nochmal* Timer prüfen,
-      // falls während der Standortabfrage verlängert wurde.
-      try {
-        const snap2 = await get(ref(rtdb, "timer"));
-        const d2 = snap2.val() || {};
-        const { startTime: st2, duration: dur2 } = d2;
-        const now2 = Date.now();
-        if (typeof st2 === "number" && typeof dur2 === "number") {
-          const expiresAt2 = st2 + dur2 * 1000;
-          if (expiresAt2 > now2) {
-            log("Timer wurde in der Zwischenzeit verlängert - Abbruch vor dem Schreiben.");
-            return;
-          }
-        }
-      } catch (err) {
-        log("Zweiter Timer-Check fehlgeschlagen:", err);
-        // Bei Fehler lieber abbrechen, um falsche Einträge zu vermeiden
-        return;
-      }
-
-      // 4) Standort verarbeiten
-      const { latitude: lat, longitude: lon, accuracy } = position.coords;
-      const timestamp = Date.now();
-
-      if (accuracy > 100) {
-        document.getElementById("status").innerText =
-          "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
-        const standortbeschreibung =
-          prompt("Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben)") ||
-          "wurde nicht angegeben!";
-        await push(ref(rtdb, "locations"), {
-          description: standortbeschreibung.trim(),
-          timestamp,
-        });
-        sendNotificationToRoles(
-        "Mister X hat sich gezeigt!",
-        "Automatische Standort-Übermittlung",
-        ["agent", "settings", "start"]
-      );
-      showLocationHistory();
-
-      // durationInput2 kommt aus dem ersten get()
-      if (durationInput2 != null) {
-        startTimer(durationInput2);
-      } else {
-        // Fallback, falls nicht im Datensatz vorhanden
-        log("durationInput2 war nicht vorhanden - Timer wird nicht neu gestartet.");
-      }
-        return;
-      }
-
-      await push(ref(rtdb, "locations"), {
-        title: "Automatischer Standort",
-        lat,
-        lon,
-        timestamp,
-      });
-
-      sendNotificationToRoles(
-        "Mister X hat sich gezeigt!",
-        "Automatische Standort-Übermittlung",
-        ["agent", "settings", "start"]
-      );
-
-      showLocationHistory();
-
-      // durationInput2 kommt aus dem ersten get()
-      if (durationInput2 != null) {
-        startTimer(durationInput2);
-      } else {
-        // Fallback, falls nicht im Datensatz vorhanden
-        log("durationInput2 war nicht vorhanden - Timer wird nicht neu gestartet.");
-      }
-    },
-    showError,
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000,
-    }
+function isTimerRunning(data) {
+  const { startTime, duration } = data || {};
+  return (
+    typeof startTime === "number" &&
+    typeof duration === "number" &&
+    startTime + duration * 1000 > Date.now()
   );
 }
 
+// --- Helper: Second-look direkt vor dem Schreiben ---
+async function secondLookAbort() {
+  try {
+    const d2 = await readTimer();
+    if (isTimerRunning(d2)) {
+      log("Timer wurde in der Zwischenzeit verlängert - Abbruch vor dem Schreiben.");
+      return true;
+    }
+  } catch (err) {
+    log("Zweiter Timer-Check fehlgeschlagen:", err);
+    return true; // lieber abbrechen, keine falschen Einträge
+  }
+  return false;
+}
 
-function showError(error) {
-  let message = "❌ Fehler beim Abrufen des Standorts.";
+// --- Helper: Folgeaktionen nach dem Schreiben ---
+function postWriteSideEffects(durationInput2) {
+  sendNotificationToRoles(
+    "Mister X hat sich gezeigt!",
+    "Automatische Standort-Übermittlung",
+    ["agent", "settings", "start"]
+  );
 
-  switch (error.code) {
-    case error.PERMISSION_DENIED:
-      message += " Zugriff verweigert.";
-      break;
-    case error.POSITION_UNAVAILABLE:
-      message += " Standortinformationen nicht verfügbar.";
-      break;
-    case error.TIMEOUT:
-      message += " Zeitüberschreitung bei der Standortabfrage.";
-      break;
+  showLocationHistory();
+
+  if (durationInput2 != null) {
+    startTimer(durationInput2);
+  } else {
+    log("durationInput2 war nicht vorhanden - Timer wird nicht neu gestartet.");
+  }
+}
+
+// --- Helper: Manuellen Standort abfragen + speichern ---
+async function askManualAndWrite(durationInput2) {
+  const text =
+    prompt(
+      "Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben):"
+    ) || "";
+  const description = text.trim();
+
+  if (!description) {
+    // Nutzer hat abgebrochen oder leer – nichts schreiben
+    return false;
   }
 
-  message += " Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
-  document.getElementById("status").innerText = message;
+  if (await secondLookAbort()) return false;
+
+  await push(ref(rtdb, "locations"), {
+    description,
+    timestamp: Date.now(),
+  });
+
+  postWriteSideEffects(durationInput2);
+  return true;
 }
+
+
+
+// --- Hauptfunktion: Standort ermitteln (mit Auto-Retry bei technischen Fehlern) ---
+async function getLocation({
+  autoRetry = true,
+  maxRetries = 3,
+  retryDelayMs = 10000, // 10s
+} = {}) {
+  // 1) Timer-Check
+  let durationInput2;
+  try {
+    const data = await readTimer();
+    durationInput2 = data.durationInput2;
+
+    if (isTimerRunning(data)) {
+      log("Timer wurde verlängert – Abbruch.");
+      return;
+    }
+  } catch (err) {
+    log("Timer lesen fehlgeschlagen:", err);
+    return;
+  }
+
+  // 2) Geolocation prüfen
+  if (!("geolocation" in navigator)) {
+    document.getElementById("status").innerText =
+      "Geolocation wird nicht unterstützt.";
+    // Trotzdem manuellen Fallback anbieten:
+    await askManualAndWrite(durationInput2);
+    return;
+  }
+
+  // Retry-Mechanismus verwalten (nur TIMEOUT/POSITION_UNAVAILABLE)
+  let retriesLeft = Math.max(0, maxRetries);
+  let askedManualOnce = false; // prompt() nur einmal pro getLocation-Lauf
+
+  const options = {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 15000,
+  };
+
+  const success = async (position) => {
+    // Second-look vor dem Schreiben (falls während der Abfrage verlängert wurde)
+    if (await secondLookAbort()) return;
+
+    const { latitude: lat, longitude: lon, accuracy } = position.coords;
+    const timestamp = Date.now();
+
+    if (accuracy > 100) {
+      // Ungenau: manueller Fallback
+      document.getElementById("status").innerText =
+        "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
+      await askManualAndWrite(durationInput2);
+      return;
+    }
+
+    // Genau genug – Position schreiben
+    await push(ref(rtdb, "locations"), {
+      title: "Automatischer Standort",
+      lat,
+      lon,
+      timestamp,
+    });
+
+    postWriteSideEffects(durationInput2);
+  };
+
+  const retry = () => {
+    if (!autoRetry || retriesLeft <= 0) return;
+    retriesLeft--;
+    setTimeout(() => {
+      navigator.geolocation.getCurrentPosition(success, error, options);
+    }, retryDelayMs);
+  };
+
+  const error = async (err) => {
+    // Statusmeldung
+    let message = "❌ Fehler beim Abrufen des Standorts.";
+    switch (err.code) {
+      case err.PERMISSION_DENIED:
+        message += " Zugriff verweigert.";
+        break;
+      case err.POSITION_UNAVAILABLE:
+        message += " Standortinformationen nicht verfügbar.";
+        break;
+      case err.TIMEOUT:
+        message += " Zeitüberschreitung bei der Standortabfrage.";
+        break;
+    }
+    message += " Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
+    document.getElementById("status").innerText = message;
+
+    // Manueller Fallback *einmalig* pro Lauf anbieten
+    if (!askedManualOnce) {
+      askedManualOnce = true;
+      await askManualAndWrite(durationInput2);
+    }
+
+    // Auto-Retry nur bei technischen Fehlern (Timeout/Unavailable), NICHT bei Permission Denied
+    if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
+      retry();
+    }
+  };
+
+  // Erster Versuch
+  navigator.geolocation.getCurrentPosition(success, error, options);
+}
+
 
 function updateStartButtonState(isRunning) {
   const startButton = document.getElementById("startTimerButton");
