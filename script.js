@@ -3481,6 +3481,15 @@ async function getLocation() {
         "Automatische Standort-Übermittlung",
         ["agent", "settings", "start"]
       );
+      showLocationHistory();
+
+      // durationInput2 kommt aus dem ersten get()
+      if (durationInput2 != null) {
+        startTimer(durationInput2);
+      } else {
+        // Fallback, falls nicht im Datensatz vorhanden
+        log("durationInput2 war nicht vorhanden - Timer wird nicht neu gestartet.");
+      }
         return;
       }
 
@@ -3504,7 +3513,7 @@ async function getLocation() {
         startTimer(durationInput2);
       } else {
         // Fallback, falls nicht im Datensatz vorhanden
-        log("durationInput2 war nicht vorhanden – Timer wird nicht neu gestartet.");
+        log("durationInput2 war nicht vorhanden - Timer wird nicht neu gestartet.");
       }
     },
     showError,
