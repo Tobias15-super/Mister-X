@@ -1684,7 +1684,7 @@ function showLocationHistory() {
 
     if (no_locations) {
       createOrReuseMap(48.208672092667435, 16.372477270381918);
-      console.log("Keine Locations");
+      log("Keine Locations");
     } else if (validEntries.length > 0) {
       const { lat, lon } = validEntries[0];
       createOrReuseMap(lat, lon);
@@ -3288,41 +3288,48 @@ function shouldShowAlertOncePerDevice(expKey) {
 // import { ref, get, runTransaction, serverTimestamp, update, query, orderByChild, endAt } from "firebase/database";
 
 async function gcOldTimerClaims(rtdb, maxAgeMs = 5 * 60 * 1000) {
-  // 1) Serverzeit bestimmen (mit Offset)
   let serverNow = Date.now();
   try {
     const offsetSnap = await get(ref(rtdb, ".info/serverTimeOffset"));
     const offset = typeof offsetSnap.val() === "number" ? offsetSnap.val() : 0;
     serverNow += offset;
-  } catch {
-    // Best effort – ignorieren, falls nicht verfügbar
-  }
+  } catch {}
 
   const threshold = serverNow - maxAgeMs;
+  console.log('[GC] serverNow:', serverNow, 'threshold:', threshold, new Date(threshold).toISOString());
 
-  // 2) Nur alte Einträge (at <= threshold) holen
   const q = query(ref(rtdb, "timerClaims"), orderByChild("at"), endAt(threshold));
   const oldSnap = await get(q);
-  if (!oldSnap.exists()) return;
+  console.log('[GC] candidates exists:', oldSnap.exists());
 
-  // 3) Batch-Delete via update({path: null})
   const updates = {};
-  oldSnap.forEach(child => {
-    updates[`timerClaims/${child.key}`] = null;
-  });
+  if (oldSnap.exists()) {
+    oldSnap.forEach(child => {
+      const v = child.val();
+      console.log('[GC] candidate', child.key, 'at:', v?.at, 'type:', typeof v?.at);
+      // Zusätzlicher Type-Guard (hilft bei Alt-Daten):
+      if (typeof v?.at === 'number' && v.at <= threshold) {
+        updates[`timerClaims/${child.key}`] = null;
+      }
+    });
+  }
 
-  if (Object.keys(updates).length) {
+  const toDelete = Object.keys(updates).length;
+  console.log('[GC] toDelete:', toDelete);
+  if (toDelete) {
     await update(ref(rtdb), updates);
+    console.log('[GC] deleted:', toDelete);
   }
 }
 
-export async function doOncePerExpiration(rtdb, actionIfWinner) {
+
+async function doOncePerExpiration(rtdb, actionIfWinner) {
   // Best-effort GC vor dem Claim (kein Listener, nur einmal pro Aufruf)
   try {
     await gcOldTimerClaims(rtdb, 5 * 60 * 1000);
   } catch (e) {
     // Aufräumen soll nie den Hauptflow blockieren
-    console.warn("GC timerClaims fehlgeschlagen:", e);
+    log("GC timerClaims fehlgeschlagen:", e);
   }
 
   const snap = await get(ref(rtdb, "timer"));
@@ -3422,7 +3429,7 @@ async function getLocation() {
       }
     }
   } catch (err) {
-    console.error("Timer lesen fehlgeschlagen:", err);
+    log("Timer lesen fehlgeschlagen:", err);
     // Je nach gewünschtem Verhalten ggf. hier abbrechen:
     return;
   }

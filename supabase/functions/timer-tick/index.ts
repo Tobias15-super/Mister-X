@@ -16,6 +16,7 @@ const supa = createClient(SUPABASE_URL, SERVICE_KEY, {
 const SEND_FN = "send-to-all";
 const SMS_FN  = "sms-fallback";
 
+
 // --- Helper: JSON Response ---
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -24,10 +25,20 @@ function json(data: unknown, status = 200) {
   });
 }
 
+// --- RPC-Helper: Stage-Claim (Idempotenz pro Stage, z. B. 'push') ---
+async function claimStageOnce(messageId: string, stage: "push" | "sms" | string): Promise<boolean> {
+  const { data, error } = await supa.rpc("claim_job_stage_once", {
+    p_message_id: messageId,
+    p_stage: stage,
+  });
+  if (error) throw error;
+  return data === true;
+}
+
 /**
  * Bearbeitet einen Timer-Job:
- * - Push (Best-Effort) für Logging
- * - SMS IMMER, wenn Empfänger vorhanden (Idempotenz via claim_sms_once)
+ * - Push: jetzt idempotent via claim_job_stage_once('push') -> wird pro message_id nur 1x gesendet
+ * - SMS: IMMER wenn Empfänger vorhanden, idempotent via claim_sms_once (bereits vorhanden)
  */
 async function handleJob(job: any) {
   const {
@@ -41,43 +52,67 @@ async function handleJob(job: any) {
     id: dbId,
   } = job;
 
-  const messageKey = message_id ?? dbId;
+  const messageKey: string = message_id ?? dbId;
 
-  // --- 1) Push senden (Best-Effort) ---
+  // --- 1) Push senden (idempotent) ---
   let pushOk = false;
   let pushBody: any = null;
+
+  let shouldSendPush = true;
   try {
-    const { data, error } = await supa.functions.invoke(SEND_FN, {
-      body: {
-        title,
-        body,
-        tokens: tokens ?? [],
-        senderName: "cron",
-        link: link ?? "/Mister-X/",
-        messageId: messageKey,
-        rtdbBase: rtdb_base ?? "",
-        recipientDeviceNames: recipient_device_names ?? [],
-        setRecipientsMode: "set_once",
-        attempt: 1,
-      },
-      headers: {
-        Authorization: `Bearer ${SERVICE_KEY}`,
-        apikey: SERVICE_KEY, // falls deine send-to-all das auch prüft
-      },
-    });
-    pushOk = !error && (data?.ok ?? true);
-    pushBody = error ? { error: error.message ?? String(error) } : data;
-    console.log("send-to-all:", {
-      ok: pushOk,
-      statusInfo: pushBody?.status ?? null,
-      message_id: messageKey,
-    });
+    // NEU: Idempotenz für Push – nur der erste Worker/Lauf gewinnt
+    const first = await claimStageOnce(messageKey, "push");
+    shouldSendPush = first === true;
   } catch (e) {
-    console.error("send-to-all threw:", e);
-    pushBody = { error: String(e) };
+    console.error("claim_job_stage_once(push) threw:", e);
+    // Strategie: Wenn Claim fehlschlägt, KEIN Push senden (konservativ),
+    // um Doppelungen zu vermeiden. Alternativ könntest du auf true lassen.
+    shouldSendPush = false;
+    pushBody = { error: "push-claim-failed", detail: String(e) };
   }
 
-  // --- 2) SMS immer senden, wenn es Empfänger gibt ---
+  if (shouldSendPush) {
+    try {
+      const { data, error } = await supa.functions.invoke(SEND_FN, {
+        body: {
+          title,
+          body,
+          tokens: tokens ?? [],
+          senderName: "cron",
+          link: link ?? "/Mister-X/",
+          messageId: messageKey,
+          rtdbBase: rtdb_base ?? "",
+          recipientDeviceNames: recipient_device_names ?? [],
+          setRecipientsMode: "set_once",
+          attempt: 1,
+        },
+        headers: {
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          apikey: SERVICE_KEY, // falls deine send-to-all das prüft
+        },
+      });
+
+      // Expliziter Erfolg: kein error und data?.ok === true
+      pushOk = !error && (data?.ok === true);
+      pushBody = error ? { error: error.message ?? String(error) } : data;
+      console.log("send-to-all:", {
+        ok: pushOk,
+        statusInfo: pushBody?.status ?? null,
+        message_id: messageKey,
+      });
+    } catch (e) {
+      console.error("send-to-all threw:", e);
+      pushBody = { error: String(e) };
+      pushOk = false;
+    }
+  } else {
+    // Push wurde bereits früher gesendet – als erfolgreich werten, um SMS-Flow nicht zu blockieren
+    pushOk = true;
+    pushBody = pushBody ?? { skipped: true, reason: "push-already-claimed" };
+    console.log("Push already sent earlier for", messageKey);
+  }
+
+  // --- 2) SMS immer senden, wenn es Empfänger gibt (idempotent via claim_sms_once) ---
   const recipients: string[] = recipient_device_names ?? [];
   if (recipients.length > 0) {
     // Idempotenz-Guard: nur ERSTER gewinnt
@@ -104,7 +139,8 @@ async function handleJob(job: any) {
     }
 
     // SMS-Text (auf 280 chars kürzen)
-    const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über den Knopf oben rechts)`.slice(0, 280);
+    const smsText = `${title}: ${body}
+Diese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über den Knopf oben rechts)`.slice(0, 280);
 
     // Direkt per fetch rufen -> volle Header-Kontrolle
     try {
@@ -136,7 +172,12 @@ async function handleJob(job: any) {
         const retryable = resp.status >= 500 || resp.status === 0;
         return {
           ok: false,
-          result: { stage: "sms", error: `HTTP ${resp.status} ${resp.statusText}`, body: text.slice(0, 500), retryable },
+          result: {
+            stage: "sms",
+            error: `HTTP ${resp.status} ${resp.statusText}`,
+            body: text.slice(0, 500),
+            retryable,
+          },
         };
       }
 
@@ -152,10 +193,16 @@ async function handleJob(job: any) {
   return { ok: pushOk, result: { stage: "push_only", pushBody } };
 }
 
-serve(async (req) => {
+// --- HTTP-Handler ---
+serve(async (_req) => {
   try {
     // 1) Fällige Timer claimen
-    const { data: due, error: claimErr } = await supa.rpc("claim_due_timers", { limit_n: 10 });
+    // HINWEIS: Idealerweise macht dein claim_due_timers ein
+    // "UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED LIMIT n) RETURNING *"
+    // (DB-seitig, nicht hier in JS), damit es keine Doppel-Claims gibt.
+    const { data: due, error: claimErr } = await supa.rpc("claim_due_timers", {
+      limit_n: 10,
+    });
     if (claimErr) throw claimErr;
 
     // 2) Keine fälligen? ggf. Cron unschedulen
@@ -172,8 +219,7 @@ serve(async (req) => {
       return json({ ok: true, claimed: 0 });
     }
 
-
-    // 3) Jobs abarbeiten (seriell ok; parallel ginge auch, aber SMS-Anbieter mögen Seriell)
+    // 3) Jobs abarbeiten (seriell – gut für SMS-Anbieter)
     for (const job of due) {
       try {
         const { ok, result } = await handleJob(job);
@@ -194,7 +240,7 @@ serve(async (req) => {
           await supa
             .from("timer_jobs")
             .update({
-              status: "armed",
+              status: "armed", // Retry
               last_error: JSON.stringify(result).slice(0, 2000),
             })
             .eq(selectorCol, selectorVal);
@@ -212,31 +258,27 @@ serve(async (req) => {
       }
     }
 
-    
-
     return json({ ok: true, claimed: due.length });
   } catch (e) {
     return json({ ok: false, error: String(e) }, 500);
-  }
-  finally {
-    try{
-      // 4) Cleanup – lösche fired/expired/canceled, die älter als 5 Min sind
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { data: delRows, error: delErr, count: delCount } = await supa
-      .from("timer_jobs")
-      .delete()
-      .lt("due_at", fiveMinutesAgo)
-      .in("status", ["fired", "expired", "canceled"])
-      .select("id", { count: "exact" });
+  } finally {
+    // 4) Cleanup – lösche fired/expired/canceled, die älter als 5 Min sind
+    try {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: delRows, error: delErr, count: delCount } = await supa
+        .from("timer_jobs")
+        .delete()
+        .lt("due_at", fiveMinutesAgo)
+        .in("status", ["fired", "expired", "canceled"])
+        .select("id", { count: "exact" });
 
-    if (delErr) {
-      console.error("Cleanup delete failed:", delErr);
-    } else {
-      console.log(`Cleanup deleted ${delCount ?? delRows?.length ?? 0} rows older than 5 min`);
-    }
+      if (delErr) {
+        console.error("Cleanup delete failed:", delErr);
+      } else {
+        console.log(`Cleanup deleted ${delCount ?? delRows?.length ?? 0} rows older than 5 min`);
+      }
     } catch (cleanupErr) {
       console.error("Cleanup failed:", cleanupErr);
     }
-
   }
 });
