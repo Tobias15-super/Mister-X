@@ -1852,7 +1852,7 @@ function startUserLocationTracking() {
 
       // Genauigkeitskreis anlegen oder aktualisieren
       if (!userAccuracyCircle) {
-        userAccuracyCircle = L.circle([latitude, longitude], {accuracyStyle, pane: 'historyPane'}).addTo(map);
+        userAccuracyCircle = L.circle([latitude, longitude], { ...accuracyStyle, pane: 'historyPane' }).addTo(map);
       } else {
         userAccuracyCircle.setLatLng([latitude, longitude]);
         userAccuracyCircle.setRadius(accuracy);
