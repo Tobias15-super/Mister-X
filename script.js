@@ -1833,6 +1833,7 @@ function startUserLocationTracking() {
         radius: accuracy,
         color: "#007AFF",
         fillColor: "#007AFF",
+        interactive: false,
         fillOpacity: 0.2,
         weight: 1,
         opacity: 0.4
