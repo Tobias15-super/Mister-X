@@ -3528,9 +3528,51 @@ async function getLocation({
     return;
   }
 
-  // Retry-Mechanismus verwalten (nur TIMEOUT/POSITION_UNAVAILABLE)
+  // Dialog anzeigen: OK oder Standort-Beschreibung hinzufügen
+  const dialogResult = await showLocationDialog();
+  if (dialogResult === "desc") {
+    // Beschreibung abfragen
+    const description = await promptForDescription();
+    if (!description) return; // Abbruch
+
+    // Standort versuchen zu holen
+    try {
+      const position = await getCurrentPositionPromise();
+      const { latitude: lat, longitude: lon, accuracy } = position.coords;
+      const timestamp = Date.now();
+
+      if (accuracy <= 100) {
+        // Genau genug: Standort + Beschreibung speichern
+        await push(ref(rtdb, "locations"), {
+          title: "Automatischer Standort",
+          lat,
+          lon,
+          accuracy,
+          description,
+          timestamp,
+        });
+      } else {
+        // Zu ungenau: Nur Beschreibung speichern
+        await push(ref(rtdb, "locations"), {
+          description,
+          timestamp,
+        });
+      }
+      postWriteSideEffects(durationInput2);
+    } catch (err) {
+      // Standort nicht verfügbar: Nur Beschreibung speichern
+      await push(ref(rtdb, "locations"), {
+        description,
+        timestamp: Date.now(),
+      });
+      postWriteSideEffects(durationInput2);
+    }
+    return;
+  }
+
+  // Wenn OK gedrückt wurde: wie bisher
   let retriesLeft = Math.max(0, maxRetries);
-  let askedManualOnce = false; // prompt() nur einmal pro getLocation-Lauf
+  let askedManualOnce = false;
 
   const options = {
     enableHighAccuracy: true,
@@ -3539,25 +3581,23 @@ async function getLocation({
   };
 
   const success = async (position) => {
-    // Second-look vor dem Schreiben (falls während der Abfrage verlängert wurde)
     if (await secondLookAbort()) return;
 
     const { latitude: lat, longitude: lon, accuracy } = position.coords;
     const timestamp = Date.now();
 
     if (accuracy > 100) {
-      // Ungenau: manueller Fallback
       document.getElementById("status").innerText =
         "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
       await askManualAndWrite(durationInput2);
       return;
     }
 
-    // Genau genug – Position schreiben
     await push(ref(rtdb, "locations"), {
       title: "Automatischer Standort",
       lat,
       lon,
+      accuracy,
       timestamp,
     });
 
@@ -3573,7 +3613,6 @@ async function getLocation({
   };
 
   const error = async (err) => {
-    // Statusmeldung
     let message = "❌ Fehler beim Abrufen des Standorts.";
     switch (err.code) {
       case err.PERMISSION_DENIED:
@@ -3589,20 +3628,105 @@ async function getLocation({
     message += " Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
     document.getElementById("status").innerText = message;
 
-    // Manueller Fallback *einmalig* pro Lauf anbieten
     if (!askedManualOnce) {
       askedManualOnce = true;
       await askManualAndWrite(durationInput2);
     }
 
-    // Auto-Retry nur bei technischen Fehlern (Timeout/Unavailable), NICHT bei Permission Denied
     if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
       retry();
     }
   };
 
-  // Erster Versuch
   navigator.geolocation.getCurrentPosition(success, error, options);
+}
+
+// Hilfsfunktionen für Dialog und Beschreibung
+async function showLocationDialog() {
+  return new Promise((resolve) => {
+    // Einfacher Dialog mit zwei Buttons
+    const modal = document.createElement("div");
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100vw";
+    modal.style.height = "100vh";
+    modal.style.background = "rgba(0,0,0,0.7)";
+    modal.style.display = "flex";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.zIndex = "9999";
+
+    const box = document.createElement("div");
+    box.style.background = "#fff";
+    box.style.padding = "2em";
+    box.style.borderRadius = "10px";
+    box.style.maxWidth = "90vw";
+    box.style.textAlign = "center";
+    box.innerHTML = `
+      <div style="margin-bottom:1em;">
+        <strong>Dein Standort wird jetzt freigegeben.</strong><br>
+        Du kannst optional eine Beschreibung hinzufügen (z.B. falls GPS ungenau ist oder du dich in der U-Bahn befindest).
+      </div>
+      <button id="loc-ok-btn" style="margin:0 1em 0 0;">OK</button>
+      <button id="loc-desc-btn">Standort-Beschreibung hinzufügen</button>
+    `;
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    document.getElementById("loc-ok-btn").onclick = () => {
+      document.body.removeChild(modal);
+      resolve("ok");
+    };
+    document.getElementById("loc-desc-btn").onclick = () => {
+      document.body.removeChild(modal);
+      resolve("desc");
+    };
+  });
+}
+
+async function promptForDescription() {
+  return new Promise((resolve) => {
+    const modal = document.createElement("div");
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100vw";
+    modal.style.height = "100vh";
+    modal.style.background = "rgba(0,0,0,0.7)";
+    modal.style.display = "flex";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.zIndex = "9999";
+
+    const box = document.createElement("div");
+    box.style.background = "#fff";
+    box.style.padding = "2em";
+    box.style.borderRadius = "10px";
+    box.style.maxWidth = "90vw";
+    box.style.textAlign = "center";
+    box.innerHTML = `
+      <div style="margin-bottom:1em;">
+        <strong>Standort-Beschreibung hinzufügen</strong><br>
+        Bitte gib eine Beschreibung deines Standorts ein (z.B. "U-Bahn Station", "im Park", etc.).
+      </div>
+      <textarea id="desc-input" rows="3" style="width:90%;"></textarea><br>
+      <button id="desc-ok-btn" style="margin-top:1em;">Speichern</button>
+      <button id="desc-cancel-btn" style="margin-top:1em; margin-left:1em;">Abbrechen</button>
+    `;
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    document.getElementById("desc-ok-btn").onclick = () => {
+      const val = document.getElementById("desc-input").value.trim();
+      document.body.removeChild(modal);
+      resolve(val || null);
+    };
+    document.getElementById("desc-cancel-btn").onclick = () => {
+      document.body.removeChild(modal);
+      resolve(null);
+    };
+  });
 }
 
 
