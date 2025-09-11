@@ -247,9 +247,16 @@ function isIOSLikeUA(ua) {
   return isiOSDevice || isMacWithTouch;
 }
 
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    swLog('[SW] activate - ready');
+    await self.clients.claim();
+  })());
+});
+
+
 // --- Push-Handler ---
-
-
 
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
