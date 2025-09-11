@@ -67,9 +67,13 @@ self.addEventListener('message', (event) => {
         const tx = db.transaction('sw-logs', 'readonly');
         const store = tx.objectStore('sw-logs');
         const req = store.getAll();
-        req.onsuccess = () => {
+        req.onsuccess = async () => {
           const logs = req.result || [];
-          event.source.postMessage({ type: 'SW_LOGS', logs });
+          // Alle offenen Clients holen und Logs schicken
+          const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+          allClients.forEach(client => {
+            try { client.postMessage({ type: 'SW_LOGS', logs }); } catch {}
+          });
           db.close();
         };
         req.onerror = () => db.close();
@@ -154,6 +158,20 @@ async function getDeviceName() {
   }
 }
 
+async function safeWaitForVisible(tag, opts) {
+  try {
+    if (!self.registration || typeof self.registration.getNotifications !== 'function') {
+      // API fehlt auf dieser Plattform -> nicht blockieren
+      return false;
+    }
+    return await waitUntilNotificationVisible(tag, opts);
+  } catch (e) {
+    swLog('[SW] getNotifications failed or unsupported:', e);
+    return false;
+  }
+}
+
+
 // Helper: Warten bis Notification mit bestimmtem Tag sichtbar ist
 async function waitUntilNotificationVisible(tag, {
   tries = 10,          // max. Versuche
@@ -171,17 +189,31 @@ async function waitUntilNotificationVisible(tag, {
 
 
 async function markDelivered(messageId, deviceName) {
+  const payload = { messageId, deviceName, timestamp: Date.now() };
   try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000); // 8s Safety Timeout
     await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId, deviceName, timestamp: Date.now() }),
+      body: JSON.stringify(payload),
+      mode: "cors",
+      keepalive: true,
+      signal: ctrl.signal
     });
+    clearTimeout(t);
+    swLog("[SW] ack ok");
   } catch (e) {
-    // Optional: in IndexedDB puffern und später erneut senden
-    swLog("[SW] ack failed:", e);
+    swLog("[SW] ack failed, queuing:", e);
+    // Hier: in IndexedDB ablegen & später flushen
+    await queueAck(payload).catch(() => {});
+    // Optional: Background Sync anstoßen, wenn verfügbar
+    if (self.registration.sync) {
+      try { await self.registration.sync.register('flush-acks'); } catch {}
+    }
   }
 }
+
 
 
 
@@ -194,6 +226,26 @@ function isIOSLikeUA(ua) {
 }
 
 // --- Push-Handler ---
+
+
+self.addEventListener('push', (event) => {
+  event.waitUntil((async () => {
+    // ... Notification zeigen etc.
+    await self.registration.showNotification(title, opts);
+
+    // Sichtbarkeits-Check: best-effort
+    await safeWaitForVisible(bgTag, { tries: 10, intervalMs: 100 });
+
+    // Ack als eigener Task heben (unabhängig vom Visible-Check)
+    const ackTask = (async () => {
+      const name = await getDeviceName().catch(() => null);
+      await markDelivered(messageId, name);
+    })();
+
+    event.waitUntil(ackTask); // SW am Leben halten, bis Ack versucht wurde
+  })());
+});
+
 
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
@@ -274,7 +326,7 @@ self.addEventListener('push', (event) => {
     await self.registration.showNotification(title, opts); // 1) Anzeige anstoßen  [4](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification)
 
     // 2) Sichtbarkeit bestätigen (sofern Plattform es meldet)
-    const shown = await waitUntilNotificationVisible(bgTag, { tries: 10, intervalMs: 100 }); // ~1s total  [1](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/getNotifications)
+    const shown = await safeWaitForVisible(bgTag, { tries: 10, intervalMs: 100 }); // ~1s total  [1](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/getNotifications)
     // 3) Erst jetzt "delivered" markieren (bei Timeout: optional trotzdem markieren)
     try {
       const name = await getDeviceName();
@@ -309,6 +361,13 @@ self.addEventListener('message', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'flush-acks') {
+    event.waitUntil(flushQueuedAcks());
+  }
+});
+
 
 
 async function setSwFlag(key, val) {
