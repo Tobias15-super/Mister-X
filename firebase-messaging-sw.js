@@ -791,7 +791,7 @@ function an() {
     IDBCursor.prototype.continuePrimaryKey
   ]);
 }
-const tt = /* @__PURE__ */ new WeakMap(), he = /* @__PURE__ */ new WeakMap(), nt = /* @__PURE__ */ new WeakMap(), Q = /* @__PURE__ */ new WeakMap(), be = /* @__PURE__ */ new WeakMap();
+const tt = /* @__PURE__ */ new WeakMap(), he = /* @__PURE__ */ new WeakMap(), nt = /* @__PURE__ */ new WeakMap(), Q = /* @__PURE__ */ new WeakMap(), we = /* @__PURE__ */ new WeakMap();
 function on(t) {
   const e = new Promise((n, s) => {
     const r = () => {
@@ -806,7 +806,7 @@ function on(t) {
   return e.then((n) => {
     n instanceof IDBCursor && tt.set(n, t);
   }).catch(() => {
-  }), be.set(e, t), e;
+  }), we.set(e, t), e;
 }
 function cn(t) {
   if (he.has(t))
@@ -864,9 +864,9 @@ function y(t) {
   if (Q.has(t))
     return Q.get(t);
   const e = hn(t);
-  return e !== t && (Q.set(t, e), be.set(e, t)), e;
+  return e !== t && (Q.set(t, e), we.set(e, t)), e;
 }
-const Z = (t) => be.get(t);
+const Z = (t) => we.get(t);
 function G(t, e, { blocked: n, upgrade: s, blocking: r, terminated: i } = {}) {
   const a = indexedDB.open(t, e), o = y(a);
   return s && a.addEventListener("upgradeneeded", (l) => {
@@ -970,7 +970,7 @@ const de = "@firebase/app", Le = "0.14.1";
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const S = new nn("@firebase/app"), mn = "@firebase/app-compat", bn = "@firebase/analytics-compat", wn = "@firebase/analytics", yn = "@firebase/app-check-compat", _n = "@firebase/app-check", Sn = "@firebase/auth", In = "@firebase/auth-compat", En = "@firebase/database", Cn = "@firebase/data-connect", Tn = "@firebase/database-compat", An = "@firebase/functions", Dn = "@firebase/functions-compat", Rn = "@firebase/installations", kn = "@firebase/installations-compat", vn = "@firebase/messaging", On = "@firebase/messaging-compat", Nn = "@firebase/performance", Mn = "@firebase/performance-compat", Ln = "@firebase/remote-config", Pn = "@firebase/remote-config-compat", Bn = "@firebase/storage", xn = "@firebase/storage-compat", Un = "@firebase/firestore", $n = "@firebase/ai", Fn = "@firebase/firestore-compat", jn = "firebase";
+const S = new nn("@firebase/app"), mn = "@firebase/app-compat", wn = "@firebase/analytics-compat", bn = "@firebase/analytics", yn = "@firebase/app-check-compat", _n = "@firebase/app-check", Sn = "@firebase/auth", In = "@firebase/auth-compat", En = "@firebase/database", Cn = "@firebase/data-connect", Tn = "@firebase/database-compat", An = "@firebase/functions", Dn = "@firebase/functions-compat", Rn = "@firebase/installations", kn = "@firebase/installations-compat", vn = "@firebase/messaging", On = "@firebase/messaging-compat", Nn = "@firebase/performance", Mn = "@firebase/performance-compat", Ln = "@firebase/remote-config", Pn = "@firebase/remote-config-compat", Bn = "@firebase/storage", xn = "@firebase/storage-compat", Un = "@firebase/firestore", $n = "@firebase/ai", Fn = "@firebase/firestore-compat", jn = "firebase";
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -990,8 +990,8 @@ const S = new nn("@firebase/app"), mn = "@firebase/app-compat", bn = "@firebase/
 const pe = "[DEFAULT]", Hn = {
   [de]: "fire-core",
   [mn]: "fire-core-compat",
-  [wn]: "fire-analytics",
-  [bn]: "fire-analytics-compat",
+  [bn]: "fire-analytics",
+  [wn]: "fire-analytics-compat",
   [_n]: "fire-app-check",
   [yn]: "fire-app-check-compat",
   [Sn]: "fire-auth",
@@ -1053,7 +1053,7 @@ function N(t) {
     Pe(n, t);
   return !0;
 }
-function we(t, e) {
+function be(t, e) {
   const n = t.container.getProvider("heartbeat").getImmediate({ optional: !0 });
   return n && n.triggerHeartbeat(), t.container.getProvider(e);
 }
@@ -1678,13 +1678,13 @@ function ms() {
   try {
     const t = new Uint8Array(17);
     (self.crypto || self.msCrypto).getRandomValues(t), t[0] = 112 + t[0] % 16;
-    const n = bs(t);
+    const n = ws(t);
     return gs.test(n) ? n : me;
   } catch {
     return me;
   }
 }
-function bs(t) {
+function ws(t) {
   return ps(t).substr(0, 22);
 }
 /**
@@ -1722,18 +1722,18 @@ function J(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const bt = /* @__PURE__ */ new Map();
-function wt(t, e) {
+const wt = /* @__PURE__ */ new Map();
+function bt(t, e) {
   const n = J(t);
-  yt(n, e), ws(n, e);
+  yt(n, e), bs(n, e);
 }
 function yt(t, e) {
-  const n = bt.get(t);
+  const n = wt.get(t);
   if (n)
     for (const s of n)
       s(e);
 }
-function ws(t, e) {
+function bs(t, e) {
   const n = ys();
   n && n.postMessage({ key: t, fid: e }), _s();
 }
@@ -1744,7 +1744,7 @@ function ys() {
   }), A;
 }
 function _s() {
-  bt.size === 0 && A && (A.close(), A = null);
+  wt.size === 0 && A && (A.close(), A = null);
 }
 /**
  * @license
@@ -1776,7 +1776,7 @@ function _e() {
 }
 async function K(t, e) {
   const n = J(t), r = (await _e()).transaction(k, "readwrite"), i = r.objectStore(k), a = await i.get(n);
-  return await i.put(e, n), await r.done, (!a || a.fid !== e.fid) && wt(t, e.fid), e;
+  return await i.put(e, n), await r.done, (!a || a.fid !== e.fid) && bt(t, e.fid), e;
 }
 async function _t(t) {
   const e = J(t), s = (await _e()).transaction(k, "readwrite");
@@ -1784,7 +1784,7 @@ async function _t(t) {
 }
 async function X(t, e) {
   const n = J(t), r = (await _e()).transaction(k, "readwrite"), i = r.objectStore(k), a = await i.get(n), o = e(a);
-  return o === void 0 ? await i.delete(n) : await i.put(o, n), await r.done, o && (!a || a.fid !== o.fid) && wt(t, o.fid), o;
+  return o === void 0 ? await i.delete(n) : await i.put(o, n), await r.done, o && (!a || a.fid !== o.fid) && bt(t, o.fid), o;
 }
 /**
  * @license
@@ -2142,7 +2142,7 @@ function re(t) {
  * limitations under the License.
  */
 const Et = "installations", Fs = "installations-internal", js = (t) => {
-  const e = t.getProvider("app").getImmediate(), n = $s(e), s = we(e, "heartbeat");
+  const e = t.getProvider("app").getImmediate(), n = $s(e), s = be(e, "heartbeat");
   return {
     app: e,
     appConfig: n,
@@ -2150,7 +2150,7 @@ const Et = "installations", Fs = "installations-internal", js = (t) => {
     _delete: () => Promise.resolve()
   };
 }, Hs = (t) => {
-  const e = t.getProvider("app").getImmediate(), n = we(e, Et).getImmediate();
+  const e = t.getProvider("app").getImmediate(), n = be(e, Et).getImmediate();
   return {
     getId: () => Bs(n),
     getToken: (r) => xs(n, r)
@@ -2227,7 +2227,7 @@ var V;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-function b(t) {
+function w(t) {
   const e = new Uint8Array(t);
   return btoa(String.fromCharCode(...e)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
@@ -2276,7 +2276,7 @@ async function Xs(t) {
               p256dh: c.p256dh,
               endpoint: c.endpoint,
               swScope: c.swScope,
-              vapidKey: typeof c.vapidKey == "string" ? c.vapidKey : b(c.vapidKey)
+              vapidKey: typeof c.vapidKey == "string" ? c.vapidKey : w(c.vapidKey)
             }
           };
         } else if (r === 3) {
@@ -2285,11 +2285,11 @@ async function Xs(t) {
             token: c.fcmToken,
             createTime: c.createTime,
             subscriptionOptions: {
-              auth: b(c.auth),
-              p256dh: b(c.p256dh),
+              auth: w(c.auth),
+              p256dh: w(c.p256dh),
               endpoint: c.endpoint,
               swScope: c.swScope,
-              vapidKey: b(c.vapidKey)
+              vapidKey: w(c.vapidKey)
             }
           };
         } else if (r === 4) {
@@ -2298,11 +2298,11 @@ async function Xs(t) {
             token: c.fcmToken,
             createTime: c.createTime,
             subscriptionOptions: {
-              auth: b(c.auth),
-              p256dh: b(c.p256dh),
+              auth: w(c.auth),
+              p256dh: w(c.p256dh),
               endpoint: c.endpoint,
               swScope: c.swScope,
-              vapidKey: b(c.vapidKey)
+              vapidKey: w(c.vapidKey)
             }
           };
         }
@@ -2534,8 +2534,8 @@ async function ir(t) {
     vapidKey: t.vapidKey,
     swScope: t.swRegistration.scope,
     endpoint: e.endpoint,
-    auth: b(e.getKey("auth")),
-    p256dh: b(e.getKey("p256dh"))
+    auth: w(e.getKey("auth")),
+    p256dh: w(e.getKey("p256dh"))
   }, s = await Ce(t.firebaseDependencies);
   if (s) {
     if (cr(s.subscriptionOptions, n))
@@ -2685,20 +2685,20 @@ function pr(t) {
 }
 async function gr(t, e) {
   const n = mr(e, await t.firebaseDependencies.installations.getId());
-  br(t, n, e.productId);
+  wr(t, n, e.productId);
 }
 function mr(t, e) {
   var s, r;
   const n = {};
   return t.from && (n.project_number = t.from), t.fcmMessageId && (n.message_id = t.fcmMessageId), n.instance_id = e, t.notification ? n.message_type = W.DISPLAY_NOTIFICATION.toString() : n.message_type = W.DATA_MESSAGE.toString(), n.sdk_platform = qs.toString(), n.package_name = self.origin.replace(/(^\w+:|^)\/\//, ""), t.collapse_key && (n.collapse_key = t.collapse_key), n.event = zs.toString(), (s = t.fcmOptions) != null && s.analytics_label && (n.analytics_label = (r = t.fcmOptions) == null ? void 0 : r.analytics_label), n;
 }
-function br(t, e, n) {
+function wr(t, e, n) {
   const s = {};
   s.event_time_ms = Math.floor(Date.now()).toString(), s.source_extension_json_proto3 = JSON.stringify({
     messaging_client_event: e
-  }), n && (s.compliance_data = wr(n)), t.logEvents.push(s);
+  }), n && (s.compliance_data = br(n)), t.logEvents.push(s);
 }
-function wr(t) {
+function br(t) {
   return {
     privacy_context: {
       prequest: {
@@ -2975,7 +2975,7 @@ function Lr(t = qn()) {
       "indexed-db-unsupported"
       /* ErrorCode.INDEXED_DB_UNSUPPORTED */
     );
-  }), we(zt(t), "messaging-sw").getImmediate();
+  }), be(zt(t), "messaging-sw").getImmediate();
 }
 /**
  * @license
@@ -3016,26 +3016,26 @@ class f extends Error {
     super(s), this.name = e, this.details = n;
   }
 }
-const w = {
+const b = {
   googleAnalytics: "googleAnalytics",
   precache: "precache-v2",
   prefix: "workbox",
   runtime: "runtime",
   suffix: typeof registration < "u" ? registration.scope : ""
-}, ce = (t) => [w.prefix, t, w.suffix].filter((e) => e && e.length > 0).join("-"), xr = (t) => {
-  for (const e of Object.keys(w))
+}, ce = (t) => [b.prefix, t, b.suffix].filter((e) => e && e.length > 0).join("-"), xr = (t) => {
+  for (const e of Object.keys(b))
     t(e);
 }, ke = {
   updateDetails: (t) => {
     xr((e) => {
-      typeof t[e] == "string" && (w[e] = t[e]);
+      typeof t[e] == "string" && (b[e] = t[e]);
     });
   },
-  getGoogleAnalyticsName: (t) => t || ce(w.googleAnalytics),
-  getPrecacheName: (t) => t || ce(w.precache),
-  getPrefix: () => w.prefix,
-  getRuntimeName: (t) => t || ce(w.runtime),
-  getSuffix: () => w.suffix
+  getGoogleAnalyticsName: (t) => t || ce(b.googleAnalytics),
+  getPrecacheName: (t) => t || ce(b.precache),
+  getPrefix: () => b.prefix,
+  getRuntimeName: (t) => t || ce(b.runtime),
+  getSuffix: () => b.suffix
 };
 function We(t, e) {
   const n = e();
@@ -4247,9 +4247,14 @@ self.addEventListener("message", (t) => {
   t && t.data && t.data.type === "GET_SW_LOGS" && (async () => {
     try {
       const e = await F("app-db", "sw-logs"), r = e.transaction("sw-logs", "readonly").objectStore("sw-logs").getAll();
-      r.onsuccess = () => {
+      r.onsuccess = async () => {
         const i = r.result || [];
-        t.source.postMessage({ type: "SW_LOGS", logs: i }), e.close();
+        (await self.clients.matchAll({ type: "window", includeUncontrolled: !0 })).forEach((o) => {
+          try {
+            o.postMessage({ type: "SW_LOGS", logs: i });
+          } catch {
+          }
+        }), e.close();
       }, r.onerror = () => e.close();
     } catch {
     }
