@@ -2,9 +2,8 @@
 import { initializeApp } from 'firebase/app';
 import { getMessaging } from 'firebase/messaging/sw';
 import { precacheAndRoute } from 'workbox-precaching';
-import { getDatabase, ref, set } from 'firebase/database';
 
-// Workbox: damit auch Icons offline/schnell verfügbar sind
+// Workbox: damit Icons offline/schnell verfügbar sind
 precacheAndRoute(self.__WB_MANIFEST || []);
 
 // --- Firebase ---
@@ -24,6 +23,76 @@ getMessaging(app); // Initialisiert FCM im SW-Kontext (keinen Listener hier regi
 
 // --- Helpers ---
 const RTDB_BASE = firebaseConfig.databaseURL;
+
+// --- SW-Log-Pufferung und Übertragung an die Seite ---
+
+// 1. SW: Log-Messages in IndexedDB speichern
+async function swLogStore(msg) {
+  try {
+    const db = await openDbEnsureStore('app-db', 'sw-logs');
+    const tx = db.transaction('sw-logs', 'readwrite');
+    const store = tx.objectStore('sw-logs');
+    const entry = {
+      msg,
+      ts: Date.now()
+    };
+    store.add(entry);
+    tx.oncomplete = () => db.close();
+    tx.onerror = () => db.close();
+  } catch (e) {
+    // Fallback: Nichts tun
+  }
+}
+
+// 2. SW: Log-Funktion, die auch im Hintergrund funktioniert
+function swLog(...args) {
+  const msg = args.map(a => {
+    if (typeof a === 'object') {
+      try { return JSON.stringify(a); } catch { return '[object]'; }
+    }
+    return String(a);
+  }).join(' ');
+  // Immer in der Konsole (für DevTools)
+  console.log('[SW]', msg);
+  // Immer in IndexedDB speichern
+  swLogStore(msg);
+}
+
+// 4. SW: Bei Seitenstart alle Logs an die Seite schicken
+self.addEventListener('message', (event) => {
+  if (event && event.data && event.data.type === 'GET_SW_LOGS') {
+    (async () => {
+      try {
+        const db = await openDbEnsureStore('app-db', 'sw-logs');
+        const tx = db.transaction('sw-logs', 'readonly');
+        const store = tx.objectStore('sw-logs');
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const logs = req.result || [];
+          event.source.postMessage({ type: 'SW_LOGS', logs });
+          db.close();
+        };
+        req.onerror = () => db.close();
+      } catch {}
+    })();
+  }
+});
+
+// 5. SW: Nach erfolgreichem Senden die Logs löschen (optional)
+self.addEventListener('message', (event) => {
+  if (event && event.data && event.data.type === 'CLEAR_SW_LOGS') {
+    (async () => {
+      try {
+        const db = await openDbEnsureStore('app-db', 'sw-logs');
+        const tx = db.transaction('sw-logs', 'readwrite');
+        tx.objectStore('sw-logs').clear();
+        tx.oncomplete = () => db.close();
+        tx.onerror = () => db.close();
+      } catch {}
+    })();
+  }
+});
+
 
 function sanitizeKey(key) {
   return (key || '').replace(/[.#$/\[\]\/]/g, '_');
@@ -110,7 +179,7 @@ async function markDelivered(messageId, deviceName) {
     });
   } catch (e) {
     // Optional: in IndexedDB puffern und später erneut senden
-    console.error("[SW] ack failed:", e);
+    swLog("[SW] ack failed:", e);
   }
 }
 
@@ -175,7 +244,7 @@ self.addEventListener('push', (event) => {
         notes.forEach(n => n.close());
 
         try { await markDelivered(messageId, await getDeviceName()); } catch (e) {
-          console.error('[SW] markDelivered failed:', e);
+          swLog('[SW] markDelivered failed:', e);
         }
         return;
       }
@@ -211,7 +280,7 @@ self.addEventListener('push', (event) => {
       const name = await getDeviceName();
       await markDelivered(messageId, name);
     } catch (e) {
-      console.error('[SW] markDelivered failed:', e);
+      swLog('[SW] markDelivered failed:', e);
     }
   })());
 });
@@ -273,7 +342,7 @@ self.addEventListener('pushsubscriptionchange', (event) => {
       // Optional: Flag persistieren
       try { await setSwFlag('pushSubscriptionChangedAt', Date.now()); } catch {}
     } catch (err) {
-      console.error('[SW] re-subscribe failed:', err);
+      swLog('[SW] re-subscribe failed:', err);
     }
   })());
 });

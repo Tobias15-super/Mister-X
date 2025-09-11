@@ -3307,7 +3307,7 @@ function shouldShowAlertOncePerDevice(expKey) {
 // Import (Firebase v9 modular):
 // import { ref, get, runTransaction, serverTimestamp, update, query, orderByChild, endAt } from "firebase/database";
 
-async function gcOldTimerClaims(rtdb, maxAgeMs = 5 * 60 * 1000) {
+async function gcOldTimerClaims(rtdb, maxAgeMs = 48 * 60 * 60 * 1000) {
   let serverNow = Date.now();
   try {
     const offsetSnap = await get(ref(rtdb, ".info/serverTimeOffset"));
@@ -3340,12 +3340,6 @@ async function gcOldTimerClaims(rtdb, maxAgeMs = 5 * 60 * 1000) {
 
 async function doOncePerExpiration(rtdb, actionIfWinner) {
   // Best-effort GC vor dem Claim (kein Listener, nur einmal pro Aufruf)
-  try {
-    await gcOldTimerClaims(rtdb, 5 * 60 * 1000);
-  } catch (e) {
-    // Aufräumen soll nie den Hauptflow blockieren
-    log("GC timerClaims fehlgeschlagen:", e);
-  }
 
   const snap = await get(ref(rtdb, "timer"));
   const data = snap.val() || {};
@@ -3378,6 +3372,12 @@ async function doOncePerExpiration(rtdb, actionIfWinner) {
   if (!iAmWinner) return false;
 
   await actionIfWinner(data);
+    try {
+    await gcOldTimerClaims(rtdb, 5 * 60 * 1000);
+  } catch (e) {
+    // Aufräumen soll nie den Hauptflow blockieren
+    log("GC timerClaims fehlgeschlagen:", e);
+  }
   return true;
 }
 
@@ -3708,7 +3708,7 @@ async function promptForDescription() {
     box.innerHTML = `
       <div style="margin-bottom:1em;">
         <strong>Standort-Beschreibung hinzufügen</strong><br>
-        Bitte gib eine Beschreibung deines Standorts ein (z.B. "U-Bahn Station", "im Park", etc.).
+        Bitte gib eine Beschreibung deines Standorts ein.
       </div>
       <textarea id="desc-input" rows="3" style="width:90%;"></textarea><br>
       <button id="desc-ok-btn" style="margin-top:1em;">Speichern</button>
@@ -3970,6 +3970,34 @@ setInterval(() => {
   if (_seenMessageIds.size > 5000) _seenMessageIds.clear();
 }, 60 * 1000);
 
+// 1. Funktion zum Abrufen und Anzeigen der SW-Logs im Log-Window
+async function fetchAndShowSwLogs() {
+  if (!('serviceWorker' in navigator)) return;
+  const reg = await navigator.serviceWorker.ready;
+  if (!reg.active) return;
+
+  return new Promise((resolve) => {
+    // Listener für Antwort
+    function onMsg(event) {
+      if (event.data && event.data.type === 'SW_LOGS') {
+        if (Array.isArray(event.data.logs)) {
+          event.data.logs.forEach(entry => {
+            if (entry && entry.msg) {
+              log('[SW-Log]', new Date(entry.ts).toLocaleTimeString(), entry.msg);
+            }
+          });
+        }
+        // Nach Anzeige löschen
+        reg.active.postMessage({ type: 'CLEAR_SW_LOGS' });
+        navigator.serviceWorker.removeEventListener('message', onMsg);
+        resolve();
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onMsg);
+    // Anfrage an SW schicken
+    reg.active.postMessage({ type: 'GET_SW_LOGS' });
+  });
+}
 
 // Beim Laden prüfen / initialisieren
 
@@ -4080,6 +4108,7 @@ async function startScript() {
     wireSearchUI();
     attachDelegatedImageClick();
     setupLightboxOnce();
+    fetchAndShowSwLogs().catch(() => {});
 
 
     //für Agentlocation:
