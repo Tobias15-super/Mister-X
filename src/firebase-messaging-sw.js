@@ -32,17 +32,25 @@ async function swLogStore(msg) {
     const db = await openDbEnsureStore('app-db', 'sw-logs');
     const tx = db.transaction('sw-logs', 'readwrite');
     const store = tx.objectStore('sw-logs');
-    const entry = {
-      msg,
-      ts: Date.now()
-    };
-    store.add(entry);
+    const entry = { msg, ts: Date.now() };
+
+    // WICHTIG: Store wurde ohne keyPath/autoIncrement angelegt -> Key mitgeben!
+    // Nutze den Zeitstempel als eindeutigen Schlüssel (bei Kollision: + Math.random()).
+    let key = entry.ts;
+    try {
+      store.add(entry, key);
+    } catch {
+      key = entry.ts + Math.random();
+      store.add(entry, key);
+    }
+
     tx.oncomplete = () => db.close();
     tx.onerror = () => db.close();
   } catch (e) {
-    // Fallback: Nichts tun
+    // Fallback: nichts tun
   }
 }
+
 
 // 2. SW: Log-Funktion, die auch im Hintergrund funktioniert
 function swLog(...args) {

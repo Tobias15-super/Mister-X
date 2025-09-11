@@ -3984,12 +3984,14 @@ async function fetchAndShowSwLogs() {
     const mc = new MessageChannel();
     const to = setTimeout(() => {
       mc.port1.onmessage = null;
+      log('[SW-Log] PING -> Timeout (wir versuchen GET_SW_LOGS trotzdem)');
       resolve(); // wir versuchen Logs trotzdem
     }, timeoutMs);
     
 mc.port1.onmessage = (event) => {
    if (event.data && event.data.type === 'PONG') {
      clearTimeout(to);
+     log('[SW-Log] PONG empfangen');
      resolve();
     }
   };
