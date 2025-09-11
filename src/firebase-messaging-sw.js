@@ -250,48 +250,37 @@ function isIOSLikeUA(ua) {
 // --- Push-Handler ---
 
 
-self.addEventListener('push', (event) => {
-  event.waitUntil((async () => {
-    // ... Notification zeigen etc.
-    await self.registration.showNotification(title, opts);
-
-    // Sichtbarkeits-Check: best-effort
-    await safeWaitForVisible(bgTag, { tries: 10, intervalMs: 100 });
-
-    // Ack als eigener Task heben (unabhängig vom Visible-Check)
-    const ackTask = (async () => {
-      const name = await getDeviceName().catch(() => null);
-      await markDelivered(messageId, name);
-    })();
-
-    event.waitUntil(ackTask); // SW am Leben halten, bis Ack versucht wurde
-  })());
-});
-
 
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
+    // Payload robust parsen
     const payload = event.data ? (() => { try { return event.data.json(); } catch { return {}; } })() : {};
-    const n = payload.notification || {};
-    const d = payload.data || payload || {};
+    const n = payload.notification ?? {};
+    const d = payload.data ?? payload ?? {};
 
-    const title = n.title || d.title || 'Neue Nachricht';
-    const body  = n.body  || d.body  || '';
-    const url   = d.url || n.click_action || '/Mister-X/';
-    const messageId = d.messageId || d.id || n.tag || String(Date.now());
-    const tagBase = d.tag || 'mrx';
+    const title = n.title ?? d.title ?? 'Neue Nachricht';
+    const body = n.body ?? d.body ?? '';
+    const url = d.url ?? n.click_action ?? '/Mister-X/';
+    const messageId = d.messageId ?? d.id ?? n.tag ?? String(Date.now());
+    const tagBase = d.tag ?? 'mrx';
 
+    // Sichtbarer Client?
     const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     const visibleClient = windows.find((w) => w.visibilityState === 'visible');
 
+    // Safari/iOS? -> muss sichtbar präsentiert werden
     const ua = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
     const mustShow = mustPresentOnThisPlatform(ua);
 
-    // --- FOREGROUND ---
-
     if (visibleClient) {
+      // Seite informieren (UI-Update etc.)
       try { visibleClient.postMessage({ type: 'PUSH', payload: d }); } catch {}
 
+      // *** IMMER ACKEN – auch ohne OS-Banner (Android/Chrome) ***
+      try { await markDelivered(messageId, await getDeviceName()); }
+      catch (e) { swLog('[SW] markDelivered (fg) failed:', e); }
+
+      // Nur Safari/iOS: kurze, lautlose Sichtbarkeits-Noti
       if (mustShow) {
         const fgTag = `${tagBase}-fg`;
         const opts = {
@@ -300,35 +289,19 @@ self.addEventListener('push', (event) => {
           badge: '/Mister-X/icons/Mister_X_Badge.png',
           tag: fgTag,
           renotify: true,
-          silent: true,                 // kein Ton, aber sichtbar
+          silent: true,
           requireInteraction: false,
-          timestamp: d.timestamp || Date.now(),
+          timestamp: d.timestamp ?? Date.now(),
           data: { url, messageId, tag: fgTag, fg: true }
         };
-
-        // WICHTIG: showNotification im waitUntil-Promise ausführen
-        // (sonst kann Safari die Subscription nach wenigen Pushes kappen)
-        await self.registration.showNotification(title, opts);           // sichtbar zeigen
-        await waitUntilNotificationVisible(fgTag, { tries: 10, intervalMs: 50 });
-
-        // Etwas länger sichtbar lassen – 600–1200 ms hat sich bewährt
+        await self.registration.showNotification(title, opts);
+        // Sichtbarkeit best-effort abwarten und wieder schließen
+        await waitUntilNotificationVisible(fgTag, { tries: 10, intervalMs: 50 }).catch(() => {});
         await new Promise(r => setTimeout(r, 900));
-
-        const notes = await self.registration.getNotifications({ tag: fgTag });
-        notes.forEach(n => n.close());
-
-        try { await markDelivered(messageId, await getDeviceName()); } catch (e) {
-          swLog('[SW] markDelivered failed:', e);
-        }
-        return;
+        (await self.registration.getNotifications({ tag: fgTag })).forEach(n => n.close());
       }
-
-      // Android/sonstige: KEIN OS-Banner
-      return;
+      return; // Foreground fertig
     }
-
-
-
 
     // --- BACKGROUND ---
     const bgTag = `${tagBase}-${messageId}`;
@@ -338,26 +311,24 @@ self.addEventListener('push', (event) => {
       badge: '/Mister-X/icons/Mister_X_Badge.png',
       tag: bgTag,
       renotify: true,
-      silent: (d.silent !== undefined) ? !!d.silent : false,
+      silent: d.silent !== undefined ? !!d.silent : false,
       requireInteraction: d.requireInteraction ?? true,
       vibrate: d.vibrate ?? [200, 100, 200],
-      timestamp: d.timestamp || Date.now(),
+      timestamp: d.timestamp ?? Date.now(),
       data: { url, messageId, tag: bgTag, fg: false }
     };
 
-    await self.registration.showNotification(title, opts); // 1) Anzeige anstoßen  [4](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification)
+    await self.registration.showNotification(title, opts);
 
-    // 2) Sichtbarkeit bestätigen (sofern Plattform es meldet)
-    const shown = await safeWaitForVisible(bgTag, { tries: 10, intervalMs: 100 }); // ~1s total  [1](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/getNotifications)
-    // 3) Erst jetzt "delivered" markieren (bei Timeout: optional trotzdem markieren)
-    try {
-      const name = await getDeviceName();
-      await markDelivered(messageId, name);
-    } catch (e) {
-      swLog('[SW] markDelivered failed:', e);
-    }
+    // Sichtbarkeit nur best-effort, nicht blockierend
+    safeWaitForVisible(bgTag, { tries: 10, intervalMs: 100 }).catch(() => {});
+
+    // ACK im Hintergrund ebenfalls IMMER
+    try { await markDelivered(messageId, await getDeviceName()); }
+    catch (e) { swLog('[SW] markDelivered (bg) failed:', e); }
   })());
 });
+
 
 // Klickverhalten
 self.addEventListener('notificationclick', (event) => {

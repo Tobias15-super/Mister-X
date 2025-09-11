@@ -3983,19 +3983,19 @@ async function fetchAndShowSwLogs() {
   await new Promise((resolve) => {
     const mc = new MessageChannel();
     const to = setTimeout(() => {
-      navigator.serviceWorker.removeEventListener('message', onPong);
+      mc.port1.onmessage = null;
       resolve(); // wir versuchen Logs trotzdem
     }, timeoutMs);
-
-    function onPong(event) {
-      if (event.data && event.data.type === 'PONG') {
-        clearTimeout(to);
-        navigator.serviceWorker.removeEventListener('message', onPong);
-        resolve();
-      }
+    
+mc.port1.onmessage = (event) => {
+   if (event.data && event.data.type === 'PONG') {
+     clearTimeout(to);
+     resolve();
     }
-    navigator.serviceWorker.addEventListener('message', onPong);
-    reg.active.postMessage({ type: 'PING' }, [mc.port2]);
+  };
+  reg.active.postMessage({ type: 'PING' }, [mc.port2]);
+
+    
   });
 
   // 2) Logs abrufen – Antwort direkt über MessageChannel
