@@ -1034,7 +1034,7 @@ const pe = "[DEFAULT]", Hn = {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const j = /* @__PURE__ */ new Map(), Kn = /* @__PURE__ */ new Map(), ge = /* @__PURE__ */ new Map();
+const H = /* @__PURE__ */ new Map(), Kn = /* @__PURE__ */ new Map(), ge = /* @__PURE__ */ new Map();
 function Pe(t, e) {
   try {
     t.container.addComponent(e);
@@ -1047,7 +1047,7 @@ function N(t) {
   if (ge.has(e))
     return S.debug(`There were multiple attempts to register component ${e}.`), !1;
   ge.set(e, t);
-  for (const n of j.values())
+  for (const n of H.values())
     Pe(n, t);
   for (const n of Kn.values())
     Pe(n, t);
@@ -1164,7 +1164,7 @@ function st(t, e = {}) {
       "no-options"
       /* AppError.NO_OPTIONS */
     );
-  const i = j.get(r);
+  const i = H.get(r);
   if (i) {
     if (ue(n, i.options) && ue(s, i.config))
       return i;
@@ -1174,10 +1174,10 @@ function st(t, e = {}) {
   for (const l of ge.values())
     a.addComponent(l);
   const o = new Vn(n, s, a);
-  return j.set(r, o), o;
+  return H.set(r, o), o;
 }
 function qn(t = pe) {
-  const e = j.get(t);
+  const e = H.get(t);
   if (!e && t === pe && Qe())
     return st();
   if (!e)
@@ -1774,7 +1774,7 @@ function _e() {
     }
   })), se;
 }
-async function H(t, e) {
+async function K(t, e) {
   const n = J(t), r = (await _e()).transaction(k, "readwrite"), i = r.objectStore(k), a = await i.get(n);
   return await i.put(e, n), await r.done, (!a || a.fid !== e.fid) && wt(t, e.fid), e;
 }
@@ -1847,9 +1847,9 @@ function Cs(t, e) {
 async function Ts(t, e) {
   try {
     const n = await ds(t, e);
-    return H(t.appConfig, n);
+    return K(t.appConfig, n);
   } catch (n) {
-    throw ut(n) && n.customData.serverCode === 409 ? await _t(t.appConfig) : await H(t.appConfig, {
+    throw ut(n) && n.customData.serverCode === 409 ? await _t(t.appConfig) : await K(t.appConfig, {
       fid: e.fid,
       registrationStatus: 0
       /* RequestStatus.NOT_STARTED */
@@ -2000,7 +2000,7 @@ async function Os(t, e) {
       ...e,
       authToken: n
     };
-    return await H(t.appConfig, s), n;
+    return await K(t.appConfig, s), n;
   } catch (n) {
     if (ut(n) && (n.customData.serverCode === 401 || n.customData.serverCode === 404))
       await _t(t.appConfig);
@@ -2012,7 +2012,7 @@ async function Os(t, e) {
           /* RequestStatus.NOT_STARTED */
         }
       };
-      await H(t.appConfig, s);
+      await K(t.appConfig, s);
     }
     throw n;
   }
@@ -2189,10 +2189,10 @@ O(at, ye, "esm2020");
  * limitations under the License.
  */
 const Ct = "BDOU99-h67HcA6JeFXHbSNMu7e2yNNu3RzoMj8TM4W88jITfq7ZmPvIM1Iv-4_l2LxQcYwhqby2xGpWwzjfAnG4", Ws = "https://fcmregistrations.googleapis.com/v1", Tt = "FCM_MSG", Vs = "google.c.a.c_id", qs = 3, zs = 1;
-var K;
+var W;
 (function(t) {
   t[t.DATA_MESSAGE = 1] = "DATA_MESSAGE", t[t.DISPLAY_NOTIFICATION = 3] = "DISPLAY_NOTIFICATION";
-})(K || (K = {}));
+})(W || (W = {}));
 /**
  * @license
  * Copyright 2018 Google LLC
@@ -2207,10 +2207,10 @@ var K;
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-var W;
+var V;
 (function(t) {
   t.PUSH_RECEIVED = "push-received", t.NOTIFICATION_CLICKED = "notification-clicked";
-})(W || (W = {}));
+})(V || (V = {}));
 /**
  * @license
  * Copyright 2017 Google LLC
@@ -2690,7 +2690,7 @@ async function gr(t, e) {
 function mr(t, e) {
   var s, r;
   const n = {};
-  return t.from && (n.project_number = t.from), t.fcmMessageId && (n.message_id = t.fcmMessageId), n.instance_id = e, t.notification ? n.message_type = K.DISPLAY_NOTIFICATION.toString() : n.message_type = K.DATA_MESSAGE.toString(), n.sdk_platform = qs.toString(), n.package_name = self.origin.replace(/(^\w+:|^)\/\//, ""), t.collapse_key && (n.collapse_key = t.collapse_key), n.event = zs.toString(), (s = t.fcmOptions) != null && s.analytics_label && (n.analytics_label = (r = t.fcmOptions) == null ? void 0 : r.analytics_label), n;
+  return t.from && (n.project_number = t.from), t.fcmMessageId && (n.message_id = t.fcmMessageId), n.instance_id = e, t.notification ? n.message_type = W.DISPLAY_NOTIFICATION.toString() : n.message_type = W.DATA_MESSAGE.toString(), n.sdk_platform = qs.toString(), n.package_name = self.origin.replace(/(^\w+:|^)\/\//, ""), t.collapse_key && (n.collapse_key = t.collapse_key), n.event = zs.toString(), (s = t.fcmOptions) != null && s.analytics_label && (n.analytics_label = (r = t.fcmOptions) == null ? void 0 : r.analytics_label), n;
 }
 function br(t, e, n) {
   const s = {};
@@ -2762,7 +2762,7 @@ async function Sr(t) {
     return;
   let i = await Cr(s);
   if (i ? i = await i.focus() : (i = await self.clients.openWindow(n), await pr(3e3)), !!i)
-    return e.messageType = W.NOTIFICATION_CLICKED, e.isFirebaseMessaging = !0, i.postMessage(e);
+    return e.messageType = V.NOTIFICATION_CLICKED, e.isFirebaseMessaging = !0, i.postMessage(e);
 }
 function Ir(t) {
   const e = {
@@ -2796,7 +2796,7 @@ function Tr(t) {
   !e.url.startsWith("chrome-extension://"));
 }
 function Ar(t, e) {
-  e.isFirebaseMessaging = !0, e.messageType = W.PUSH_RECEIVED;
+  e.isFirebaseMessaging = !0, e.messageType = V.PUSH_RECEIVED;
   for (const n of t)
     n.postMessage(e);
 }
@@ -3158,7 +3158,7 @@ try {
   self["workbox:strategies:7.2.0"] && _();
 } catch {
 }
-function F(t) {
+function j(t) {
   return typeof t == "string" ? new Request(t) : t;
 }
 class Xr {
@@ -3199,7 +3199,7 @@ class Xr {
    */
   async fetch(e) {
     const { event: n } = this;
-    let s = F(e);
+    let s = j(e);
     if (s.mode === "navigate" && n instanceof FetchEvent && n.preloadResponse) {
       const a = await n.preloadResponse;
       if (a)
@@ -3262,7 +3262,7 @@ class Xr {
    * @return {Promise<Response|undefined>} A matching response, if found.
    */
   async cacheMatch(e) {
-    const n = F(e);
+    const n = j(e);
     let s;
     const { cacheName: r, matchOptions: i } = this._strategy, a = await this.getCacheKey(n, "read"), o = Object.assign(Object.assign({}, i), { cacheName: r });
     s = await caches.match(a, o);
@@ -3292,7 +3292,7 @@ class Xr {
    * not be cached, and `true` otherwise.
    */
   async cachePut(e, n) {
-    const s = F(e);
+    const s = j(e);
     await Jr(0);
     const r = await this.getCacheKey(s, "write");
     if (!n)
@@ -3343,7 +3343,7 @@ class Xr {
     if (!this._cacheKeys[s]) {
       let r = e;
       for (const i of this.iterateCallbacks("cacheKeyWillBeUsed"))
-        r = F(await i({
+        r = j(await i({
           mode: n,
           request: r,
           event: this.event,
@@ -3893,7 +3893,7 @@ try {
   self["workbox:routing:7.2.0"] && _();
 } catch {
 }
-const vt = "GET", V = (t) => t && typeof t == "object" ? t : { handle: t };
+const vt = "GET", q = (t) => t && typeof t == "object" ? t : { handle: t };
 class x {
   /**
    * Constructor for Route class.
@@ -3907,7 +3907,7 @@ class x {
    * against.
    */
   constructor(e, n, s = vt) {
-    this.handler = V(n), this.match = e, this.method = s;
+    this.handler = q(n), this.match = e, this.method = s;
   }
   /**
    *
@@ -3915,7 +3915,7 @@ class x {
    * function that returns a Promise resolving to a Response
    */
   setCatchHandler(e) {
-    this.catchHandler = V(e);
+    this.catchHandler = q(e);
   }
 }
 class Zr extends x {
@@ -4086,7 +4086,7 @@ class ei {
    * default handler. Each method has its own default.
    */
   setDefaultHandler(e, n = vt) {
-    this._defaultHandlerMap.set(n, V(e));
+    this._defaultHandlerMap.set(n, q(e));
   }
   /**
    * If a Route throws an error while handling a request, this `handler`
@@ -4096,7 +4096,7 @@ class ei {
    * function that returns a Promise resulting in a Response.
    */
   setCatchHandler(e) {
-    this._catchHandler = V(e);
+    this._catchHandler = q(e);
   }
   /**
    * Registers a route with the router.
@@ -4223,7 +4223,7 @@ Lr(li);
 Ot.databaseURL;
 async function ui(t) {
   try {
-    const e = await $("app-db", "sw-logs"), n = e.transaction("sw-logs", "readwrite"), s = n.objectStore("sw-logs"), r = {
+    const e = await F("app-db", "sw-logs"), n = e.transaction("sw-logs", "readwrite"), s = n.objectStore("sw-logs"), r = {
       msg: t,
       ts: Date.now()
     };
@@ -4231,7 +4231,7 @@ async function ui(t) {
   } catch {
   }
 }
-function q(...t) {
+function $(...t) {
   const e = t.map((n) => {
     if (typeof n == "object")
       try {
@@ -4246,7 +4246,7 @@ function q(...t) {
 self.addEventListener("message", (t) => {
   t && t.data && t.data.type === "GET_SW_LOGS" && (async () => {
     try {
-      const e = await $("app-db", "sw-logs"), r = e.transaction("sw-logs", "readonly").objectStore("sw-logs").getAll();
+      const e = await F("app-db", "sw-logs"), r = e.transaction("sw-logs", "readonly").objectStore("sw-logs").getAll();
       r.onsuccess = () => {
         const i = r.result || [];
         t.source.postMessage({ type: "SW_LOGS", logs: i }), e.close();
@@ -4258,13 +4258,13 @@ self.addEventListener("message", (t) => {
 self.addEventListener("message", (t) => {
   t && t.data && t.data.type === "CLEAR_SW_LOGS" && (async () => {
     try {
-      const e = await $("app-db", "sw-logs"), n = e.transaction("sw-logs", "readwrite");
+      const e = await F("app-db", "sw-logs"), n = e.transaction("sw-logs", "readwrite");
       n.objectStore("sw-logs").clear(), n.oncomplete = () => e.close(), n.onerror = () => e.close();
     } catch {
     }
   })();
 });
-function $(t, e) {
+function F(t, e) {
   return new Promise((n, s) => {
     const r = indexedDB.open(t);
     r.onupgradeneeded = () => {
@@ -4292,7 +4292,7 @@ function hi(t) {
 }
 async function qe() {
   try {
-    const t = await $("app-db", "settings");
+    const t = await F("app-db", "settings");
     return await new Promise((e) => {
       const r = t.transaction("settings", "readonly").objectStore("settings").get("deviceName");
       r.onsuccess = () => {
@@ -4324,9 +4324,9 @@ async function Ge(t, e) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ messageId: t, deviceName: e, timestamp: Date.now() })
-    });
+    }), $("[SW] - ack durchgeführt");
   } catch (n) {
-    q("[SW] ack failed:", n);
+    $("[SW] ack failed:", n);
   }
 }
 self.addEventListener("push", (t) => {
@@ -4360,7 +4360,7 @@ self.addEventListener("push", (t) => {
         try {
           await Ge(o, await qe());
         } catch (L) {
-          q("[SW] markDelivered failed:", L);
+          $("[SW] markDelivered failed:", L);
         }
         return;
       }
@@ -4383,7 +4383,7 @@ self.addEventListener("push", (t) => {
       const g = await qe();
       await Ge(o, g);
     } catch (g) {
-      q("[SW] markDelivered failed:", g);
+      $("[SW] markDelivered failed:", g);
     }
   })());
 });
@@ -4403,7 +4403,7 @@ self.addEventListener("activate", (t) => {
   t.waitUntil(self.clients.claim());
 });
 async function fi(t, e) {
-  const n = await $("app-db", "sw-flags");
+  const n = await F("app-db", "sw-flags");
   await new Promise((s, r) => {
     const i = n.transaction("sw-flags", "readwrite");
     i.objectStore("sw-flags").put(e, t), i.oncomplete = () => {
@@ -4435,7 +4435,7 @@ self.addEventListener("pushsubscriptionchange", (t) => {
       } catch {
       }
     } catch (e) {
-      q("[SW] re-subscribe failed:", e);
+      $("[SW] re-subscribe failed:", e);
     }
   })());
 });
