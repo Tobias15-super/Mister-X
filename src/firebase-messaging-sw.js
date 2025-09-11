@@ -59,8 +59,26 @@ function swLog(...args) {
 }
 
 // 4. SW: Bei Seitenstart alle Logs an die Seite schicken
+
 self.addEventListener('message', (event) => {
-  if (event && event.data && event.data.type === 'GET_SW_LOGS') {
+  if (!event || !event.data) return;
+
+  // kleine Hilfsfunktion für gezielte Antwort
+  const reply = async (payload) => {
+    // 1) Wenn die Seite einen MessageChannel-Port mitgeschickt hat:
+    if (event.ports && event.ports[0]) {
+      try { event.ports[0].postMessage(payload); return; } catch {}
+    }
+    // 2) An die konkrete Quelle antworten (falls sichtbar):
+    if (event.source && 'postMessage' in event.source) {
+      try { event.source.postMessage(payload); return; } catch {}
+    }
+    // 3) Fallback: Broadcast an bekannte Clients
+    const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    allClients.forEach(c => { try { c.postMessage(payload); } catch {} });
+  };
+
+  if (event.data.type === 'GET_SW_LOGS') {
     (async () => {
       try {
         const db = await openDbEnsureStore('app-db', 'sw-logs');
@@ -69,22 +87,18 @@ self.addEventListener('message', (event) => {
         const req = store.getAll();
         req.onsuccess = async () => {
           const logs = req.result || [];
-          // Alle offenen Clients holen und Logs schicken
-          const allClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-          allClients.forEach(client => {
-            try { client.postMessage({ type: 'SW_LOGS', logs }); } catch {}
-          });
+          await reply({ type: 'SW_LOGS', logs });
           db.close();
         };
-        req.onerror = () => db.close();
-      } catch {}
+        req.onerror = () => { db.close(); };
+      } catch (e) {
+        // Im Fehlerfall wenigstens eine leere Antwort schicken
+        await reply({ type: 'SW_LOGS', logs: [] });
+      }
     })();
   }
-});
 
-// 5. SW: Nach erfolgreichem Senden die Logs löschen (optional)
-self.addEventListener('message', (event) => {
-  if (event && event.data && event.data.type === 'CLEAR_SW_LOGS') {
+  if (event.data.type === 'CLEAR_SW_LOGS') {
     (async () => {
       try {
         const db = await openDbEnsureStore('app-db', 'sw-logs');
@@ -95,7 +109,15 @@ self.addEventListener('message', (event) => {
       } catch {}
     })();
   }
+
+  // Optional: PING → PONG zum Schnelltest der Verbindung
+  if (event.data.type === 'PING') {
+    (async () => {
+      await reply({ type: 'PONG', ts: Date.now() });
+    })();
+  }
 });
+
 
 
 function sanitizeKey(key) {

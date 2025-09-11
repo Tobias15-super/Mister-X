@@ -3973,13 +3973,43 @@ setInterval(() => {
 // 1. Funktion zum Abrufen und Anzeigen der SW-Logs im Log-Window
 async function fetchAndShowSwLogs() {
   if (!('serviceWorker' in navigator)) return;
+
   const reg = await navigator.serviceWorker.ready;
   if (!reg.active) return;
 
+  const timeoutMs = 5000;
+
+  // 1) PING/PONG prüfen (optional, aber hilfreich fürs Debug)
+  await new Promise((resolve) => {
+    const mc = new MessageChannel();
+    const to = setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('message', onPong);
+      resolve(); // wir versuchen Logs trotzdem
+    }, timeoutMs);
+
+    function onPong(event) {
+      if (event.data && event.data.type === 'PONG') {
+        clearTimeout(to);
+        navigator.serviceWorker.removeEventListener('message', onPong);
+        resolve();
+      }
+    }
+    navigator.serviceWorker.addEventListener('message', onPong);
+    reg.active.postMessage({ type: 'PING' }, [mc.port2]);
+  });
+
+  // 2) Logs abrufen – Antwort direkt über MessageChannel
   return new Promise((resolve) => {
-    // Listener für Antwort
-    function onMsg(event) {
+    const mc = new MessageChannel();
+
+    const to = setTimeout(() => {
+      // Fallback: Listener abbauen und beenden
+      resolve();
+    }, timeoutMs);
+
+    mc.port1.onmessage = (event) => {
       if (event.data && event.data.type === 'SW_LOGS') {
+        clearTimeout(to);
         if (Array.isArray(event.data.logs)) {
           event.data.logs.forEach(entry => {
             if (entry && entry.msg) {
@@ -3987,17 +4017,16 @@ async function fetchAndShowSwLogs() {
             }
           });
         }
-        // Nach Anzeige löschen
+        // SW bitten, Logs zu löschen (Antwort ist nicht zwingend)
         reg.active.postMessage({ type: 'CLEAR_SW_LOGS' });
-        navigator.serviceWorker.removeEventListener('message', onMsg);
         resolve();
       }
-    }
-    navigator.serviceWorker.addEventListener('message', onMsg);
-    // Anfrage an SW schicken
-    reg.active.postMessage({ type: 'GET_SW_LOGS' });
+    };
+
+    reg.active.postMessage({ type: 'GET_SW_LOGS' }, [mc.port2]);
   });
 }
+
 
 // Beim Laden prüfen / initialisieren
 
