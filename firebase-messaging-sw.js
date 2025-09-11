@@ -1042,7 +1042,7 @@ function Pe(t, e) {
     S.debug(`Component ${e.name} failed to register with FirebaseApp ${t.name}`, n);
   }
 }
-function N(t) {
+function M(t) {
   const e = t.name;
   if (ge.has(e))
     return S.debug(`There were multiple attempts to register component ${e}.`), !1;
@@ -1184,7 +1184,7 @@ function qn(t = pe) {
     throw C.create("no-app", { appName: t });
   return e;
 }
-function O(t, e, n) {
+function N(t, e, n) {
   let s = Hn[t] ?? t;
   n && (s += `-${n}`);
   const r = s.match(/\s|\//), i = e.match(/\s|\//);
@@ -1195,7 +1195,7 @@ function O(t, e, n) {
     r && a.push(`library name "${s}" contains illegal characters (whitespace or "/")`), r && i && a.push("and"), i && a.push(`version name "${e}" contains illegal characters (whitespace or "/")`), S.warn(a.join(" "));
     return;
   }
-  N(new D(
+  M(new D(
     `${s}-version`,
     () => ({ library: s, version: e }),
     "VERSION"
@@ -1436,17 +1436,17 @@ function ts(t) {
  * limitations under the License.
  */
 function ns(t) {
-  N(new D(
+  M(new D(
     "platform-logger",
     (e) => new pn(e),
     "PRIVATE"
     /* ComponentType.PRIVATE */
-  )), N(new D(
+  )), M(new D(
     "heartbeat",
     (e) => new Qn(e),
     "PRIVATE"
     /* ComponentType.PRIVATE */
-  )), O(de, Le, t), O(de, Le, "esm2020"), O("fire-js", "");
+  )), N(de, Le, t), N(de, Le, "esm2020"), N("fire-js", "");
 }
 ns("");
 var ss = "firebase", rs = "12.1.0";
@@ -1466,7 +1466,7 @@ var ss = "firebase", rs = "12.1.0";
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-O(ss, rs, "app");
+N(ss, rs, "app");
 const it = "@firebase/installations", ye = "0.6.19";
 /**
  * @license
@@ -2157,12 +2157,12 @@ const It = "installations", Fs = "installations-internal", js = (t) => {
   };
 };
 function Ks() {
-  N(new D(
+  M(new D(
     It,
     js,
     "PUBLIC"
     /* ComponentType.PUBLIC */
-  )), N(new D(
+  )), M(new D(
     Fs,
     Hs,
     "PRIVATE"
@@ -2170,8 +2170,8 @@ function Ks() {
   ));
 }
 Ks();
-O(it, ye);
-O(it, ye, "esm2020");
+N(it, ye);
+N(it, ye, "esm2020");
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -2921,7 +2921,7 @@ const Or = (t) => {
   }), e;
 };
 function Nr() {
-  N(new D(
+  M(new D(
     "messaging-sw",
     Or,
     "PUBLIC"
@@ -4231,7 +4231,7 @@ async function ui(t) {
   } catch {
   }
 }
-function M(...t) {
+function O(...t) {
   const e = t.map((n) => {
     if (typeof n == "object")
       try {
@@ -4330,7 +4330,7 @@ async function fi(t, e) {
   try {
     return !self.registration || typeof self.registration.getNotifications != "function" ? !1 : await Ot(t, e);
   } catch (n) {
-    return M("[SW] getNotifications failed or unsupported:", n), !1;
+    return O("[SW] getNotifications failed or unsupported:", n), !1;
   }
 }
 async function Ot(t, {
@@ -4357,9 +4357,9 @@ async function ze(t, e) {
       mode: "cors",
       keepalive: !0,
       signal: s.signal
-    }), clearTimeout(r), M("[SW] ack ok");
+    }), clearTimeout(r), O("[SW] ack ok");
   } catch (s) {
-    if (M("[SW] ack failed, queuing:", s), await queueAck(n).catch(() => {
+    if (O("[SW] ack failed, queuing:", s), await queueAck(n).catch(() => {
     }), self.registration.sync)
       try {
         await self.registration.sync.register("flush-acks");
@@ -4367,6 +4367,11 @@ async function ze(t, e) {
       }
   }
 }
+self.addEventListener("activate", (t) => {
+  t.waitUntil((async () => {
+    O("[SW] activate - ready"), await self.clients.claim();
+  })());
+});
 self.addEventListener("push", (t) => {
   t.waitUntil((async () => {
     const e = t.data ? (() => {
@@ -4384,7 +4389,7 @@ self.addEventListener("push", (t) => {
       try {
         await ze(o, await qe());
       } catch (g) {
-        M("[SW] markDelivered (fg) failed:", g);
+        O("[SW] markDelivered (fg) failed:", g);
       }
       if (m) {
         const g = `${l}-fg`, Nt = {
@@ -4420,7 +4425,7 @@ self.addEventListener("push", (t) => {
     try {
       await ze(o, await qe());
     } catch (g) {
-      M("[SW] markDelivered (bg) failed:", g);
+      O("[SW] markDelivered (bg) failed:", g);
     }
   })());
 });
@@ -4475,7 +4480,7 @@ self.addEventListener("pushsubscriptionchange", (t) => {
       } catch {
       }
     } catch (e) {
-      M("[SW] re-subscribe failed:", e);
+      O("[SW] re-subscribe failed:", e);
     }
   })());
 });
