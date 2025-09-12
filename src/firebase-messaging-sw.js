@@ -73,7 +73,7 @@ async function flushQueuedAcks() {
 
 async function sendAckNow(payload) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 8000);
+  const t = setTimeout(() => ctrl.abort(), 15000);
   try {
     await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
       method: "POST",
@@ -121,18 +121,27 @@ async function swLogStore(msg) {
 
 
 // 2. SW: Log-Funktion, die auch im Hintergrund funktioniert
+
 function swLog(...args) {
-  const msg = args.map(a => {
-    if (typeof a === 'object') {
-      try { return JSON.stringify(a); } catch { return '[object]'; }
+  const printable = args.map(a => {
+    if (a instanceof Error) {
+      return { name: a.name, message: a.message, stack: a.stack };
     }
-    return String(a);
-  }).join(' ');
-  // Immer in der Konsole (für DevTools)
-  console.log('[SW]', msg);
-  // Immer in IndexedDB speichern
-  swLogStore(msg);
+    // DOMException oder error-ähnlich:
+    if (a && typeof a === 'object' && ('name' in a || 'message' in a)) {
+      return { name: a.name, message: a.message, code: a.code, stack: a.stack };
+    }
+    return a;
+  });
+
+  try { console.log('[SW]', ...printable); } catch {}
+  // Für deinen IndexedDB-Store in String wandeln
+  const msg = printable.map(x => typeof x === 'string' ? x : (() => {
+    try { return JSON.stringify(x); } catch { return String(x); }
+  })()).join(' ');
+  swLogStore(msg).catch(()=>{});
 }
+
 
 // 4. SW: Bei Seitenstart alle Logs an die Seite schicken
 
@@ -184,6 +193,10 @@ self.addEventListener('message', (event) => {
         tx.onerror = () => db.close();
       } catch {}
     })();
+  }
+
+  if (event && event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
   }
 
   // Optional: PING → PONG zum Schnelltest der Verbindung
@@ -426,12 +439,6 @@ self.addEventListener('notificationclick', (event) => {
   })());
 });
 
-// Soft-Update
-self.addEventListener('message', (event) => {
-  if (event && event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
