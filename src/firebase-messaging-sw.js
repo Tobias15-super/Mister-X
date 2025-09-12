@@ -24,6 +24,74 @@ getMessaging(app); // Initialisiert FCM im SW-Kontext (keinen Listener hier regi
 // --- Helpers ---
 const RTDB_BASE = firebaseConfig.databaseURL;
 
+
+// --- ACK-Queue (IndexedDB) ------------------------------------
+async function queueAck(entry) {
+  const db = await openDbEnsureStore('app-db', 'ack-queue');
+  await new Promise((res, rej) => {
+    const tx = db.transaction('ack-queue', 'readwrite');
+    const store = tx.objectStore('ack-queue');
+    // Key explizit vergeben (timestamp + random)
+    const key = Date.now() + Math.random();
+    store.add({ key, entry, ts: Date.now() }, key);
+    tx.oncomplete = () => { db.close(); res(); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  });
+}
+
+
+async function flushQueuedAcks() {
+  const db = await openDbEnsureStore('app-db', 'ack-queue');
+  const items = await new Promise((res, rej) => {
+    const tx = db.transaction('ack-queue', 'readonly');
+    const store = tx.objectStore('ack-queue');
+    const req = store.getAll();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror = () => rej(req.error);
+  });
+
+  if (!items.length) { db.close(); return; }
+
+  for (const it of items) {
+    try {
+      await sendAckNow(it.entry); // siehe markDelivered -> ausgelagert
+      // bei Erfolg löschen
+      await new Promise((res, rej) => {
+        const tx = db.transaction('ack-queue', 'readwrite');
+        tx.objectStore('ack-queue').delete(it.key);
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+      });
+    } catch (e) {
+      // Abbruch: Beim ersten Fehler aufhören => späterer Versuch
+      break;
+    }
+  }
+  db.close();
+}
+
+
+async function sendAckNow(payload) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      mode: "cors",
+      // keepalive ist im SW-Kontext nicht nötig und kann weggelassen werden
+      signal: ctrl.signal,
+      cache: "no-store",
+      credentials: "omit",
+    });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+
+
 // --- SW-Log-Pufferung und Übertragung an die Seite ---
 
 // 1. SW: Log-Messages in IndexedDB speichern
@@ -218,31 +286,26 @@ async function waitUntilNotificationVisible(tag, {
 
 
 
+
 async function markDelivered(messageId, deviceName) {
   const payload = { messageId, deviceName, timestamp: Date.now() };
   try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 8000); // 8s Safety Timeout
-    await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      mode: "cors",
-      keepalive: true,
-      signal: ctrl.signal
-    });
-    clearTimeout(t);
+    await sendAckNow(payload);
     swLog("[SW] ack ok");
   } catch (e) {
     swLog("[SW] ack failed, queuing:", e);
-    // Hier: in IndexedDB ablegen & später flushen
-    await queueAck(payload).catch(() => {});
-    // Optional: Background Sync anstoßen, wenn verfügbar
-    if (self.registration.sync) {
-      try { await self.registration.sync.register('flush-acks'); } catch {}
+    try {
+      await queueAck(payload);
+      if (self.registration.sync) {
+        try { await self.registration.sync.register('flush-acks'); } catch {}
+      }
+    } catch (e2) {
+      // Letztes Netz: wenigstens in Logs sichtbar halten
+      swLog("[SW] queueAck failed:", e2);
     }
   }
 }
+
 
 
 
@@ -260,6 +323,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     swLog('[SW] activate - ready');
     await self.clients.claim();
+    try { await flushQueuedAcks(); } catch {}
   })());
 });
 
@@ -269,6 +333,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
     // Payload robust parsen
+    try { await flushQueuedAcks(); } catch {}
     const payload = event.data ? (() => { try { return event.data.json(); } catch { return {}; } })() : {};
     const n = payload.notification ?? {};
     const d = payload.data ?? payload ?? {};
@@ -349,6 +414,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil((async () => {
+    try { await flushQueuedAcks(); } catch {}
     const url = (event.notification && event.notification.data && event.notification.data.url) || '/Mister-X/';
     const allClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of allClients) {
