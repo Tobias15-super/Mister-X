@@ -4257,9 +4257,8 @@ async function Nt(t) {
   try {
     await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(t),
-      mode: "cors",
+      mode: "no-cors",
       // keepalive ist im SW-Kontext nicht nötig und kann weggelassen werden
       signal: e.signal,
       cache: "no-store",

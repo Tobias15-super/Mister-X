@@ -77,9 +77,8 @@ async function sendAckNow(payload) {
   try {
     await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      mode: "cors",
+      mode: "no-cors",
       // keepalive ist im SW-Kontext nicht nötig und kann weggelassen werden
       signal: ctrl.signal,
       cache: "no-store",
