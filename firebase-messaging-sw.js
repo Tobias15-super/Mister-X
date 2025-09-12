@@ -24,7 +24,7 @@ const Je = function(t) {
     r < 128 ? e[n++] = r : r < 2048 ? (e[n++] = r >> 6 | 192, e[n++] = r & 63 | 128) : (r & 64512) === 55296 && s + 1 < t.length && (t.charCodeAt(s + 1) & 64512) === 56320 ? (r = 65536 + ((r & 1023) << 10) + (t.charCodeAt(++s) & 1023), e[n++] = r >> 18 | 240, e[n++] = r >> 12 & 63 | 128, e[n++] = r >> 6 & 63 | 128, e[n++] = r & 63 | 128) : (e[n++] = r >> 12 | 224, e[n++] = r >> 6 & 63 | 128, e[n++] = r & 63 | 128);
   }
   return e;
-}, xt = function(t) {
+}, Bt = function(t) {
   const e = [];
   let n = 0, s = 0;
   for (; n < t.length; ) {
@@ -128,7 +128,7 @@ const Je = function(t) {
    * @return string representing the decoded value.
    */
   decodeString(t, e) {
-    return this.HAS_NATIVE_SUPPORT && !e ? atob(t) : xt(this.decodeStringToByteArray(t, e));
+    return this.HAS_NATIVE_SUPPORT && !e ? atob(t) : Bt(this.decodeStringToByteArray(t, e));
   },
   /**
    * Base64-decode a string.
@@ -155,7 +155,7 @@ const Je = function(t) {
       ++r;
       const h = r < t.length ? n[t.charAt(r)] : 64;
       if (++r, a == null || o == null || c == null || h == null)
-        throw new Bt();
+        throw new xt();
       const m = a << 2 | o >> 4;
       if (s.push(m), c !== 64) {
         const I = o << 4 & 240 | c >> 2;
@@ -180,7 +180,7 @@ const Je = function(t) {
     }
   }
 };
-class Bt extends Error {
+class xt extends Error {
   constructor() {
     super(...arguments), this.name = "DecodeBase64StringError";
   }
@@ -970,7 +970,7 @@ const pe = "@firebase/app", Le = "0.14.1";
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const S = new rn("@firebase/app"), bn = "@firebase/app-compat", yn = "@firebase/analytics-compat", _n = "@firebase/analytics", Sn = "@firebase/app-check-compat", In = "@firebase/app-check", En = "@firebase/auth", Cn = "@firebase/auth-compat", Tn = "@firebase/database", kn = "@firebase/data-connect", An = "@firebase/database-compat", Dn = "@firebase/functions", Rn = "@firebase/functions-compat", vn = "@firebase/installations", On = "@firebase/installations-compat", Nn = "@firebase/messaging", Mn = "@firebase/messaging-compat", Pn = "@firebase/performance", Ln = "@firebase/performance-compat", xn = "@firebase/remote-config", Bn = "@firebase/remote-config-compat", Un = "@firebase/storage", $n = "@firebase/storage-compat", Fn = "@firebase/firestore", jn = "@firebase/ai", Hn = "@firebase/firestore-compat", Kn = "firebase";
+const S = new rn("@firebase/app"), bn = "@firebase/app-compat", yn = "@firebase/analytics-compat", _n = "@firebase/analytics", Sn = "@firebase/app-check-compat", In = "@firebase/app-check", En = "@firebase/auth", Cn = "@firebase/auth-compat", Tn = "@firebase/database", kn = "@firebase/data-connect", An = "@firebase/database-compat", Dn = "@firebase/functions", Rn = "@firebase/functions-compat", vn = "@firebase/installations", On = "@firebase/installations-compat", Nn = "@firebase/messaging", Mn = "@firebase/messaging-compat", Pn = "@firebase/performance", Ln = "@firebase/performance-compat", Bn = "@firebase/remote-config", xn = "@firebase/remote-config-compat", Un = "@firebase/storage", $n = "@firebase/storage-compat", Fn = "@firebase/firestore", jn = "@firebase/ai", Hn = "@firebase/firestore-compat", Kn = "firebase";
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -1007,8 +1007,8 @@ const ge = "[DEFAULT]", Wn = {
   [Mn]: "fire-fcm-compat",
   [Pn]: "fire-perf",
   [Ln]: "fire-perf-compat",
-  [xn]: "fire-rc",
-  [Bn]: "fire-rc-compat",
+  [Bn]: "fire-rc",
+  [xn]: "fire-rc-compat",
   [Un]: "fire-gcs",
   [$n]: "fire-gcs-compat",
   [Fn]: "fire-fst",
@@ -1035,7 +1035,7 @@ const ge = "[DEFAULT]", Wn = {
  * limitations under the License.
  */
 const j = /* @__PURE__ */ new Map(), qn = /* @__PURE__ */ new Map(), me = /* @__PURE__ */ new Map();
-function xe(t, e) {
+function Be(t, e) {
   try {
     t.container.addComponent(e);
   } catch (n) {
@@ -1048,9 +1048,9 @@ function P(t) {
     return S.debug(`There were multiple attempts to register component ${e}.`), !1;
   me.set(e, t);
   for (const n of j.values())
-    xe(n, t);
+    Be(n, t);
   for (const n of qn.values())
-    xe(n, t);
+    Be(n, t);
   return !0;
 }
 function ye(t, e) {
@@ -1253,7 +1253,7 @@ async function Yn(t) {
     }
   }
 }
-async function Be(t, e) {
+async function xe(t, e) {
   try {
     const s = (await rt()).transaction($, "readwrite");
     await s.objectStore($).put(e, at(t)), await s.done;
@@ -1383,7 +1383,7 @@ class ns {
   async overwrite(e) {
     if (await this._canUseIndexedDBPromise) {
       const s = await this.read();
-      return Be(this.app, {
+      return xe(this.app, {
         lastSentHeartbeatDate: e.lastSentHeartbeatDate ?? s.lastSentHeartbeatDate,
         heartbeats: e.heartbeats
       });
@@ -1394,7 +1394,7 @@ class ns {
   async add(e) {
     if (await this._canUseIndexedDBPromise) {
       const s = await this.read();
-      return Be(this.app, {
+      return xe(this.app, {
         lastSentHeartbeatDate: e.lastSentHeartbeatDate ?? s.lastSentHeartbeatDate,
         heartbeats: [
           ...s.heartbeats,
@@ -1964,7 +1964,7 @@ async function Ee(t, e = !1) {
           "app-offline"
           /* ErrorCode.APP_OFFLINE */
         );
-      const o = xs(a);
+      const o = Bs(a);
       return n = Ms(t, o), o;
     }
   });
@@ -1985,7 +1985,7 @@ function je(t) {
         /* ErrorCode.NOT_REGISTERED */
       );
     const n = e.authToken;
-    return Bs(n) ? {
+    return xs(n) ? {
       ...e,
       authToken: {
         requestStatus: 0
@@ -2027,7 +2027,7 @@ function Ls(t) {
   const e = Date.now();
   return e < t.creationTime || t.creationTime + t.expiresIn < e + cs;
 }
-function xs(t) {
+function Bs(t) {
   const e = {
     requestStatus: 1,
     requestTime: Date.now()
@@ -2037,7 +2037,7 @@ function xs(t) {
     authToken: e
   };
 }
-function Bs(t) {
+function xs(t) {
   return t.requestStatus === 1 && t.requestTime + ot < Date.now();
 }
 /**
@@ -2963,7 +2963,7 @@ async function Lr() {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-function xr(t = Gn()) {
+function Br(t = Gn()) {
   return Lr().then((e) => {
     if (!e)
       throw p.create(
@@ -2998,10 +2998,10 @@ try {
   self["workbox:core:7.2.0"] && _();
 } catch {
 }
-const Br = (t, ...e) => {
+const xr = (t, ...e) => {
   let n = t;
   return e.length > 0 && (n += ` :: ${JSON.stringify(e)}`), n;
-}, Ur = Br;
+}, Ur = xr;
 class f extends Error {
   /**
    *
@@ -3093,19 +3093,19 @@ class Kr {
     }, this._precacheController = e;
   }
 }
-let x;
+let B;
 function Wr() {
-  if (x === void 0) {
+  if (B === void 0) {
     const t = new Response("");
     if ("body" in t)
       try {
-        new Response(t.body), x = !0;
+        new Response(t.body), B = !0;
       } catch {
-        x = !1;
+        B = !1;
       }
-    x = !1;
+    B = !1;
   }
-  return x;
+  return B;
 }
 async function qr(t, e) {
   let n = null;
@@ -4123,8 +4123,8 @@ class na {
       throw new f("unregister-route-route-not-registered");
   }
 }
-let B;
-const sa = () => (B || (B = new na(), B.addFetchListener(), B.addCacheListener()), B);
+let x;
+const sa = () => (x || (x = new na(), x.addFetchListener(), x.addCacheListener()), x);
 function ra(t, e, n) {
   let s;
   if (typeof t == "string") {
@@ -4219,7 +4219,7 @@ const Ot = {
   appId: "1:616391598963:web:da07882b0f481d3000db06",
   measurementId: "G-W66SK677NG"
 }, ha = st(Ot);
-xr(ha);
+Br(ha);
 Ot.databaseURL;
 async function fa(t) {
   const e = await N("app-db", "ack-queue");
@@ -4253,7 +4253,7 @@ async function X() {
   t.close();
 }
 async function Nt(t) {
-  const e = new AbortController(), n = setTimeout(() => e.abort(), 8e3);
+  const e = new AbortController(), n = setTimeout(() => e.abort(), 15e3);
   try {
     await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
       method: "POST",
@@ -4283,16 +4283,20 @@ async function da(t) {
   }
 }
 function T(...t) {
-  const e = t.map((n) => {
-    if (typeof n == "object")
-      try {
-        return JSON.stringify(n);
-      } catch {
-        return "[object]";
-      }
-    return String(n);
-  }).join(" ");
-  console.log("[SW]", e), da(e);
+  const e = t.map((s) => s instanceof Error ? { name: s.name, message: s.message, stack: s.stack } : s && typeof s == "object" && ("name" in s || "message" in s) ? { name: s.name, message: s.message, code: s.code, stack: s.stack } : s);
+  try {
+    console.log("[SW]", ...e);
+  } catch {
+  }
+  const n = e.map((s) => typeof s == "string" ? s : (() => {
+    try {
+      return JSON.stringify(s);
+    } catch {
+      return String(s);
+    }
+  })()).join(" ");
+  da(n).catch(() => {
+  });
 }
 self.addEventListener("message", (t) => {
   if (!t || !t.data) return;
@@ -4334,7 +4338,7 @@ self.addEventListener("message", (t) => {
       s.objectStore("sw-logs").clear(), s.oncomplete = () => n.close(), s.onerror = () => n.close();
     } catch {
     }
-  })(), t.data.type === "PING" && (async () => await e({ type: "PONG", ts: Date.now() }))();
+  })(), t && t.data && t.data.type === "SKIP_WAITING" && self.skipWaiting(), t.data.type === "PING" && (async () => await e({ type: "PONG", ts: Date.now() }))();
 });
 function N(t, e) {
   return new Promise((n, s) => {
@@ -4496,9 +4500,6 @@ self.addEventListener("notificationclick", (t) => {
         return s.focus();
     if (clients.openWindow) return clients.openWindow(e);
   })());
-});
-self.addEventListener("message", (t) => {
-  t && t.data && t.data.type === "SKIP_WAITING" && self.skipWaiting();
 });
 self.addEventListener("activate", (t) => {
   t.waitUntil(self.clients.claim());
