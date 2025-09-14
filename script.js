@@ -710,6 +710,60 @@ function triggerSmsFallbackIfNeeded(
 }
 
 
+function triggerSmsDirectIfNeeded(
+  messageId,
+  recipientDeviceNames = [],
+  smsText,
+  {
+    rtdbBase = (typeof RTDB_BASE !== 'undefined' ? RTDB_BASE : ''),
+    rolesPath = 'roles',
+    // recipientsPath wird in sms-direct NICHT ignoriert – es steuert, wohin delivered geschrieben wird
+    recipientsPath = 'notifications',
+    rtdbAuth,
+    requireConsent = true,
+    maxRecipientsPerCall,
+    writeDeliveredTimestamp = true, // optional: zusätzlich timestamps/{device} setzen
+  } = {}
+) {
+  if (!messageId) {
+    return Promise.resolve({ ok: false, error: 'Missing messageId' });
+  }
+  if (!Array.isArray(recipientDeviceNames) || recipientDeviceNames.length === 0) {
+    log?.('[sms-direct] keine Empfänger - nichts zu senden');
+    return Promise.resolve({ ok: true, skipped: 'no_recipients' });
+  }
+
+  const payload = {
+    messageId,
+    recipientDeviceNames,
+    smsText: String(smsText ?? '').slice(0, 280),
+    ...(rtdbBase ? { rtdbBase } : {}),
+    rolesPath,
+    recipientsPath,
+    ...(rtdbAuth ? { rtdbAuth } : {}),
+    requireConsent,
+    ...(Number.isFinite(maxRecipientsPerCall) ? { maxRecipientsPerCall } : {}),
+    writeDeliveredTimestamp,
+  };
+
+  // WICHTIG: kein x-sms-secret im Browser!
+  return supabaseClient.functions
+    .invoke('sms-direct', { body: payload })
+    .then(({ data, error }) => {
+      if (error) {
+        log?.('[sms-direct] Edge call failed', error);
+        return { ok: false, error: error.message || 'invoke failed' };
+      }
+      log?.('[sms-direct] sent:', data);
+      return data; // { ok, sent, numbers, rejectedDevices, deliveredMarked, ... }
+    })
+    .catch((err) => {
+      log?.('[sms-direct] Fehler beim Senden:', err);
+      return { ok: false, error: err?.message || String(err) };
+    });
+}
+
+
 
 
 
@@ -755,6 +809,7 @@ async function sendNotificationToTokens(
     sendEndpoint = 'https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all',
     rtdbBase = RTDB_BASE,
     messageId: messageIdFromCaller, // kann vom Aufrufer stabil übergeben werden
+    instantSMSDevices = [] // nur für den SMS-Fallback
   } = options;
 
   // erzeugen, falls nicht vom Aufrufer vorgegeben
@@ -789,11 +844,12 @@ async function sendNotificationToTokens(
   try { result = await res.json(); } catch {}
   log(`📦 Versuch ${attempt}: status=${res.status}`, result);
 
+  const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
+
 
 // 👉 SMS-Fallback NUR vom lokalen Zustand abhängig machen
   if (isFirstAttempt && recipientDeviceNames.length > 0) {
-    const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über Knopf oben rechts).`.slice(0, 280);
-
+    
     // fire-and-forget; bewusst NICHT awaiten
     triggerSmsFallbackIfNeeded(messageId, recipientDeviceNames, smsText, 15, {
         rtdbBase: RTDB_BASE,
@@ -802,6 +858,13 @@ async function sendNotificationToTokens(
 
   }
 
+  //Instant-SMS senden
+  if (isFirstAttempt && instantSMSDevices.length > 0) {
+    triggerSmsDirectIfNeeded(messageId, instantSMSDevices, smsText, {
+      rtdbBase: RTDB_BASE
+    });
+  }
+    
 
   // Retry für fehlgeschlagene Tokens
   const failedTokens = Array.isArray(result?.failedTokens) ? result.failedTokens : [];
@@ -833,50 +896,89 @@ async function sendNotificationToRoles(title, body, roles, opts = {}) {
     get(ref(rtdb, 'tokens')),
   ]);
 
-  const rolesData = rolesSnapshot.exists() ? rolesSnapshot.val() : {};
+  const rolesData  = rolesSnapshot.exists()  ? rolesSnapshot.val()  : {};
   const tokensData = tokensSnapshot.exists() ? tokensSnapshot.val() : {};
 
-  const roleList = Array.isArray(roles) ? roles : [roles];
+  const roleList  = Array.isArray(roles) ? roles : [roles];
   const sendToAll = roleList.length === 1 && roleList[0] === 'all';
 
   const tokensToSend = [];
   const deviceNamesToExpect = [];
+  const instantSMSDevices = [];
 
-  // Durch alle bekannten Device-Namen iterieren (Keys von tokensData sind unsere Device-Namen)
-  for (const deviceName in tokensData) {
-    if (!Object.prototype.hasOwnProperty.call(tokensData, deviceName)) continue;
+  // 🔑 NEU: über alle bekannten Geräte iterieren (roles ∪ tokens)
+  const allDeviceNames = Array.from(
+    new Set([
+      ...Object.keys(rolesData || {}),
+      ...Object.keys(tokensData || {}),
+    ])
+  );
 
+  for (const deviceName of allDeviceNames) {
     const roleEntry = rolesData[deviceName] || {};
     const userRole = roleEntry.role;
     const notificationEnabled = (roleEntry.notification !== false); // default: true
+    const instantSMS = roleEntry.instantSMS === true;               // default: false
 
     const matchesRole = sendToAll || (userRole && roleList.includes(userRole));
     if (!matchesRole || !notificationEnabled) continue;
 
+    // 🚨 WICHTIG: Instant-SMS zuerst behandeln – unabhängig von Tokens
+    if (instantSMS) {
+      instantSMSDevices.push(deviceName);
+      deviceNamesToExpect.push(deviceName);
+      continue; // keine Push, nur SMS
+    }
+
+    // Danach: Push-Logik für alle anderen
     const devTokens = normalizeTokens(tokensData[deviceName]);
-    if (devTokens.length === 0) continue;
-
-    tokensToSend.push(...devTokens);
-    deviceNamesToExpect.push(deviceName);
+    if (devTokens.length > 0) {
+      tokensToSend.push(...devTokens);
+      deviceNamesToExpect.push(deviceName);
+    }
   }
 
-  const uniqueTokens = unique(tokensToSend);
+  const uniqueTokens      = unique(tokensToSend);
   const uniqueDeviceNames = unique(deviceNamesToExpect);
+  const uniqueInstantSMS  = unique(instantSMSDevices);
 
-  if (uniqueTokens.length === 0) {
-    log(`⚠️ Keine passenden Tokens für Rollen "${Array.isArray(roles) ? roles.join(',') : roles}" gefunden.`);
-    return;
+  const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
+  const rtdbBase = opts.rtdbBase ?? RTDB_BASE;
+  const messageId = opts.messageId ?? createMessageId();
+
+  // 💬 Debug, damit du sofort siehst, was passiert:
+  console.log('[sendNotificationToRoles] instantSMS:', uniqueInstantSMS);
+  console.log('[sendNotificationToRoles] tokens:', uniqueTokens.length);
+
+  // 🟨 Fall A: Es gibt Push-Tokens -> sende Push + ggf. Instant-SMS
+  if (uniqueTokens.length > 0) {
+    return sendNotificationToTokens(title, body, uniqueTokens, {
+      recipientDeviceNames: uniqueDeviceNames,  // für Fallback & Empfangserwartung
+      link: opts.link || '/Mister-X/',
+      waitSec: typeof opts.waitSec === 'number' ? opts.waitSec : 45,
+      sendEndpoint: opts.sendEndpoint,          // optional override
+      rtdbBase,
+      messageId,                                // stabil über Retries
+      instantSMSDevices: uniqueInstantSMS,      // 👉 wird in sendNotificationToTokens -> sms-direct getriggert
+    });
   }
 
-  // Jetzt korrekt: tokens + recipientDeviceNames an deine bereits angepasste Funktion
-  return sendNotificationToTokens(title, body, uniqueTokens, {
-    recipientDeviceNames: uniqueDeviceNames,  // <<< wichtig für SMS-Fallback
-    link: opts.link || '/Mister-X/',
-    waitSec: typeof opts.waitSec === 'number' ? opts.waitSec : 45,
-    sendEndpoint: opts.sendEndpoint,          // optional override
-    rtdbBase: opts.rtdbBase                   // optional override
-  });
+  // 🟩 Fall B: Es gibt KEINE Tokens, aber Instant-SMS-Empfänger -> nur SMS-Direkt
+  if (uniqueInstantSMS.length > 0) {
+    console.log('[sendNotificationToRoles] Nur Instant-SMS, keine Push-Tokens.');
+    // Du willst delivered markieren, daher sms-direct direkt triggern:
+    await triggerSmsDirectIfNeeded(messageId, uniqueInstantSMS, smsText, {
+      rtdbBase,
+      // optional: rolesPath, recipientsPath, writeDeliveredTimestamp: true
+    });
+    return { ok: true, onlySms: true, smsCount: uniqueInstantSMS.length, messageId };
+  }
+
+  // 🟥 Fall C: Weder Tokens noch Instant-SMS → nichts zu tun
+  console.warn(`⚠️ Keine passenden Empfänger für Rollen "${Array.isArray(roles) ? roles.join(',') : roles}".`);
+  return { ok: true, skipped: 'no_recipients' };
 }
+
 
 async function resolveRecipientsForRoles(roleOrRoles) {
   const roles = Array.isArray(roleOrRoles) ? roleOrRoles : [roleOrRoles];
