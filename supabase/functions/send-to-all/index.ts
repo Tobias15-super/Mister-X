@@ -128,11 +128,12 @@ async function sendFcmToTokens(
   const errorsByToken: Record<string, { status: number; errorCode?: string; message?: string; raw?: unknown }> = {};
 
   const sendOne = async (token: string) => {
+    const now = Date.now();
     const payload = {
       message: {
         token,
-        data: { title: toStr(title), body: toStr(body), url: toStr(link), messageId: toStr(messageId ?? "") },
-        webpush: { headers: { Urgency: "high", TTL: "120" }, fcm_options: { link } },
+        data: { title: toStr(title), body: toStr(body), url: toStr(link), messageId: toStr(messageId ?? ""), serverSentAt: String(now)},
+        webpush: { headers: { Urgency: "high", TTL: "120" } },
       },
     };
     const res = await fetch(fcmUrl, {
