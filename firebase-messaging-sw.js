@@ -4259,7 +4259,6 @@ async function Nt(t) {
       method: "POST",
       body: JSON.stringify(t),
       mode: "no-cors",
-      // keepalive ist im SW-Kontext nicht nötig und kann weggelassen werden
       signal: e.signal,
       cache: "no-store",
       credentials: "omit"
@@ -4282,18 +4281,20 @@ async function da(t) {
   }
 }
 function T(...t) {
-  const e = t.map((s) => s instanceof Error ? { name: s.name, message: s.message, stack: s.stack } : s && typeof s == "object" && ("name" in s || "message" in s) ? { name: s.name, message: s.message, code: s.code, stack: s.stack } : s);
+  const e = t.map((s) => s instanceof Error ? { name: s.name, message: s.message, stack: s.stack } : s && typeof s == "object" && "name" in s && "message" in s ? { name: s.name, message: s.message, code: s.code, stack: s.stack } : s);
   try {
     console.log("[SW]", ...e);
   } catch {
   }
-  const n = e.map((s) => typeof s == "string" ? s : (() => {
-    try {
-      return JSON.stringify(s);
-    } catch {
-      return String(s);
-    }
-  })()).join(" ");
+  const n = e.map(
+    (s) => typeof s == "string" ? s : (() => {
+      try {
+        return JSON.stringify(s);
+      } catch {
+        return String(s);
+      }
+    })()
+  ).join(" ");
   da(n).catch(() => {
   });
 }
@@ -4389,9 +4390,7 @@ async function ga(t, e) {
 }
 async function Mt(t, {
   tries: e = 10,
-  // max. Versuche
   intervalMs: n = 100
-  // Abstand zwischen Versuchen
 } = {}) {
   for (let s = 0; s < e; s++) {
     const r = await self.registration.getNotifications({ tag: t });
@@ -4428,10 +4427,6 @@ self.addEventListener("activate", (t) => {
 });
 self.addEventListener("push", (t) => {
   t.waitUntil((async () => {
-    try {
-      await X();
-    } catch {
-    }
     const e = t.data ? (() => {
       try {
         return t.data.json();
@@ -4444,12 +4439,7 @@ self.addEventListener("push", (t) => {
         d.postMessage({ type: "PUSH", payload: s });
       } catch {
       }
-      try {
-        await Ge(o, await ze());
-      } catch (g) {
-        T("[SW] markDelivered (fg) failed:", g);
-      }
-      if (m) {
+      if (Ge(o, await ze()).catch((g) => T("[SW] markDelivered (fg) failed:", g)), m) {
         const g = `${l}-fg`, Pt = {
           body: a,
           icon: "/Mister-X/icons/android-chrome-192x192.png",
@@ -4463,8 +4453,10 @@ self.addEventListener("push", (t) => {
         };
         await self.registration.showNotification(r, Pt), await Mt(g, { tries: 10, intervalMs: 50 }).catch(() => {
         }), await new Promise((Q) => setTimeout(Q, 900)), (await self.registration.getNotifications({ tag: g })).forEach((Q) => Q.close());
+        return;
       }
-      return;
+      if (s.noBannerIfVisible === !0)
+        return;
     }
     const I = `${l}-${o}`, Y = {
       body: a,
@@ -4473,18 +4465,15 @@ self.addEventListener("push", (t) => {
       tag: I,
       renotify: !0,
       silent: s.silent !== void 0 ? !!s.silent : !1,
-      requireInteraction: s.requireInteraction ?? !0,
+      // Auf Mobile meist ohne Effekt; Standard auf false
+      requireInteraction: s.requireInteraction ?? !1,
       vibrate: s.vibrate ?? [200, 100, 200],
       timestamp: s.timestamp ?? Date.now(),
       data: { url: i, messageId: o, tag: I, fg: !1 }
     };
     await self.registration.showNotification(r, Y), ga(I, { tries: 10, intervalMs: 100 }).catch(() => {
-    });
-    try {
-      await Ge(o, await ze());
-    } catch (g) {
-      T("[SW] markDelivered (bg) failed:", g);
-    }
+    }), X().catch(() => {
+    }), Ge(o, await ze()).catch((g) => T("[SW] markDelivered (bg) failed:", g));
   })());
 });
 self.addEventListener("notificationclick", (t) => {
@@ -4499,9 +4488,6 @@ self.addEventListener("notificationclick", (t) => {
         return s.focus();
     if (clients.openWindow) return clients.openWindow(e);
   })());
-});
-self.addEventListener("activate", (t) => {
-  t.waitUntil(self.clients.claim());
 });
 self.addEventListener("sync", (t) => {
   t.tag === "flush-acks" && t.waitUntil(X());
