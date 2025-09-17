@@ -2,6 +2,23 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('firebase')) {
+                return 'vendor_firebase';
+              }
+              if (id.includes('leaflet')) {
+                return 'vendor_leaflet';
+              }
+              return 'vendor'; // alles andere aus node_modules
+            }
+          }
+        }
+      }
+    },
   base: '/Mister-X/',
   plugins: [
     VitePWA({
