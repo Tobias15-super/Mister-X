@@ -2670,6 +2670,8 @@ function renderNotif(n) {
     recipientList.innerHTML = '';
     notifStatusDot.style.background = '#bbb';
     if (notifCountEl) notifCountEl.textContent = '-';
+    notifHeaderEl.classList.remove('sticky');
+    notifHeaderEl.style.position = '';
     return;
   }
 
@@ -2688,19 +2690,46 @@ function renderNotif(n) {
   const okCount = names.filter(k => rec[k] === true).length;
   const total = names.length;
 
-  // Status-Lampe: grün wenn alle true, sonst gelb
-  notifStatusDot.style.background = (total > 0 && okCount === total) ? '#4caf50' : '#ff9800';
-  if (notifCountEl) notifCountEl.textContent = `${okCount}/${total} bestätigt`;
-
-  // Empfänger-Liste rendern (nur in Details sichtbar)
+  // --- Team-Logik ---
+  let allStatus = []; // "green", "blue", "orange"
   recipientList.innerHTML = '';
   names.sort((a,b)=>a.localeCompare(b)).forEach(name => {
     const ok = rec[name] === true;
+    let status = ok ? 'green' : 'orange';
+    let team = null;
+    for (const [teamId, teamObj] of Object.entries(teamsSnapshotCache || {})) {
+      if (teamObj.members && teamObj.members[name]) {
+        team = teamObj;
+        break;
+      }
+    }
+    if (!ok && team) {
+      const otherMembers = Object.keys(team.members).filter(m => m !== name);
+      const otherOk = otherMembers.some(m => rec[m] === true);
+      if (otherOk) status = 'blue';
+    }
+    allStatus.push(status);
+
+    // Chip-Style: grün, orange, blau
+    const chipClass = status === 'green' ? 'ok'
+                    : status === 'orange' ? 'wait'
+                    : 'teamblue';
+
     const div = document.createElement('div');
-    div.className = `recipient-chip ${ok ? 'ok' : 'wait'}`;
-    div.innerHTML = `<span class="dot"></span><span>${name}</span><span>${ok ? '✅' : '⏳'}</span>`;
+    div.className = `recipient-chip ${chipClass}`;
+    div.innerHTML = `<span class="dot"></span><span>${name}</span><span>${ok ? '✅' : (status === 'blue' ? '🟦' : '⏳')}</span>`;
     recipientList.appendChild(div);
   });
+
+  // --- Status-Lampe ---
+  let statusColor = '#ff9800'; // orange
+  if (allStatus.length > 0 && allStatus.every(s => s === 'green')) {
+    statusColor = '#4caf50'; // grün
+  } else if (allStatus.length > 0 && allStatus.every(s => s === 'green' || s === 'blue')) {
+    statusColor = '#2196f3'; // blau
+  }
+  notifStatusDot.style.background = statusColor;
+  if (notifCountEl) notifCountEl.textContent = `${okCount}/${total} bestätigt`;
 }
 
 function startLatestNotifListener() {
