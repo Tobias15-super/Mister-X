@@ -3258,6 +3258,11 @@ function listenToTimer() {
       clearInterval(countdown);
       updateStartButtonState(false);
 
+      const misterxTimer = document.getElementById("timer");
+      const agentTimer = document.getElementById("agentTimer");
+      const settingsTimer = document.getElementById("settingsTimer");
+
+
       // Timer-Anzeigen zurücksetzen
       if (misterxTimer) {
         misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
