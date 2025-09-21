@@ -3259,13 +3259,21 @@ function listenToTimer() {
       updateStartButtonState(false);
 
       // Timer-Anzeigen zurücksetzen
-      const misterxTimer = document.getElementById("timer");
-      const agentTimer = document.getElementById("agentTimer");
-      const settingsTimer = document.getElementById("settingsTimer");
-
-      if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
-      if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
-      if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
+      if (misterxTimer) {
+        misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
+        misterxTimer.style.color = "";
+        misterxTimer.style.animation = "";
+      }
+      if (agentTimer) {
+        agentTimer.innerText = "⏳ Mister X Timer: --:--";
+        agentTimer.style.color = "";
+        agentTimer.style.animation = "";
+      }
+      if (settingsTimer) {
+        settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
+        settingsTimer.style.color = "";
+        settingsTimer.style.animation = "";
+      }
 
       return;
     }

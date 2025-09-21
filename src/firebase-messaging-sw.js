@@ -75,15 +75,18 @@ async function sendAckNow(payload) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 15000);
   try {
-    await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
+    const res = await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
       method: "POST",
       body: JSON.stringify(payload),
-      mode: "no-cors",
-      // keepalive ist im SW-Kontext nicht nötig und kann weggelassen werden
+      // mode: "no-cors", // entfernt!
       signal: ctrl.signal,
       cache: "no-store",
       credentials: "omit",
     });
+    swLog("[SW] ACK fetch sent", { status: res.status, ok: res.ok });
+  } catch (err) {
+    swLog("[SW] ACK fetch failed", err);
+    throw err;
   } finally {
     clearTimeout(t);
   }

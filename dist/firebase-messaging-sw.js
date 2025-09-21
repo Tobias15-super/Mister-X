@@ -103,8 +103,8 @@ const Je = function(t) {
     const n = e ? this.byteToCharMapWebSafe_ : this.byteToCharMap_, s = [];
     for (let r = 0; r < t.length; r += 3) {
       const a = t[r], i = r + 1 < t.length, o = i ? t[r + 1] : 0, l = r + 2 < t.length, c = l ? t[r + 2] : 0, d = a >> 2, h = (a & 3) << 4 | o >> 4;
-      let m = (o & 15) << 2 | c >> 6, I = c & 63;
-      l || (I = 64, i || (m = 64)), s.push(n[d], n[h], n[m], n[I]);
+      let w = (o & 15) << 2 | c >> 6, E = c & 63;
+      l || (E = 64, i || (w = 64)), s.push(n[d], n[h], n[w], n[E]);
     }
     return s.join("");
   },
@@ -156,10 +156,10 @@ const Je = function(t) {
       const h = r < t.length ? n[t.charAt(r)] : 64;
       if (++r, a == null || o == null || c == null || h == null)
         throw new xt();
-      const m = a << 2 | o >> 4;
-      if (s.push(m), c !== 64) {
-        const I = o << 4 & 240 | c >> 2;
-        if (s.push(I), h !== 64) {
+      const w = a << 2 | o >> 4;
+      if (s.push(w), c !== 64) {
+        const E = o << 4 & 240 | c >> 2;
+        if (s.push(E), h !== 64) {
           const Y = c << 6 & 192 | h;
           s.push(Y);
         }
@@ -797,7 +797,7 @@ function ln(t) {
     const r = () => {
       t.removeEventListener("success", a), t.removeEventListener("error", i);
     }, a = () => {
-      n(y(t.result)), r();
+      n(S(t.result)), r();
     }, i = () => {
       s(t.error), r();
     };
@@ -833,7 +833,7 @@ let de = {
       if (e === "store")
         return n.objectStoreNames[1] ? void 0 : n.objectStore(n.objectStoreNames[0]);
     }
-    return y(t[e]);
+    return S(t[e]);
   },
   set(t, e, n) {
     return t[e] = n, !0;
@@ -848,17 +848,17 @@ function hn(t) {
 function fn(t) {
   return t === IDBDatabase.prototype.transaction && !("objectStoreNames" in IDBTransaction.prototype) ? function(e, ...n) {
     const s = t.call(ee(this), e, ...n);
-    return nt.set(s, e.sort ? e.sort() : [e]), y(s);
+    return nt.set(s, e.sort ? e.sort() : [e]), S(s);
   } : cn().includes(t) ? function(...e) {
-    return t.apply(ee(this), e), y(tt.get(this));
+    return t.apply(ee(this), e), S(tt.get(this));
   } : function(...e) {
-    return y(t.apply(ee(this), e));
+    return S(t.apply(ee(this), e));
   };
 }
 function dn(t) {
   return typeof t == "function" ? fn(t) : (t instanceof IDBTransaction && un(t), an(t, on()) ? new Proxy(t, de) : t);
 }
-function y(t) {
+function S(t) {
   if (t instanceof IDBRequest)
     return ln(t);
   if (Z.has(t))
@@ -868,9 +868,9 @@ function y(t) {
 }
 const ee = (t) => be.get(t);
 function z(t, e, { blocked: n, upgrade: s, blocking: r, terminated: a } = {}) {
-  const i = indexedDB.open(t, e), o = y(i);
+  const i = indexedDB.open(t, e), o = S(i);
   return s && i.addEventListener("upgradeneeded", (l) => {
-    s(y(i.result), l.oldVersion, l.newVersion, y(i.transaction), l);
+    s(S(i.result), l.oldVersion, l.newVersion, S(i.transaction), l);
   }), n && i.addEventListener("blocked", (l) => n(
     // Casting due to https://github.com/microsoft/TypeScript-DOM-lib-generator/pull/1405
     l.oldVersion,
@@ -887,7 +887,7 @@ function te(t, { blocked: e } = {}) {
     // Casting due to https://github.com/microsoft/TypeScript-DOM-lib-generator/pull/1405
     s.oldVersion,
     s
-  )), y(n).then(() => {
+  )), S(n).then(() => {
   });
 }
 const pn = ["get", "getKey", "getAll", "getAllKeys", "count"], gn = ["put", "add", "delete", "clear"], ne = /* @__PURE__ */ new Map();
@@ -970,7 +970,7 @@ const pe = "@firebase/app", Le = "0.14.1";
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const S = new rn("@firebase/app"), bn = "@firebase/app-compat", yn = "@firebase/analytics-compat", _n = "@firebase/analytics", Sn = "@firebase/app-check-compat", In = "@firebase/app-check", En = "@firebase/auth", Cn = "@firebase/auth-compat", Tn = "@firebase/database", kn = "@firebase/data-connect", An = "@firebase/database-compat", Dn = "@firebase/functions", Rn = "@firebase/functions-compat", vn = "@firebase/installations", On = "@firebase/installations-compat", Nn = "@firebase/messaging", Mn = "@firebase/messaging-compat", Pn = "@firebase/performance", Ln = "@firebase/performance-compat", Bn = "@firebase/remote-config", xn = "@firebase/remote-config-compat", Un = "@firebase/storage", $n = "@firebase/storage-compat", Fn = "@firebase/firestore", jn = "@firebase/ai", Hn = "@firebase/firestore-compat", Kn = "firebase";
+const I = new rn("@firebase/app"), bn = "@firebase/app-compat", yn = "@firebase/analytics-compat", _n = "@firebase/analytics", Sn = "@firebase/app-check-compat", In = "@firebase/app-check", En = "@firebase/auth", Cn = "@firebase/auth-compat", Tn = "@firebase/database", kn = "@firebase/data-connect", An = "@firebase/database-compat", Dn = "@firebase/functions", Rn = "@firebase/functions-compat", vn = "@firebase/installations", On = "@firebase/installations-compat", Nn = "@firebase/messaging", Mn = "@firebase/messaging-compat", Pn = "@firebase/performance", Ln = "@firebase/performance-compat", Bn = "@firebase/remote-config", xn = "@firebase/remote-config-compat", Un = "@firebase/storage", $n = "@firebase/storage-compat", Fn = "@firebase/firestore", jn = "@firebase/ai", Hn = "@firebase/firestore-compat", Kn = "firebase";
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -1039,13 +1039,13 @@ function Be(t, e) {
   try {
     t.container.addComponent(e);
   } catch (n) {
-    S.debug(`Component ${e.name} failed to register with FirebaseApp ${t.name}`, n);
+    I.debug(`Component ${e.name} failed to register with FirebaseApp ${t.name}`, n);
   }
 }
 function P(t) {
   const e = t.name;
   if (me.has(e))
-    return S.debug(`There were multiple attempts to register component ${e}.`), !1;
+    return I.debug(`There were multiple attempts to register component ${e}.`), !1;
   me.set(e, t);
   for (const n of j.values())
     Be(n, t);
@@ -1088,7 +1088,7 @@ const Vn = {
   "idb-delete": "Error thrown when deleting from IndexedDB. Original error: {$originalErrorMessage}.",
   "finalization-registry-not-supported": "FirebaseServerApp deleteOnDeref field defined but the JS runtime does not support FinalizationRegistry.",
   "invalid-server-app-environment": "FirebaseServerApp is not for use in browser environments."
-}, C = new V("app", "Firebase", Vn);
+}, T = new V("app", "Firebase", Vn);
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -1144,7 +1144,7 @@ class zn {
    */
   checkDestroyed() {
     if (this.isDeleted)
-      throw C.create("app-deleted", { appName: this._name });
+      throw T.create("app-deleted", { appName: this._name });
   }
 }
 function st(t, e = {}) {
@@ -1156,11 +1156,11 @@ function st(t, e = {}) {
     ...e
   }, r = s.name;
   if (typeof r != "string" || !r)
-    throw C.create("bad-app-name", {
+    throw T.create("bad-app-name", {
       appName: String(r)
     });
   if (n || (n = Qe()), !n)
-    throw C.create(
+    throw T.create(
       "no-options"
       /* AppError.NO_OPTIONS */
     );
@@ -1168,7 +1168,7 @@ function st(t, e = {}) {
   if (a) {
     if (he(n, a.options) && he(s, a.config))
       return a;
-    throw C.create("duplicate-app", { appName: r });
+    throw T.create("duplicate-app", { appName: r });
   }
   const i = new Zt(r);
   for (const l of me.values())
@@ -1181,7 +1181,7 @@ function Gn(t = ge) {
   if (!e && t === ge && Qe())
     return st();
   if (!e)
-    throw C.create("no-app", { appName: t });
+    throw T.create("no-app", { appName: t });
   return e;
 }
 function M(t, e, n) {
@@ -1192,7 +1192,7 @@ function M(t, e, n) {
     const i = [
       `Unable to register library "${s}" with version "${e}":`
     ];
-    r && i.push(`library name "${s}" contains illegal characters (whitespace or "/")`), r && a && i.push("and"), a && i.push(`version name "${e}" contains illegal characters (whitespace or "/")`), S.warn(i.join(" "));
+    r && i.push(`library name "${s}" contains illegal characters (whitespace or "/")`), r && a && i.push("and"), a && i.push(`version name "${e}" contains illegal characters (whitespace or "/")`), I.warn(i.join(" "));
     return;
   }
   P(new D(
@@ -1233,7 +1233,7 @@ function rt() {
       }
     }
   }).catch((t) => {
-    throw C.create("idb-open", {
+    throw T.create("idb-open", {
       originalErrorMessage: t.message
     });
   })), se;
@@ -1244,12 +1244,12 @@ async function Yn(t) {
     return await n.done, s;
   } catch (e) {
     if (e instanceof L)
-      S.warn(e.message);
+      I.warn(e.message);
     else {
-      const n = C.create("idb-get", {
+      const n = T.create("idb-get", {
         originalErrorMessage: e == null ? void 0 : e.message
       });
-      S.warn(n.message);
+      I.warn(n.message);
     }
   }
 }
@@ -1259,12 +1259,12 @@ async function xe(t, e) {
     await s.objectStore($).put(e, at(t)), await s.done;
   } catch (n) {
     if (n instanceof L)
-      S.warn(n.message);
+      I.warn(n.message);
     else {
-      const s = C.create("idb-set", {
+      const s = T.create("idb-set", {
         originalErrorMessage: n == null ? void 0 : n.message
       });
-      S.warn(s.message);
+      I.warn(s.message);
     }
   }
 }
@@ -1313,7 +1313,7 @@ class es {
       }
       return this._storage.overwrite(this._heartbeatsCache);
     } catch (s) {
-      S.warn(s);
+      I.warn(s);
     }
   }
   /**
@@ -1331,7 +1331,7 @@ class es {
       const n = Ue(), { heartbeatsToSend: s, unsentEntries: r } = ts(this._heartbeatsCache.heartbeats), a = Ye(JSON.stringify({ version: 2, heartbeats: s }));
       return this._heartbeatsCache.lastSentHeartbeatDate = n, r.length > 0 ? (this._heartbeatsCache.heartbeats = r, await this._storage.overwrite(this._heartbeatsCache)) : (this._heartbeatsCache.heartbeats = [], this._storage.overwrite(this._heartbeatsCache)), a;
     } catch (n) {
-      return S.warn(n), "";
+      return I.warn(n), "";
     }
   }
 }
@@ -2227,7 +2227,7 @@ var W;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-function w(t) {
+function b(t) {
   const e = new Uint8Array(t);
   return btoa(String.fromCharCode(...e)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
@@ -2276,7 +2276,7 @@ async function Qs(t) {
               p256dh: c.p256dh,
               endpoint: c.endpoint,
               swScope: c.swScope,
-              vapidKey: typeof c.vapidKey == "string" ? c.vapidKey : w(c.vapidKey)
+              vapidKey: typeof c.vapidKey == "string" ? c.vapidKey : b(c.vapidKey)
             }
           };
         } else if (r === 3) {
@@ -2285,11 +2285,11 @@ async function Qs(t) {
             token: c.fcmToken,
             createTime: c.createTime,
             subscriptionOptions: {
-              auth: w(c.auth),
-              p256dh: w(c.p256dh),
+              auth: b(c.auth),
+              p256dh: b(c.p256dh),
               endpoint: c.endpoint,
               swScope: c.swScope,
-              vapidKey: w(c.vapidKey)
+              vapidKey: b(c.vapidKey)
             }
           };
         } else if (r === 4) {
@@ -2298,11 +2298,11 @@ async function Qs(t) {
             token: c.fcmToken,
             createTime: c.createTime,
             subscriptionOptions: {
-              auth: w(c.auth),
-              p256dh: w(c.p256dh),
+              auth: b(c.auth),
+              p256dh: b(c.p256dh),
               endpoint: c.endpoint,
               swScope: c.swScope,
-              vapidKey: w(c.vapidKey)
+              vapidKey: b(c.vapidKey)
             }
           };
         }
@@ -2534,8 +2534,8 @@ async function or(t) {
     vapidKey: t.vapidKey,
     swScope: t.swRegistration.scope,
     endpoint: e.endpoint,
-    auth: w(e.getKey("auth")),
-    p256dh: w(e.getKey("p256dh"))
+    auth: b(e.getKey("auth")),
+    p256dh: b(e.getKey("p256dh"))
   }, s = await Te(t.firebaseDependencies);
   if (s) {
     if (ur(s.subscriptionOptions, n))
@@ -3016,26 +3016,26 @@ class f extends Error {
     super(s), this.name = e, this.details = n;
   }
 }
-const b = {
+const y = {
   googleAnalytics: "googleAnalytics",
   precache: "precache-v2",
   prefix: "workbox",
   runtime: "runtime",
   suffix: typeof registration < "u" ? registration.scope : ""
-}, le = (t) => [b.prefix, t, b.suffix].filter((e) => e && e.length > 0).join("-"), $r = (t) => {
-  for (const e of Object.keys(b))
+}, le = (t) => [y.prefix, t, y.suffix].filter((e) => e && e.length > 0).join("-"), $r = (t) => {
+  for (const e of Object.keys(y))
     t(e);
 }, ve = {
   updateDetails: (t) => {
     $r((e) => {
-      typeof t[e] == "string" && (b[e] = t[e]);
+      typeof t[e] == "string" && (y[e] = t[e]);
     });
   },
-  getGoogleAnalyticsName: (t) => t || le(b.googleAnalytics),
-  getPrecacheName: (t) => t || le(b.precache),
-  getPrefix: () => b.prefix,
-  getRuntimeName: (t) => t || le(b.runtime),
-  getSuffix: () => b.suffix
+  getGoogleAnalyticsName: (t) => t || le(y.googleAnalytics),
+  getPrecacheName: (t) => t || le(y.precache),
+  getPrefix: () => y.prefix,
+  getRuntimeName: (t) => t || le(y.runtime),
+  getSuffix: () => y.suffix
 };
 function qe(t, e) {
   const n = e();
@@ -3589,7 +3589,7 @@ class Zr {
       throw i;
   }
 }
-class E extends Zr {
+class C extends Zr {
   /**
    *
    * @param {Object} [options]
@@ -3608,7 +3608,7 @@ class E extends Zr {
    * get the response from the network if there's a precache miss.
    */
   constructor(e = {}) {
-    e.cacheName = ve.getPrecacheName(e.cacheName), super(e), this._fallbackToNetwork = e.fallbackToNetwork !== !1, this.plugins.push(E.copyRedirectedCacheableResponsesPlugin);
+    e.cacheName = ve.getPrecacheName(e.cacheName), super(e), this._fallbackToNetwork = e.fallbackToNetwork !== !1, this.plugins.push(C.copyRedirectedCacheableResponsesPlugin);
   }
   /**
    * @private
@@ -3676,16 +3676,16 @@ class E extends Zr {
   _useDefaultCacheabilityPluginIfNeeded() {
     let e = null, n = 0;
     for (const [s, r] of this.plugins.entries())
-      r !== E.copyRedirectedCacheableResponsesPlugin && (r === E.defaultPrecacheCacheabilityPlugin && (e = s), r.cacheWillUpdate && n++);
-    n === 0 ? this.plugins.push(E.defaultPrecacheCacheabilityPlugin) : n > 1 && e !== null && this.plugins.splice(e, 1);
+      r !== C.copyRedirectedCacheableResponsesPlugin && (r === C.defaultPrecacheCacheabilityPlugin && (e = s), r.cacheWillUpdate && n++);
+    n === 0 ? this.plugins.push(C.defaultPrecacheCacheabilityPlugin) : n > 1 && e !== null && this.plugins.splice(e, 1);
   }
 }
-E.defaultPrecacheCacheabilityPlugin = {
+C.defaultPrecacheCacheabilityPlugin = {
   async cacheWillUpdate({ response: t }) {
     return !t || t.status >= 400 ? null : t;
   }
 };
-E.copyRedirectedCacheableResponsesPlugin = {
+C.copyRedirectedCacheableResponsesPlugin = {
   async cacheWillUpdate({ response: t }) {
     return t.redirected ? await qr(t) : t;
   }
@@ -3702,7 +3702,7 @@ class ea {
    * get the response from the network if there's a precache miss.
    */
   constructor({ cacheName: e, plugins: n = [], fallbackToNetwork: s = !0 } = {}) {
-    this._urlsToCacheKeys = /* @__PURE__ */ new Map(), this._urlsToCacheModes = /* @__PURE__ */ new Map(), this._cacheKeysToIntegrities = /* @__PURE__ */ new Map(), this._strategy = new E({
+    this._urlsToCacheKeys = /* @__PURE__ */ new Map(), this._urlsToCacheModes = /* @__PURE__ */ new Map(), this._cacheKeysToIntegrities = /* @__PURE__ */ new Map(), this._strategy = new C({
       cacheName: ve.getPrecacheName(e),
       plugins: [
         ...n,
@@ -4037,8 +4037,8 @@ class na {
       if (d)
         try {
           return await d.handle({ url: s, request: e, event: n, params: a });
-        } catch (m) {
-          m instanceof Error && (h = m);
+        } catch (w) {
+          w instanceof Error && (h = w);
         }
       if (this._catchHandler)
         return this._catchHandler.handle({ url: s, request: e, event: n });
@@ -4208,7 +4208,7 @@ function la(t) {
 function ua(t, e) {
   la(t), ca(e);
 }
-ua([{"revision":null,"url":"assets/index-BFB_zQmX.js"},{"revision":null,"url":"assets/index-CRFQ_YKH.css"},{"revision":null,"url":"assets/vendor_firebase-k7avh9Mj.js"},{"revision":null,"url":"assets/vendor-O8nsH46x.js"},{"revision":"6ebf70cf5256c39b00a06044b02616b4","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}] || []);
+ua([{"revision":null,"url":"assets/index-CRFQ_YKH.css"},{"revision":null,"url":"assets/index-DrK0-mAO.js"},{"revision":null,"url":"assets/vendor_firebase-k7avh9Mj.js"},{"revision":null,"url":"assets/vendor-O8nsH46x.js"},{"revision":"7cf943a89430c88bd4c0c1e16dba8a2c","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}] || []);
 const Ot = {
   apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
   authDomain: "mister-x-d6b59.firebaseapp.com",
@@ -4255,15 +4255,17 @@ async function X() {
 async function Nt(t) {
   const e = new AbortController(), n = setTimeout(() => e.abort(), 15e3);
   try {
-    await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
+    const s = await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
       method: "POST",
       body: JSON.stringify(t),
-      mode: "no-cors",
-      // keepalive ist im SW-Kontext nicht nötig und kann weggelassen werden
+      // mode: "no-cors", // entfernt!
       signal: e.signal,
       cache: "no-store",
       credentials: "omit"
     });
+    m("[SW] ACK fetch sent", { status: s.status, ok: s.ok });
+  } catch (s) {
+    throw m("[SW] ACK fetch failed", s), s;
   } finally {
     clearTimeout(n);
   }
@@ -4281,7 +4283,7 @@ async function da(t) {
   } catch {
   }
 }
-function T(...t) {
+function m(...t) {
   const e = t.map((s) => s instanceof Error ? { name: s.name, message: s.message, stack: s.stack } : s && typeof s == "object" && ("name" in s || "message" in s) ? { name: s.name, message: s.message, code: s.code, stack: s.stack } : s);
   try {
     console.log("[SW]", ...e);
@@ -4384,7 +4386,7 @@ async function ga(t, e) {
   try {
     return !self.registration || typeof self.registration.getNotifications != "function" ? !1 : await Mt(t, e);
   } catch (n) {
-    return T("[SW] getNotifications failed or unsupported:", n), !1;
+    return m("[SW] getNotifications failed or unsupported:", n), !1;
   }
 }
 async function Mt(t, {
@@ -4403,9 +4405,9 @@ async function Mt(t, {
 async function Ge(t, e) {
   const n = { messageId: t, deviceName: e, timestamp: Date.now() };
   try {
-    await Nt(n), T("[SW] ack ok");
+    await Nt(n), m("[SW] ack ok");
   } catch (s) {
-    T("[SW] ack failed, queuing:", s);
+    m("[SW] ack failed, queuing:", s);
     try {
       if (await fa(n), self.registration.sync)
         try {
@@ -4413,13 +4415,13 @@ async function Ge(t, e) {
         } catch {
         }
     } catch (r) {
-      T("[SW] queueAck failed:", r);
+      m("[SW] queueAck failed:", r);
     }
   }
 }
 self.addEventListener("activate", (t) => {
   t.waitUntil((async () => {
-    T("[SW] activate - ready"), await self.clients.claim();
+    m("[SW] activate - ready"), await self.clients.claim();
     try {
       await X();
     } catch {
@@ -4438,7 +4440,7 @@ self.addEventListener("push", (t) => {
       } catch {
         return {};
       }
-    })() : {}, n = e.notification ?? {}, s = e.data ?? e ?? {}, r = n.title ?? s.title ?? "Neue Nachricht", a = n.body ?? s.body ?? "", i = s.url ?? n.click_action ?? "/Mister-X/", o = s.messageId ?? s.id ?? n.tag ?? String(Date.now()), l = s.tag ?? "mrx", d = (await clients.matchAll({ type: "window", includeUncontrolled: !0 })).find((g) => g.visibilityState === "visible"), h = self.navigator && self.navigator.userAgent ? self.navigator.userAgent : "", m = pa(h);
+    })() : {}, n = e.notification ?? {}, s = e.data ?? e ?? {}, r = n.title ?? s.title ?? "Neue Nachricht", a = n.body ?? s.body ?? "", i = s.url ?? n.click_action ?? "/Mister-X/", o = s.messageId ?? s.id ?? n.tag ?? String(Date.now()), l = s.tag ?? "mrx", d = (await clients.matchAll({ type: "window", includeUncontrolled: !0 })).find((g) => g.visibilityState === "visible"), h = self.navigator && self.navigator.userAgent ? self.navigator.userAgent : "", w = pa(h);
     if (d) {
       try {
         d.postMessage({ type: "PUSH", payload: s });
@@ -4447,9 +4449,9 @@ self.addEventListener("push", (t) => {
       try {
         await Ge(o, await ze());
       } catch (g) {
-        T("[SW] markDelivered (fg) failed:", g);
+        m("[SW] markDelivered (fg) failed:", g);
       }
-      if (m) {
+      if (w) {
         const g = `${l}-fg`, Pt = {
           body: a,
           icon: "/Mister-X/icons/android-chrome-192x192.png",
@@ -4466,24 +4468,24 @@ self.addEventListener("push", (t) => {
       }
       return;
     }
-    const I = `${l}-${o}`, Y = {
+    const E = `${l}-${o}`, Y = {
       body: a,
       icon: "/Mister-X/icons/android-chrome-192x192.png",
       badge: "/Mister-X/icons/Mister_X_Badge.png",
-      tag: I,
+      tag: E,
       renotify: !0,
       silent: s.silent !== void 0 ? !!s.silent : !1,
       requireInteraction: s.requireInteraction ?? !0,
       vibrate: s.vibrate ?? [200, 100, 200],
       timestamp: s.timestamp ?? Date.now(),
-      data: { url: i, messageId: o, tag: I, fg: !1 }
+      data: { url: i, messageId: o, tag: E, fg: !1 }
     };
-    await self.registration.showNotification(r, Y), ga(I, { tries: 10, intervalMs: 100 }).catch(() => {
+    await self.registration.showNotification(r, Y), ga(E, { tries: 10, intervalMs: 100 }).catch(() => {
     });
     try {
       await Ge(o, await ze());
     } catch (g) {
-      T("[SW] markDelivered (bg) failed:", g);
+      m("[SW] markDelivered (bg) failed:", g);
     }
   })());
 });
@@ -4539,7 +4541,7 @@ self.addEventListener("pushsubscriptionchange", (t) => {
       } catch {
       }
     } catch (e) {
-      T("[SW] re-subscribe failed:", e);
+      m("[SW] re-subscribe failed:", e);
     }
   })());
 });
