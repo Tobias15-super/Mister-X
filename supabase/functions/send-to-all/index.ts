@@ -132,7 +132,14 @@ async function sendFcmToTokens(
     const payload = {
       message: {
         token,
-        data: { title: toStr(title), body: toStr(body), url: toStr(link), messageId: toStr(messageId ?? ""), serverSentAt: String(now)},
+        data: {
+          title: toStr(title),
+          body: toStr(body),
+          url: toStr(link),
+          messageId: toStr(messageId ?? ""),
+          token, // NEU: Token mitsenden!
+          serverSentAt: String(now)
+        },
         webpush: { headers: { Urgency: "high", TTL: "120" } },
       },
     };

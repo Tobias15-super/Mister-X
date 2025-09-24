@@ -1668,7 +1668,7 @@ function createOrReuseMap(lat, lon) {
     map = L.map('map', {
       fullscreenControl: true,
       fullscreenControlOptions: {
-        position: 'bottomleft'
+        position: 'topleft'
       }
     }).setView([lat, lon], 15);
 
@@ -4308,15 +4308,6 @@ async function startScript() {
     attachDelegatedImageClick();
     setupLightboxOnce();
     fetchAndShowSwLogs().catch(() => {});
-
-
-    
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'SET_DEVICE_NAME',
-        value: deviceId
-      });
-    }
 
 
 

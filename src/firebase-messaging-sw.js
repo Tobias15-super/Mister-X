@@ -23,7 +23,7 @@ getMessaging(app); // Initialisiert FCM im SW-Kontext (keinen Listener hier regi
 
 // --- Helpers ---
 const RTDB_BASE = firebaseConfig.databaseURL;
-
+const token = d.token ?? null;
 
 // --- ACK-Queue (IndexedDB) ------------------------------------
 async function queueAck(entry) {
@@ -212,10 +212,6 @@ self.addEventListener('message', (event) => {
 
 
 
-function sanitizeKey(key) {
-  return (key || '').replace(/[.#$/\[\]\/]/g, '_');
-}
-
 function openDbEnsureStore(dbName, storeName) {
   return new Promise((resolve, reject) => {
     const openReq = indexedDB.open(dbName);
@@ -257,20 +253,6 @@ function mustPresentOnThisPlatform(ua) {
   return isSafari || isiOSLike;
 }
 
-async function getDeviceName() {
-  try {
-    const db = await openDbEnsureStore('app-db', 'settings');
-    return await new Promise((resolve) => {
-      const tx = db.transaction('settings', 'readonly');
-      const store = tx.objectStore('settings');
-      const req = store.get('deviceName');
-      req.onsuccess = () => { db.close(); resolve(req.result || null); };
-      req.onerror = () => { db.close(); resolve(null); };
-    });
-  } catch {
-    return null;
-  }
-}
 
 async function safeWaitForVisible(tag, opts) {
   try {
@@ -303,8 +285,8 @@ async function waitUntilNotificationVisible(tag, {
 
 
 
-async function markDelivered(messageId, deviceName) {
-  const payload = { messageId, deviceName, timestamp: Date.now() };
+async function markDelivered(messageId, token) {
+  const payload = { messageId, token, timestamp: Date.now() };
   swLog("[SW] ACK payload:", payload);
   try {
     await sendAckNow(payload);
@@ -317,23 +299,12 @@ async function markDelivered(messageId, deviceName) {
         try { await self.registration.sync.register('flush-acks'); } catch {}
       }
     } catch (e2) {
-      // Letztes Netz: wenigstens in Logs sichtbar halten
       swLog("[SW] queueAck failed:", e2);
     }
   }
 }
 
 
-
-
-
-// --- iOS-/Safari-Erkennung (Heuristik) ---
-function isIOSLikeUA(ua) {
-  const s = ua || '';
-  const isiOSDevice = /iPhone|iPad|iPod/.test(s);
-  const isMacWithTouch = /Macintosh/.test(s) && /Mobile/.test(s); // iPadOS meldet sich oft so
-  return isiOSDevice || isMacWithTouch;
-}
 
 
 self.addEventListener('activate', (event) => {
@@ -344,11 +315,7 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SET_DEVICE_NAME' && event.data.value) {
-    saveDeviceName(event.data.value).catch(() => {});
-  }
-});
+
 
 
 
@@ -381,7 +348,7 @@ self.addEventListener('push', (event) => {
       try { visibleClient.postMessage({ type: 'PUSH', payload: d }); } catch {}
 
       // *** IMMER ACKEN – auch ohne OS-Banner (Android/Chrome) ***
-      try { await markDelivered(messageId, await getDeviceName()); }
+      try { await markDelivered(messageId, token); }
       catch (e) { swLog('[SW] markDelivered (fg) failed:', e); }
 
       // Nur Safari/iOS: kurze, lautlose Sichtbarkeits-Noti
@@ -428,7 +395,7 @@ self.addEventListener('push', (event) => {
     safeWaitForVisible(bgTag, { tries: 10, intervalMs: 100 }).catch(() => {});
 
     // ACK im Hintergrund ebenfalls IMMER
-    try { await markDelivered(messageId, await getDeviceName()); }
+    try { await markDelivered(messageId, token); }
     catch (e) { swLog('[SW] markDelivered (bg) failed:', e); }
   })());
 });

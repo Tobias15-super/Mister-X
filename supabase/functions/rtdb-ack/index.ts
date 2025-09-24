@@ -16,7 +16,7 @@ const GCP_SA_JSON = Deno.env.get("GCP_SA_JSON")!; // Service-Account JSON (als S
 const RTDB_BASE = (Deno.env.get("RTDB_BASE") ?? "").replace(/\/$/, ""); // z.B. https://<db>.europe-west1.firebasedatabase.app
 const rtdbBase = RTDB_BASE || `https://${FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`;
 
-type AckBody = { messageId?: string; deviceName?: string; timestamp?: number };
+type AckBody = { messageId?: string; token?: string; timestamp?: number };
 
 function sanitizeKey(key = "") {
   return key.replace(/[.#$/\[\]\/]/g, "_");
@@ -99,14 +99,32 @@ serve(async (req) => {
       });
     }
 
-    const { messageId, deviceName, timestamp }: AckBody = await req.json().catch(() => ({}));
-    if (!messageId || !deviceName) {
-      return new Response(JSON.stringify({ error: "messageId and deviceName are required" }), {
+    const { messageId, token, timestamp }: AckBody = await req.json().catch(() => ({}));
+    if (!messageId || !token) {
+      return new Response(JSON.stringify({ error: "messageId and token are required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    // Token → GeräteName suchen
+    const tokensUrl = `${rtdbBase}/tokens.json?orderBy=%22$token%22&equalTo=%22${token}%22`;
+    const tokensRes = await fetch(tokensUrl, { headers: { "Authorization": `Bearer ${accessToken}` } });
+    if (!tokensRes.ok) {
+      return new Response(JSON.stringify({ error: "Token lookup failed", status: tokensRes.status }), {
+        status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const tokensMap = await tokensRes.json();
+    const deviceNames = Object.keys(tokensMap);
+    if (deviceNames.length === 0) {
+      return new Response(JSON.stringify({ error: "No device found for token" }), {
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const deviceName = deviceNames[0]; // Falls mehrere, nimm das erste
     const safeDevice = sanitizeKey(deviceName);
+
+    
     const scopes = [
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/firebase.database",
