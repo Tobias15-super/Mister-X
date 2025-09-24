@@ -83,7 +83,8 @@ async function sendAckNow(payload) {
       cache: "no-store",
       credentials: "omit",
     });
-    swLog("[SW] ACK fetch sent", { status: res.status, ok: res.ok });
+    const txt = await res.text().catch(() => "");
+    swLog("[SW] ACK fetch sent", { status: res.status, ok: res.ok, body: txt.slice(0, 300) });
   } catch (err) {
     swLog("[SW] ACK fetch failed", err);
     throw err;
@@ -304,6 +305,7 @@ async function waitUntilNotificationVisible(tag, {
 
 async function markDelivered(messageId, deviceName) {
   const payload = { messageId, deviceName, timestamp: Date.now() };
+  swLog("[SW] ACK payload:", payload);
   try {
     await sendAckNow(payload);
     swLog("[SW] ack ok");
@@ -341,6 +343,13 @@ self.addEventListener('activate', (event) => {
     try { await flushQueuedAcks(); } catch {}
   })());
 });
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SET_DEVICE_NAME' && event.data.value) {
+    saveDeviceName(event.data.value).catch(() => {});
+  }
+});
+
 
 
 // --- Push-Handler ---

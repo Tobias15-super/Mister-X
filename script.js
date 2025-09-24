@@ -1665,10 +1665,16 @@ function ensureMapVisible() {
 function createOrReuseMap(lat, lon) {
   ensureMapVisible();
   if (!map) {
-    map = L.map('map').setView([lat, lon], 15);
+    map = L.map('map', {
+      fullscreenControl: true,
+      fullscreenControlOptions: {
+        position: 'bottomleft'
+      }
+    }).setView([lat, lon], 15);
 
   // Karten-Layer definieren
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
       attribution: '© OpenStreetMap'
     });
 
@@ -1689,13 +1695,31 @@ function createOrReuseMap(lat, lon) {
       attribution: '© Jawg',
     })
 
+    const BasemapAT_orthofoto = L.tileLayer('https://mapsneu.wien.gv.at/basemap/bmaporthofoto30cm/{type}/google3857/{z}/{y}/{x}.{format}', {
+      maxZoom: 20,
+      attribution: 'Datenquelle: <a href="https://www.basemap.at">basemap.at</a>',
+      type: 'normal',
+      format: 'jpeg',
+      bounds: [[46.35877, 8.782379], [49.037872, 17.189532]]
+    });
+
+    const BasemapAT_highdpi = L.tileLayer('https://mapsneu.wien.gv.at/basemap/bmaphidpi/{type}/google3857/{z}/{y}/{x}.{format}', {
+      maxZoom: 19,
+      attribution: 'Datenquelle: <a href="https://www.basemap.at">basemap.at</a>',
+      type: 'normal',
+      format: 'jpeg',
+      bounds: [[46.35877, 8.782379], [49.037872, 17.189532]]
+    });
+
 
     const baseMaps = {
       "Standard": osm,
       "Jawg Street": jawgStreet,
       "Reduziert": cartoLight,
       "Satellit": satellite,
+      "Satellit (AT)": BasemapAT_orthofoto,
       "Plan": TopPlusOpen_Color,
+      "Plan (AT)": BasemapAT_highdpi
     };
 
     osm.addTo(map); // Standard aktivieren
@@ -4284,6 +4308,16 @@ async function startScript() {
     attachDelegatedImageClick();
     setupLightboxOnce();
     fetchAndShowSwLogs().catch(() => {});
+
+
+    
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'SET_DEVICE_NAME',
+        value: deviceId
+      });
+    }
+
 
 
     //für Agentlocation:
