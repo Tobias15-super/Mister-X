@@ -374,7 +374,7 @@ function he(t, e) {
     if (!s.includes(r))
       return !1;
     const a = t[r], i = e[r];
-    if (Oe(a) && Oe(i)) {
+    if (Ne(a) && Ne(i)) {
       if (!he(a, i))
         return !1;
     } else if (a !== i)
@@ -385,7 +385,7 @@ function he(t, e) {
       return !1;
   return !0;
 }
-function Oe(t) {
+function Ne(t) {
   return t !== null && typeof t == "object";
 }
 /**
@@ -774,9 +774,9 @@ class rn {
   }
 }
 const an = (t, e) => e.some((n) => t instanceof n);
-let Ne, Me;
+let Oe, Me;
 function on() {
-  return Ne || (Ne = [
+  return Oe || (Oe = [
     IDBDatabase,
     IDBObjectStore,
     IDBIndex,
@@ -970,7 +970,7 @@ const pe = "@firebase/app", Le = "0.14.1";
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const I = new rn("@firebase/app"), bn = "@firebase/app-compat", yn = "@firebase/analytics-compat", _n = "@firebase/analytics", Sn = "@firebase/app-check-compat", In = "@firebase/app-check", En = "@firebase/auth", Cn = "@firebase/auth-compat", Tn = "@firebase/database", kn = "@firebase/data-connect", An = "@firebase/database-compat", Dn = "@firebase/functions", Rn = "@firebase/functions-compat", vn = "@firebase/installations", On = "@firebase/installations-compat", Nn = "@firebase/messaging", Mn = "@firebase/messaging-compat", Pn = "@firebase/performance", Ln = "@firebase/performance-compat", xn = "@firebase/remote-config", Bn = "@firebase/remote-config-compat", Un = "@firebase/storage", $n = "@firebase/storage-compat", Fn = "@firebase/firestore", jn = "@firebase/ai", Kn = "@firebase/firestore-compat", Hn = "firebase";
+const I = new rn("@firebase/app"), bn = "@firebase/app-compat", yn = "@firebase/analytics-compat", _n = "@firebase/analytics", Sn = "@firebase/app-check-compat", In = "@firebase/app-check", En = "@firebase/auth", Cn = "@firebase/auth-compat", Tn = "@firebase/database", kn = "@firebase/data-connect", An = "@firebase/database-compat", Dn = "@firebase/functions", Rn = "@firebase/functions-compat", vn = "@firebase/installations", Nn = "@firebase/installations-compat", On = "@firebase/messaging", Mn = "@firebase/messaging-compat", Pn = "@firebase/performance", Ln = "@firebase/performance-compat", xn = "@firebase/remote-config", Bn = "@firebase/remote-config-compat", Un = "@firebase/storage", $n = "@firebase/storage-compat", Fn = "@firebase/firestore", jn = "@firebase/ai", Kn = "@firebase/firestore-compat", Hn = "firebase";
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -1002,8 +1002,8 @@ const ge = "[DEFAULT]", Wn = {
   [Dn]: "fire-fn",
   [Rn]: "fire-fn-compat",
   [vn]: "fire-iid",
-  [On]: "fire-iid-compat",
-  [Nn]: "fire-fcm",
+  [Nn]: "fire-iid-compat",
+  [On]: "fire-fcm",
   [Mn]: "fire-fcm-compat",
   [Pn]: "fire-perf",
   [Ln]: "fire-perf-compat",
@@ -1903,7 +1903,7 @@ function Rs(t) {
  * limitations under the License.
  */
 async function vs({ appConfig: t, heartbeatServiceProvider: e }, n) {
-  const s = Os(t, n), r = fs(t, n), a = e.getImmediate({
+  const s = Ns(t, n), r = fs(t, n), a = e.getImmediate({
     optional: !0
   });
   if (a) {
@@ -1926,7 +1926,7 @@ async function vs({ appConfig: t, heartbeatServiceProvider: e }, n) {
   } else
     throw await dt("Generate Auth Token", l);
 }
-function Os(t, { fid: e }) {
+function Ns(t, { fid: e }) {
   return `${ht(t)}/${e}/authTokens:generate`;
 }
 /**
@@ -1957,7 +1957,7 @@ async function Ee(t, e = !1) {
     if (!e && Ps(i))
       return a;
     if (i.requestStatus === 1)
-      return n = Ns(t, e), a;
+      return n = Os(t, e), a;
     {
       if (!navigator.onLine)
         throw R.create(
@@ -1970,7 +1970,7 @@ async function Ee(t, e = !1) {
   });
   return n ? await n : s.authToken;
 }
-async function Ns(t, e) {
+async function Os(t, e) {
   let n = await je(t.appConfig);
   for (; n.authToken.requestStatus === 1; )
     await mt(100), n = await je(t.appConfig);
@@ -2332,20 +2332,20 @@ function Zs(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const er = "firebase-messaging-database", tr = 1, O = "firebase-messaging-store";
+const er = "firebase-messaging-database", tr = 1, N = "firebase-messaging-store";
 let oe = null;
 function Ce() {
   return oe || (oe = z(er, tr, {
     upgrade: (t, e) => {
       switch (e) {
         case 0:
-          t.createObjectStore(O);
+          t.createObjectStore(N);
       }
     }
   })), oe;
 }
 async function Te(t) {
-  const e = Ae(t), s = await (await Ce()).transaction(O).objectStore(O).get(e);
+  const e = Ae(t), s = await (await Ce()).transaction(N).objectStore(N).get(e);
   if (s)
     return s;
   {
@@ -2355,12 +2355,12 @@ async function Te(t) {
   }
 }
 async function ke(t, e) {
-  const n = Ae(t), r = (await Ce()).transaction(O, "readwrite");
-  return await r.objectStore(O).put(e, n), await r.done, e;
+  const n = Ae(t), r = (await Ce()).transaction(N, "readwrite");
+  return await r.objectStore(N).put(e, n), await r.done, e;
 }
 async function nr(t) {
-  const e = Ae(t), s = (await Ce()).transaction(O, "readwrite");
-  await s.objectStore(O).delete(e), await s.done;
+  const e = Ae(t), s = (await Ce()).transaction(N, "readwrite");
+  await s.objectStore(N).delete(e), await s.done;
 }
 function Ae({ appConfig: t }) {
   return t.appId;
@@ -2836,7 +2836,7 @@ function vr(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-function Or(t) {
+function Nr(t) {
   if (!t || !t.options)
     throw ce("App Configuration Object");
   if (!t.name)
@@ -2879,10 +2879,10 @@ function ce(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-class Nr {
+class Or {
   constructor(e, n, s) {
     this.deliveryMetricsExportedToBigQueryEnabled = !1, this.onBackgroundMessageHandler = null, this.onMessageHandler = null, this.logEvents = [], this.isLogServiceStarted = !1;
-    const r = Or(e);
+    const r = Nr(e);
     this.firebaseDependencies = {
       app: e,
       appConfig: r,
@@ -2911,7 +2911,7 @@ class Nr {
  * limitations under the License.
  */
 const Mr = (t) => {
-  const e = new Nr(t.getProvider("app").getImmediate(), t.getProvider("installations-internal").getImmediate(), t.getProvider("analytics-internal"));
+  const e = new Or(t.getProvider("app").getImmediate(), t.getProvider("installations-internal").getImmediate(), t.getProvider("analytics-internal"));
   return self.addEventListener("push", (n) => {
     n.waitUntil(Ir(n, e));
   }), self.addEventListener("pushsubscriptionchange", (n) => {
@@ -4208,8 +4208,8 @@ function la(t) {
 function ua(t, e) {
   la(t), ca(e);
 }
-ua([{"revision":null,"url":"assets/index-CRFQ_YKH.css"},{"revision":null,"url":"assets/index-DcwBmLf_.js"},{"revision":null,"url":"assets/vendor_firebase-k7avh9Mj.js"},{"revision":null,"url":"assets/vendor-O8nsH46x.js"},{"revision":"2488cc8bbadc36f4f686ae4ae0a96932","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}] || []);
-const Ot = {
+ua([{"revision":null,"url":"assets/index-CRFQ_YKH.css"},{"revision":null,"url":"assets/index-DS9R39x5.js"},{"revision":null,"url":"assets/vendor_firebase-k7avh9Mj.js"},{"revision":null,"url":"assets/vendor-O8nsH46x.js"},{"revision":"f5b44fb3eef5170fd734ddda64a2a63b","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}] || []);
+const Nt = {
   apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
   authDomain: "mister-x-d6b59.firebaseapp.com",
   databaseURL: "https://mister-x-d6b59-default-rtdb.europe-west1.firebasedatabase.app",
@@ -4218,11 +4218,11 @@ const Ot = {
   messagingSenderId: "616391598963",
   appId: "1:616391598963:web:da07882b0f481d3000db06",
   measurementId: "G-W66SK677NG"
-}, ha = st(Ot);
+}, ha = st(Nt);
 xr(ha);
-Ot.databaseURL;
+Nt.databaseURL;
 async function fa(t) {
-  const e = await N("app-db", "ack-queue");
+  const e = await O("app-db", "ack-queue");
   await new Promise((n, s) => {
     const r = e.transaction("ack-queue", "readwrite"), a = r.objectStore("ack-queue"), i = Date.now() + Math.random();
     a.add({ key: i, entry: t, ts: Date.now() }, i), r.oncomplete = () => {
@@ -4233,7 +4233,7 @@ async function fa(t) {
   });
 }
 async function X() {
-  const t = await N("app-db", "ack-queue"), e = await new Promise((n, s) => {
+  const t = await O("app-db", "ack-queue"), e = await new Promise((n, s) => {
     const i = t.transaction("ack-queue", "readonly").objectStore("ack-queue").getAll();
     i.onsuccess = () => n(i.result || []), i.onerror = () => s(i.error);
   });
@@ -4243,7 +4243,7 @@ async function X() {
   }
   for (const n of e)
     try {
-      await Nt(n.entry), await new Promise((s, r) => {
+      await Ot(n.entry), await new Promise((s, r) => {
         const a = t.transaction("ack-queue", "readwrite");
         a.objectStore("ack-queue").delete(n.key), a.oncomplete = () => s(), a.onerror = () => r(a.error);
       });
@@ -4252,7 +4252,7 @@ async function X() {
     }
   t.close();
 }
-async function Nt(t) {
+async function Ot(t) {
   const e = new AbortController(), n = setTimeout(() => e.abort(), 15e3);
   try {
     const s = await fetch("https://axirbthvnznvhfagduyj.functions.supabase.co/rtdb-ack", {
@@ -4272,7 +4272,7 @@ async function Nt(t) {
 }
 async function da(t) {
   try {
-    const e = await N("app-db", "sw-logs"), n = e.transaction("sw-logs", "readwrite"), s = n.objectStore("sw-logs"), r = { msg: t, ts: Date.now() };
+    const e = await O("app-db", "sw-logs"), n = e.transaction("sw-logs", "readwrite"), s = n.objectStore("sw-logs"), r = { msg: t, ts: Date.now() };
     let a = r.ts;
     try {
       s.add(r, a);
@@ -4323,7 +4323,7 @@ self.addEventListener("message", (t) => {
   };
   t.data.type === "GET_SW_LOGS" && (async () => {
     try {
-      const n = await N("app-db", "sw-logs"), a = n.transaction("sw-logs", "readonly").objectStore("sw-logs").getAll();
+      const n = await O("app-db", "sw-logs"), a = n.transaction("sw-logs", "readonly").objectStore("sw-logs").getAll();
       a.onsuccess = async () => {
         const i = a.result || [];
         await e({ type: "SW_LOGS", logs: i }), n.close();
@@ -4335,13 +4335,13 @@ self.addEventListener("message", (t) => {
     }
   })(), t.data.type === "CLEAR_SW_LOGS" && (async () => {
     try {
-      const n = await N("app-db", "sw-logs"), s = n.transaction("sw-logs", "readwrite");
+      const n = await O("app-db", "sw-logs"), s = n.transaction("sw-logs", "readwrite");
       s.objectStore("sw-logs").clear(), s.oncomplete = () => n.close(), s.onerror = () => n.close();
     } catch {
     }
   })(), t && t.data && t.data.type === "SKIP_WAITING" && self.skipWaiting(), t.data.type === "PING" && (async () => await e({ type: "PONG", ts: Date.now() }))();
 });
-function N(t, e) {
+function O(t, e) {
   return new Promise((n, s) => {
     const r = indexedDB.open(t);
     r.onupgradeneeded = () => {
@@ -4369,7 +4369,7 @@ function pa(t) {
 }
 async function ze() {
   try {
-    const t = await N("app-db", "settings");
+    const t = await O("app-db", "settings");
     return await new Promise((e) => {
       const r = t.transaction("settings", "readonly").objectStore("settings").get("deviceName");
       r.onsuccess = () => {
@@ -4406,7 +4406,7 @@ async function Ge(t, e) {
   const n = { messageId: t, deviceName: e, timestamp: Date.now() };
   p("[SW] ACK payload:", n);
   try {
-    await Nt(n), p("[SW] ack ok");
+    await Ot(n), p("[SW] ack ok");
   } catch (s) {
     p("[SW] ack failed, queuing:", s);
     try {
@@ -4428,6 +4428,11 @@ self.addEventListener("activate", (t) => {
     } catch {
     }
   })());
+});
+self.addEventListener("message", (t) => {
+  var e;
+  ((e = t.data) == null ? void 0 : e.type) === "SET_DEVICE_NAME" && t.data.value && saveDeviceName(t.data.value).catch(() => {
+  });
 });
 self.addEventListener("push", (t) => {
   t.waitUntil((async () => {
@@ -4510,7 +4515,7 @@ self.addEventListener("sync", (t) => {
   t.tag === "flush-acks" && t.waitUntil(X());
 });
 async function ma(t, e) {
-  const n = await N("app-db", "sw-flags");
+  const n = await O("app-db", "sw-flags");
   await new Promise((s, r) => {
     const a = n.transaction("sw-flags", "readwrite");
     a.objectStore("sw-flags").put(e, t), a.oncomplete = () => {
