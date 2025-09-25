@@ -102,9 +102,9 @@ const We = function(t) {
     this.init_();
     const n = e ? this.byteToCharMapWebSafe_ : this.byteToCharMap_, s = [];
     for (let r = 0; r < t.length; r += 3) {
-      const a = t[r], i = r + 1 < t.length, o = i ? t[r + 1] : 0, l = r + 2 < t.length, c = l ? t[r + 2] : 0, f = a >> 2, h = (a & 3) << 4 | o >> 4;
+      const a = t[r], i = r + 1 < t.length, o = i ? t[r + 1] : 0, l = r + 2 < t.length, c = l ? t[r + 2] : 0, h = a >> 2, f = (a & 3) << 4 | o >> 4;
       let m = (o & 15) << 2 | c >> 6, w = c & 63;
-      l || (w = 64, i || (m = 64)), s.push(n[f], n[h], n[m], n[w]);
+      l || (w = 64, i || (m = 64)), s.push(n[h], n[f], n[m], n[w]);
     }
     return s.join("");
   },
@@ -153,14 +153,14 @@ const We = function(t) {
       ++r;
       const c = r < t.length ? n[t.charAt(r)] : 64;
       ++r;
-      const h = r < t.length ? n[t.charAt(r)] : 64;
-      if (++r, a == null || o == null || c == null || h == null)
+      const f = r < t.length ? n[t.charAt(r)] : 64;
+      if (++r, a == null || o == null || c == null || f == null)
         throw new Mt();
       const m = a << 2 | o >> 4;
       if (s.push(m), c !== 64) {
         const w = o << 4 & 240 | c >> 2;
-        if (s.push(w), h !== 64) {
-          const vt = c << 6 & 192 | h;
+        if (s.push(w), f !== 64) {
+          const vt = c << 6 & 192 | f;
           s.push(vt);
         }
       }
@@ -446,7 +446,7 @@ class A {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const T = "[DEFAULT]";
+const k = "[DEFAULT]";
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -515,7 +515,7 @@ class qt {
     if (this.component = e, !!this.shouldAutoInitialize()) {
       if (zt(e))
         try {
-          this.getOrInitializeService({ instanceIdentifier: T });
+          this.getOrInitializeService({ instanceIdentifier: k });
         } catch {
         }
       for (const [n, s] of this.instancesDeferred.entries()) {
@@ -530,7 +530,7 @@ class qt {
       }
     }
   }
-  clearInstance(e = T) {
+  clearInstance(e = k) {
     this.instancesDeferred.delete(e), this.instancesOptions.delete(e), this.instances.delete(e);
   }
   // app.delete() will call this method on every provider to delete the services
@@ -545,10 +545,10 @@ class qt {
   isComponentSet() {
     return this.component != null;
   }
-  isInitialized(e = T) {
+  isInitialized(e = k) {
     return this.instances.has(e);
   }
-  getOptions(e = T) {
+  getOptions(e = k) {
     return this.instancesOptions.get(e) || {};
   }
   initialize(e = {}) {
@@ -608,15 +608,15 @@ class qt {
       }
     return s || null;
   }
-  normalizeInstanceIdentifier(e = T) {
-    return this.component ? this.component.multipleInstances ? e : T : e;
+  normalizeInstanceIdentifier(e = k) {
+    return this.component ? this.component.multipleInstances ? e : k : e;
   }
   shouldAutoInitialize() {
     return !!this.component && this.component.instantiationMode !== "EXPLICIT";
   }
 }
 function Vt(t) {
-  return t === T ? void 0 : t;
+  return t === k ? void 0 : t;
 }
 function zt(t) {
   return t.instantiationMode === "EAGER";
@@ -970,7 +970,7 @@ const he = "@firebase/app", Oe = "0.14.1";
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const I = new Zt("@firebase/app"), dn = "@firebase/app-compat", pn = "@firebase/analytics-compat", gn = "@firebase/analytics", mn = "@firebase/app-check-compat", wn = "@firebase/app-check", bn = "@firebase/auth", yn = "@firebase/auth-compat", _n = "@firebase/database", Sn = "@firebase/data-connect", In = "@firebase/database-compat", En = "@firebase/functions", Cn = "@firebase/functions-compat", Tn = "@firebase/installations", kn = "@firebase/installations-compat", An = "@firebase/messaging", Dn = "@firebase/messaging-compat", Rn = "@firebase/performance", vn = "@firebase/performance-compat", Nn = "@firebase/remote-config", On = "@firebase/remote-config-compat", Mn = "@firebase/storage", Pn = "@firebase/storage-compat", Ln = "@firebase/firestore", Bn = "@firebase/ai", xn = "@firebase/firestore-compat", Un = "firebase";
+const I = new Zt("@firebase/app"), dn = "@firebase/app-compat", pn = "@firebase/analytics-compat", gn = "@firebase/analytics", mn = "@firebase/app-check-compat", wn = "@firebase/app-check", bn = "@firebase/auth", yn = "@firebase/auth-compat", _n = "@firebase/database", Sn = "@firebase/data-connect", In = "@firebase/database-compat", En = "@firebase/functions", Cn = "@firebase/functions-compat", kn = "@firebase/installations", Tn = "@firebase/installations-compat", An = "@firebase/messaging", Dn = "@firebase/messaging-compat", Rn = "@firebase/performance", vn = "@firebase/performance-compat", Nn = "@firebase/remote-config", On = "@firebase/remote-config-compat", Mn = "@firebase/storage", Pn = "@firebase/storage-compat", Ln = "@firebase/firestore", Bn = "@firebase/ai", xn = "@firebase/firestore-compat", Un = "firebase";
 /**
  * @license
  * Copyright 2019 Google LLC
@@ -1001,8 +1001,8 @@ const fe = "[DEFAULT]", $n = {
   [In]: "fire-rtdb-compat",
   [En]: "fire-fn",
   [Cn]: "fire-fn-compat",
-  [Tn]: "fire-iid",
-  [kn]: "fire-iid-compat",
+  [kn]: "fire-iid",
+  [Tn]: "fire-iid-compat",
   [An]: "fire-fcm",
   [Dn]: "fire-fcm-compat",
   [Rn]: "fire-perf",
@@ -1737,14 +1737,14 @@ function gs(t, e) {
   const n = ms();
   n && n.postMessage({ key: t, fid: e }), ws();
 }
-let k = null;
+let T = null;
 function ms() {
-  return !k && "BroadcastChannel" in self && (k = new BroadcastChannel("[Firebase] FID Change"), k.onmessage = (t) => {
+  return !T && "BroadcastChannel" in self && (T = new BroadcastChannel("[Firebase] FID Change"), T.onmessage = (t) => {
     gt(t.data.key, t.data.fid);
-  }), k;
+  }), T;
 }
 function ws() {
-  dt.size === 0 && k && (k.close(), k = null);
+  dt.size === 0 && T && (T.close(), T = null);
 }
 /**
  * @license
@@ -1902,8 +1902,8 @@ function Cs(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-async function Ts({ appConfig: t, heartbeatServiceProvider: e }, n) {
-  const s = ks(t, n), r = os(t, n), a = e.getImmediate({
+async function ks({ appConfig: t, heartbeatServiceProvider: e }, n) {
+  const s = Ts(t, n), r = os(t, n), a = e.getImmediate({
     optional: !0
   });
   if (a) {
@@ -1926,7 +1926,7 @@ async function Ts({ appConfig: t, heartbeatServiceProvider: e }, n) {
   } else
     throw await lt("Generate Auth Token", l);
 }
-function ks(t, { fid: e }) {
+function Ts(t, { fid: e }) {
   return `${ot(t)}/${e}/authTokens:generate`;
 }
 /**
@@ -1996,7 +1996,7 @@ function Ue(t) {
 }
 async function Ds(t, e) {
   try {
-    const n = await Ts(t, e), s = {
+    const n = await ks(t, e), s = {
       ...e,
       authToken: n
     };
@@ -2418,14 +2418,14 @@ const Qs = {
  * limitations under the License.
  */
 async function Zs(t, e) {
-  const n = await ke(t), s = Et(e), r = {
+  const n = await Te(t), s = Et(e), r = {
     method: "POST",
     headers: n,
     body: JSON.stringify(s)
   };
   let a;
   try {
-    a = await (await fetch(Te(t.appConfig), r)).json();
+    a = await (await fetch(ke(t.appConfig), r)).json();
   } catch (i) {
     throw g.create("token-subscribe-failed", {
       errorInfo: i == null ? void 0 : i.toString()
@@ -2445,14 +2445,14 @@ async function Zs(t, e) {
   return a.token;
 }
 async function er(t, e) {
-  const n = await ke(t), s = Et(e.subscriptionOptions), r = {
+  const n = await Te(t), s = Et(e.subscriptionOptions), r = {
     method: "PATCH",
     headers: n,
     body: JSON.stringify(s)
   };
   let a;
   try {
-    a = await (await fetch(`${Te(t.appConfig)}/${e.token}`, r)).json();
+    a = await (await fetch(`${ke(t.appConfig)}/${e.token}`, r)).json();
   } catch (i) {
     throw g.create("token-update-failed", {
       errorInfo: i == null ? void 0 : i.toString()
@@ -2474,10 +2474,10 @@ async function er(t, e) {
 async function It(t, e) {
   const s = {
     method: "DELETE",
-    headers: await ke(t)
+    headers: await Te(t)
   };
   try {
-    const a = await (await fetch(`${Te(t.appConfig)}/${e}`, s)).json();
+    const a = await (await fetch(`${ke(t.appConfig)}/${e}`, s)).json();
     if (a.error) {
       const i = a.error.message;
       throw g.create("token-unsubscribe-failed", {
@@ -2490,10 +2490,10 @@ async function It(t, e) {
     });
   }
 }
-function Te({ projectId: t }) {
+function ke({ projectId: t }) {
   return `${js}/projects/${t}/registrations`;
 }
-async function ke({ appConfig: t, installations: e }) {
+async function Te({ appConfig: t, installations: e }) {
   const n = await e.getToken();
   return new Headers({
     "Content-Type": "application/json",
@@ -2754,7 +2754,7 @@ async function br(t) {
       return;
   } else return;
   t.stopImmediatePropagation(), t.notification.close();
-  const n = Tr(e);
+  const n = kr(e);
   if (!n)
     return;
   const s = new URL(n, self.location.href), r = new URL(self.location.origin);
@@ -2815,7 +2815,7 @@ function Cr(t) {
     t
   );
 }
-function Tr(t) {
+function kr(t) {
   var n, s;
   const e = ((n = t.fcmOptions) == null ? void 0 : n.link) ?? ((s = t.notification) == null ? void 0 : s.click_action);
   return e || (ur(t.data) ? self.location.origin : null);
@@ -2836,7 +2836,7 @@ function Tr(t) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-function kr(t) {
+function Tr(t) {
   if (!t || !t.options)
     throw ae("App Configuration Object");
   if (!t.name)
@@ -2882,7 +2882,7 @@ function ae(t) {
 class Ar {
   constructor(e, n, s) {
     this.deliveryMetricsExportedToBigQueryEnabled = !1, this.onBackgroundMessageHandler = null, this.onMessageHandler = null, this.logEvents = [], this.isLogServiceStarted = !1;
-    const r = kr(e);
+    const r = Tr(e);
     this.firebaseDependencies = {
       app: e,
       appConfig: r,
@@ -3331,7 +3331,7 @@ class Jr {
     const a = await this._ensureResponseSafeToCache(n);
     if (!a)
       return !1;
-    const { cacheName: i, matchOptions: o } = this._strategy, l = await self.caches.open(i), c = this.hasCallback("cacheDidUpdate"), f = c ? await Wr(
+    const { cacheName: i, matchOptions: o } = this._strategy, l = await self.caches.open(i), c = this.hasCallback("cacheDidUpdate"), h = c ? await Wr(
       // TODO(philipwalton): the `__WB_REVISION__` param is a precaching
       // feature. Consider into ways to only add this behavior if using
       // precaching.
@@ -3342,14 +3342,14 @@ class Jr {
     ) : null;
     try {
       await l.put(r, c ? a.clone() : a);
-    } catch (h) {
-      if (h instanceof Error)
-        throw h.name === "QuotaExceededError" && await zr(), h;
+    } catch (f) {
+      if (f instanceof Error)
+        throw f.name === "QuotaExceededError" && await zr(), f;
     }
-    for (const h of this.iterateCallbacks("cacheDidUpdate"))
-      await h({
+    for (const f of this.iterateCallbacks("cacheDidUpdate"))
+      await f({
         cacheName: i,
-        oldResponse: f,
+        oldResponse: h,
         newResponse: a.clone(),
         request: r,
         event: this.event
@@ -3917,12 +3917,12 @@ This is generally NOT safe. Learn more at https://bit.ly/wb-precache`;
   }
 }
 let oe;
-const Tt = () => (oe || (oe = new Yr()), oe);
+const kt = () => (oe || (oe = new Yr()), oe);
 try {
   self["workbox:routing:7.2.0"] && _();
 } catch {
 }
-const kt = "GET", W = (t) => t && typeof t == "object" ? t : { handle: t };
+const Tt = "GET", W = (t) => t && typeof t == "object" ? t : { handle: t };
 class x {
   /**
    * Constructor for Route class.
@@ -3935,7 +3935,7 @@ class x {
    * @param {string} [method='GET'] The HTTP method to match the Route
    * against.
    */
-  constructor(e, n, s = kt) {
+  constructor(e, n, s = Tt) {
     this.handler = W(n), this.match = e, this.method = s;
   }
   /**
@@ -4058,20 +4058,20 @@ class Zr {
     let c;
     try {
       c = o.handle({ url: s, request: e, event: n, params: a });
-    } catch (h) {
-      c = Promise.reject(h);
+    } catch (f) {
+      c = Promise.reject(f);
     }
-    const f = i && i.catchHandler;
-    return c instanceof Promise && (this._catchHandler || f) && (c = c.catch(async (h) => {
-      if (f)
+    const h = i && i.catchHandler;
+    return c instanceof Promise && (this._catchHandler || h) && (c = c.catch(async (f) => {
+      if (h)
         try {
-          return await f.handle({ url: s, request: e, event: n, params: a });
+          return await h.handle({ url: s, request: e, event: n, params: a });
         } catch (m) {
-          m instanceof Error && (h = m);
+          m instanceof Error && (f = m);
         }
       if (this._catchHandler)
         return this._catchHandler.handle({ url: s, request: e, event: n });
-      throw h;
+      throw f;
     })), c;
   }
   /**
@@ -4114,7 +4114,7 @@ class Zr {
    * @param {string} [method='GET'] The HTTP method to associate with this
    * default handler. Each method has its own default.
    */
-  setDefaultHandler(e, n = kt) {
+  setDefaultHandler(e, n = Tt) {
     this._defaultHandlerMap.set(n, W(e));
   }
   /**
@@ -4228,16 +4228,16 @@ class ra extends x {
   }
 }
 function aa(t) {
-  const e = Tt(), n = new ra(e, t);
+  const e = kt(), n = new ra(e, t);
   ta(n);
 }
 function ia(t) {
-  Tt().precache(t);
+  kt().precache(t);
 }
 function oa(t, e) {
   ia(t), aa(e);
 }
-oa([{"revision":null,"url":"assets/index-14yzl3zN.js"},{"revision":null,"url":"assets/index-CRFQ_YKH.css"},{"revision":null,"url":"assets/vendor_firebase-k7avh9Mj.js"},{"revision":null,"url":"assets/vendor-O8nsH46x.js"},{"revision":"76952bd18adb3d5adfef823af4b1c425","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}] || []);
+oa([{"revision":null,"url":"assets/index-CRFQ_YKH.css"},{"revision":null,"url":"assets/index-CxogeRMW.js"},{"revision":null,"url":"assets/vendor_firebase-k7avh9Mj.js"},{"revision":null,"url":"assets/vendor-O8nsH46x.js"},{"revision":"2848cd7c35dfe4e15b30d7fd51197a92","url":"index.html"},{"revision":"d4bd41f8dd12f1517340d931428983fb","url":"registerSW.js"},{"revision":"04fb41277b2d80dfa79441653613f291","url":"favicon.ico"},{"revision":"cf5eaff918a960ce531aa06af4f66583","url":"icons/android-chrome-192x192.png"},{"revision":"b3a2b02ff54274e88cba679738ae3b04","url":"icons/android-chrome-512x512.png"},{"revision":"fe78c2de6cbe40fab54d42c53c641a48","url":"manifest.webmanifest"}] || []);
 const At = {
   apiKey: "AIzaSyC-jTMiDjHNTC6cvSKUU44mVbWwT-ToLxQ",
   authDomain: "mister-x-d6b59.firebaseapp.com",
@@ -4301,26 +4301,26 @@ async function Dt(t) {
 self.addEventListener("message", async (t) => {
   var e;
   if (((e = t == null ? void 0 : t.data) == null ? void 0 : e.type) === "PUSH") {
-    const s = (t.data.payload || {}).data || {}, r = s.title ?? "Neue Nachricht", a = s.body ?? "", i = s.url ?? "/Mister-X/", o = s.messageId || String(Date.now()), l = s.token || null, f = `${s.tag || "mrx"}-${o}`, h = t.data.userAgent || t.source && t.source.userAgent || "";
-    if (fa(h || navigator.userAgent)) {
+    const s = (t.data.payload || {}).data || {}, r = s.title ?? "Neue Nachricht", a = s.body ?? "", i = s.url ?? "/Mister-X/", o = s.messageId || String(Date.now()), l = s.token || null, h = `${s.tag || "mrx"}-${o}`, f = t.data.userAgent || t.source && t.source.userAgent || "";
+    if (fa(f || navigator.userAgent)) {
       const m = {
         body: a,
         icon: "/Mister-X/icons/android-chrome-192x192.png",
         badge: "/Mister-X/icons/Mister_X_Badge.png",
-        tag: fgTag,
+        tag: h,
         renotify: !0,
         silent: !0,
         requireInteraction: !1,
         vibrate: s.vibrate ?? [200, 100, 200],
         timestamp: s.timestamp ? Number(s.timestamp) : Date.now(),
-        data: { url: i, messageId: o, tag: f, fg: !0 }
+        data: { url: i, messageId: o, tag: h, fg: !0 }
       };
       try {
         await self.registration.showNotification(r, m);
       } catch (w) {
         p("[SW] showNotification (fg) failed", w);
       }
-      await new Promise((w) => setTimeout(w, 900)), (await self.registration.getNotifications({ tag: fgTag })).forEach((w) => w.close());
+      await new Promise((w) => setTimeout(w, 900)), (await self.registration.getNotifications({ tag: h })).forEach((w) => w.close());
     }
     try {
       await Rt(o, l);
@@ -4492,15 +4492,15 @@ Mr(la, async (t) => {
   };
   try {
     await self.registration.showNotification(n, c);
-  } catch (f) {
-    p("[SW] showNotification failed", f);
+  } catch (h) {
+    p("[SW] showNotification failed", h);
   }
   da(l, { tries: 10, intervalMs: 100 }).catch(() => {
   });
   try {
     await Rt(a, i);
-  } catch (f) {
-    p("[SW] markDelivered (bg) failed:", f);
+  } catch (h) {
+    p("[SW] markDelivered (bg) failed:", h);
   }
 });
 self.addEventListener("notificationclick", (t) => {
