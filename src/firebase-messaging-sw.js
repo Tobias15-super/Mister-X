@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { initializeApp } from 'firebase/app';
-import { getMessaging } from 'firebase/messaging/sw';
+import { getMessaging, onBackgroundMessage} from 'firebase/messaging/sw';
 import { precacheAndRoute } from 'workbox-precaching';
 
 // Workbox: damit Icons offline/schnell verfügbar sind
@@ -19,11 +19,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-getMessaging(app); // Initialisiert FCM im SW-Kontext (keinen Listener hier registrieren)
+const messaging = getMessaging(app);
 
 // --- Helpers ---
 const RTDB_BASE = firebaseConfig.databaseURL;
-const token = d.token ?? null;
 
 // --- ACK-Queue (IndexedDB) ------------------------------------
 async function queueAck(entry) {
@@ -321,84 +320,45 @@ self.addEventListener('activate', (event) => {
 
 // --- Push-Handler ---
 
-self.addEventListener('push', (event) => {
-  event.waitUntil((async () => {
-    // Payload robust parsen
-    try { await flushQueuedAcks(); } catch {}
-    const payload = event.data ? (() => { try { return event.data.json(); } catch { return {}; } })() : {};
-    const n = payload.notification ?? {};
-    const d = payload.data ?? payload ?? {};
 
-    const title = n.title ?? d.title ?? 'Neue Nachricht';
-    const body = n.body ?? d.body ?? '';
-    const url = d.url ?? n.click_action ?? '/Mister-X/';
-    const messageId = d.messageId ?? d.id ?? n.tag ?? String(Date.now());
-    const tagBase = d.tag ?? 'mrx';
+onBackgroundMessage(messaging, async (payload) => { // NEW
+  try { await flushQueuedAcks(); } catch {}
 
-    // Sichtbarer Client?
-    const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const visibleClient = windows.find((w) => w.visibilityState === 'visible');
+  const d = payload?.data ?? {};
+  const title = d.title ?? 'Neue Nachricht';
+  const body  = d.body  ?? '';
+  const url   = d.url   ?? '/Mister-X/';
+  const messageId = d.messageId || String(Date.now());
+  const token = d.token || null;
+  const tagBase = d.tag || 'mrx';
+  const bgTag = `${tagBase}-${messageId}`;
 
-    // Safari/iOS? -> muss sichtbar präsentiert werden
-    const ua = (self.navigator && self.navigator.userAgent) ? self.navigator.userAgent : '';
-    const mustShow = mustPresentOnThisPlatform(ua);
+  // Anzeige (Background)
+  const opts = {
+    body,
+    icon:  '/Mister-X/icons/android-chrome-192x192.png',
+    badge: '/Mister-X/icons/Mister_X_Badge.png',
+    tag: bgTag,
+    renotify: true,
+    silent: d.silent !== undefined ? !!d.silent : false,
+    requireInteraction: d.requireInteraction ?? true,
+    vibrate: d.vibrate ?? [200, 100, 200],
+    timestamp: d.timestamp ? Number(d.timestamp) : Date.now(),
+    data: { url, messageId, tag: bgTag, fg: false }
+  };
 
-    if (visibleClient) {
-      // Seite informieren (UI-Update etc.)
-      try { visibleClient.postMessage({ type: 'PUSH', payload: d }); } catch {}
+  try { await self.registration.showNotification(title, opts); } catch (e) {
+    swLog('[SW] showNotification failed', e);
+  }
 
-      // *** IMMER ACKEN – auch ohne OS-Banner (Android/Chrome) ***
-      try { await markDelivered(messageId, token); }
-      catch (e) { swLog('[SW] markDelivered (fg) failed:', e); }
+  // Best-effort Sichtbarkeit checken (blockiert nicht)
+  safeWaitForVisible(bgTag, { tries: 10, intervalMs: 100 }).catch(()=>{});
 
-      // Nur Safari/iOS: kurze, lautlose Sichtbarkeits-Noti
-      if (mustShow) {
-        const fgTag = `${tagBase}-fg`;
-        const opts = {
-          body,
-          icon: '/Mister-X/icons/android-chrome-192x192.png',
-          badge: '/Mister-X/icons/Mister_X_Badge.png',
-          tag: fgTag,
-          renotify: true,
-          silent: true,
-          requireInteraction: false,
-          timestamp: d.timestamp ?? Date.now(),
-          data: { url, messageId, tag: fgTag, fg: true }
-        };
-        await self.registration.showNotification(title, opts);
-        // Sichtbarkeit best-effort abwarten und wieder schließen
-        await waitUntilNotificationVisible(fgTag, { tries: 10, intervalMs: 50 }).catch(() => {});
-        await new Promise(r => setTimeout(r, 900));
-        (await self.registration.getNotifications({ tag: fgTag })).forEach(n => n.close());
-      }
-      return; // Foreground fertig
-    }
-
-    // --- BACKGROUND ---
-    const bgTag = `${tagBase}-${messageId}`;
-    const opts = {
-      body,
-      icon: '/Mister-X/icons/android-chrome-192x192.png',
-      badge: '/Mister-X/icons/Mister_X_Badge.png',
-      tag: bgTag,
-      renotify: true,
-      silent: d.silent !== undefined ? !!d.silent : false,
-      requireInteraction: d.requireInteraction ?? true,
-      vibrate: d.vibrate ?? [200, 100, 200],
-      timestamp: d.timestamp ?? Date.now(),
-      data: { url, messageId, tag: bgTag, fg: false }
-    };
-
-    await self.registration.showNotification(title, opts);
-
-    // Sichtbarkeit nur best-effort, nicht blockierend
-    safeWaitForVisible(bgTag, { tries: 10, intervalMs: 100 }).catch(() => {});
-
-    // ACK im Hintergrund ebenfalls IMMER
-    try { await markDelivered(messageId, token); }
-    catch (e) { swLog('[SW] markDelivered (bg) failed:', e); }
-  })());
+  // ACK IMMER (Background)
+  try { await markDelivered(messageId, token); }
+  catch (e) { swLog('[SW] markDelivered (bg) failed:', e); }
 });
+
 
 
 // Klickverhalten
@@ -417,9 +377,6 @@ self.addEventListener('notificationclick', (event) => {
   })());
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
-});
 
 self.addEventListener('sync', (event) => {
   if (event.tag === 'flush-acks') {

@@ -106,8 +106,15 @@ serve(async (req) => {
       });
     }
 
+    const scopes = [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/firebase.database",
+    ];
+    const accessToken = await getAccessToken(scopes);
+
+
     // Token → GeräteName suchen
-    const tokensUrl = `${rtdbBase}/tokens.json?orderBy=%22$token%22&equalTo=%22${token}%22`;
+    const tokensUrl = `${rtdbBase}/tokens.json?access_token=${encodeURIComponent(accessToken)}`;
     const tokensRes = await fetch(tokensUrl, { headers: { "Authorization": `Bearer ${accessToken}` } });
     if (!tokensRes.ok) {
       return new Response(JSON.stringify({ error: "Token lookup failed", status: tokensRes.status }), {
@@ -115,21 +122,18 @@ serve(async (req) => {
       });
     }
     const tokensMap = await tokensRes.json();
-    const deviceNames = Object.keys(tokensMap);
+    const deviceNames = Object.entries(tokensMap)
+      .filter(([name, val]) => val === token)
+      .map(([name]) => name);
+
     if (deviceNames.length === 0) {
       return new Response(JSON.stringify({ error: "No device found for token" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const deviceName = deviceNames[0]; // Falls mehrere, nimm das erste
+    const deviceName = deviceNames[0];
     const safeDevice = sanitizeKey(deviceName);
 
-    
-    const scopes = [
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/firebase.database",
-    ];
-    const accessToken = await getAccessToken(scopes);
 
     const path = `/notifications/${encodeURIComponent(messageId)}/recipients/${encodeURIComponent(safeDevice)}.json`;
     const urlWithQuery = `${rtdbBase}${path}?access_token=${encodeURIComponent(accessToken)}`;
