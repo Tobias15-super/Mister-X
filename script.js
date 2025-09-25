@@ -4140,7 +4140,10 @@ function _handleInAppMessage(data) {
     if (document.visibilityState === 'visible') {
       const title = data && data.title ? data.title : 'Nachricht';
       const body  = data && data.body  ? data.body  : '';
-      alert(`${title}\n${body}`);
+
+      setTimeout(() => {
+        alert(`${title}\n${body}`);
+      }, 1000); // 1 Sekunde warten, damit Notification sichtbar war
     }
   } catch (e) {
     log('handleInAppMessage error:', e);
