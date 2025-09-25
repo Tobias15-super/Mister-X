@@ -477,10 +477,18 @@ async function openDbEnsureStore(dbName, storeName) {
 async function askForDeviceIdAndPhone() {
   // --- 1) Device-ID sicherstellen ---
   let id = localStorage.getItem("deviceId");
-  while (!id || id.trim() === "") {
-    id = prompt("Bitte gib deinen Namen ein");
+  while (
+    !id ||
+    id.trim() === "" ||
+    !isValidFirebaseKey(id.trim())
+  ) {
+    id = prompt("Bitte gib deinen Namen ein (mind. 2 Zeichen, keine Sonderzeichen wie . # $ [ ] /)");
     if (id === null) {
-      alert("Du musst einen Namen eingeben, um fortzufahren.");
+      alert("Du musst einen gültigen Namen eingeben, um fortzufahren.");
+    }
+    if (id && !isValidFirebaseKey(id.trim())) {
+      alert("Ungültiger Name. Bitte verwende mindestens 2 Zeichen und keine . # $ [ ] /");
+      id = "";
     }
   }
   id = id.trim();
@@ -510,9 +518,8 @@ async function askForDeviceIdAndPhone() {
   let mustAskTel = false;
 
   if (remote.allowSmsFallback === null) {
-    // Serverseitiger Reset/Deletion -> unbedingt erneut fragen (lokales noTel ignorieren)
     mustAskTel = true;
-    noTel = false;  // lokales Opt-out nicht mehr respektieren, weil Server neu entscheiden lässt
+    noTel = false;
   } else if (remote.allowSmsFallback === false) {
     mustAskTel = false;
   } else if (remote.allowSmsFallback === true && !remote.tel) {
@@ -522,17 +529,15 @@ async function askForDeviceIdAndPhone() {
   // Wenn der Server bereits eine gültige Nummer hat, synchronisiere lokal & fertig
   if (remote.allowSmsFallback === true && remote.tel) {
     saveSmsPrefs({ tel: remote.tel, allowSmsFallback: true, noTel: false });
-    await saveTelToRTDB(id, remote.tel, true); // optional: sicherstellen, dass alles konsistent ist
+    await saveTelToRTDB(id, remote.tel, true);
     return;
   }
 
   // --- 5) Nur fragen, wenn notwendig und nicht schon bewusst abgelehnt (außer bei Reset) ---
   if ((mustAskTel && !noTel) || (mustAskTel && remote.allowSmsFallback === null)) {
-    // Telefonnummer nur abfragen, wenn sie fehlt oder ungültig ist
     while (!tel || !isValidAtE164(tel)) {
       let input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest.");
       if (input === null || input.trim() === "") {
-        // Nutzer möchte keine Nummer angeben
         tel = null;
         noTel = true;
         break;
@@ -545,9 +550,19 @@ async function askForDeviceIdAndPhone() {
   }
 
   // --- 6) Speichern (lokal + Server) ---
-  const allow = !!tel; // Erlaubnis = Nummer vorhanden
+  const allow = !!tel;
   saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
   await saveTelToRTDB(id, tel, allow);
+}
+
+// Hilfsfunktion: Firebase-Key-Validierung
+function isValidFirebaseKey(key) {
+  // Mindestens 2 Zeichen, keine . # $ [ ] /
+  return (
+    typeof key === "string" &&
+    key.length >= 2 &&
+    !/[.#$/\[\]/]/.test(key)
+  );
 }
 
 
@@ -3396,7 +3411,7 @@ if (localStorage.getItem("activeView") === "misterx") {
       // 3) Nachricht je nach Pfad bestimmen
       const isLocationPhase = (duration === durationInput && (durationInput2 ?? 0) > 0);
       const message = isLocationPhase
-        ? "Zeit abgelaufen, dein Standort wird einmalig geteilt.\nTippe auf OK, um fortzufahren."
+        ? "Zeit abgelaufen, dein Standort wird einmalig geteilt.\nTippe auf OK (bzw. schließen), um fortzufahren."
         : "Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen.\n(Der Timer bleibt bis zu deinem nächsten Posten deaktiviert)";
 
       // 4) Alert auf *beiden* Geräten anzeigen
@@ -4217,6 +4232,11 @@ async function startScript() {
         navigator.serviceWorker.addEventListener('message', (event) => {
           if (event && event.data && event.data.type === 'PUSH') {
             const payload = event.data.payload || {};
+             navigator.serviceWorker.controller?.postMessage({
+              type: 'PUSH',
+              payload,
+              userAgent: navigator.userAgent
+            });
             _handleInAppMessage(payload);
             log('[Page] SW-Message empfangen', payload);
           }
@@ -4234,6 +4254,11 @@ async function startScript() {
         _lastMsgId = data.messageId || null;
 
         // Deine bestehende In‑App‑UI
+        navigator.serviceWorker.controller?.postMessage({
+          type: 'PUSH',
+          payload,
+          userAgent: navigator.userAgent
+        });
         _handleInAppMessage(data);
         log('[Page] FCM onMessage empfangen', payload);
       });

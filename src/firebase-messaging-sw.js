@@ -93,6 +93,47 @@ async function sendAckNow(payload) {
 }
 
 
+self.addEventListener('message', async (event) => {
+  if (event?.data?.type === 'PUSH') {
+    const payload = event.data.payload || {};
+    const d = payload.data || {};
+    const title = d.title ?? 'Neue Nachricht';
+    const body  = d.body  ?? '';
+    const url   = d.url   ?? '/Mister-X/';
+    const messageId = d.messageId || String(Date.now());
+    const token = d.token || null;
+    const tagBase = d.tag || 'mrx';
+    const bgTag = `${tagBase}-${messageId}`;
+
+    // Prüfe, ob iOS/Safari (mustPresentOnThisPlatform)
+    const ua = event.data.userAgent || (event.source && event.source.userAgent) || '';
+    if (mustPresentOnThisPlatform(ua || navigator.userAgent)) {
+      // Zeige Notification auch im Vordergrund
+      const opts = {
+        body,
+        icon:  '/Mister-X/icons/android-chrome-192x192.png',
+        badge: '/Mister-X/icons/Mister_X_Badge.png',
+        tag: bgTag,
+        renotify: true,
+        silent: true,
+        requireInteraction: false,
+        vibrate: d.vibrate ?? [200, 100, 200],
+        timestamp: d.timestamp ? Number(d.timestamp) : Date.now(),
+        data: { url, messageId, tag: bgTag, fg: true }
+      };
+      try { await self.registration.showNotification(title, opts); } catch (e) {
+        swLog('[SW] showNotification (fg) failed', e);
+      }
+      await new Promise(r => setTimeout(r, 900));
+      (await self.registration.getNotifications({ tag: bgTag })).forEach(n => n.close());
+    }
+    // ACK wie gehabt
+    try { await markDelivered(messageId, token); }
+    catch (e) { swLog('[SW] markDelivered (fg) failed:', e); }
+  }
+});
+
+
 
 // --- SW-Log-Pufferung und Übertragung an die Seite ---
 
