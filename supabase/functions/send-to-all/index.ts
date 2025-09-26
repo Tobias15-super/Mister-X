@@ -15,7 +15,7 @@ const RTDB_BASE_FALLBACK = Deno.env.get("RTDB_BASE") ?? "";
 const FIREBASE_PROJECT_ID = Deno.env.get("FIREBASE_PROJECT_ID")!;
 const GCP_SA_JSON = Deno.env.get("GCP_SA_JSON")!;
 
-const FIVE_MIN = 5 * 60 * 1000;
+const FIVE_MIN = 60 * 60 * 1000; // 60 Minuten
 const OAUTH_SCOPES = {
   FCM: ["https://www.googleapis.com/auth/firebase.messaging"],
   RTDB: [

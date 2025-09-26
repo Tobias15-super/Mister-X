@@ -42,6 +42,11 @@ const currentTeamName = 'Mein Team'; // Teamname
 
 let postenLayer, historyLayer, userLayer;
 
+const LS_AGENT_REQ_ENABLED = "agentReqEnabled";
+
+// Firebase-Setting-Path
+const AGENT_REQ_SETTING_PATH = "settings/agentReqEnabled";
+
 
 
 
@@ -1439,10 +1444,7 @@ function ensureTeamListeners() {
     listeners.teams = { ref: teamsRef, handler };
   }
 }
-function removeTeamListeners() {
-  if (listeners.deviceTeam) { off(listeners.deviceTeam.ref, 'value', listeners.deviceTeam.handler); listeners.deviceTeam = null; }
-  if (listeners.teams) { off(listeners.teams.ref, 'value', listeners.teams.handler); listeners.teams = null; }
-}
+
 
 // --- Rendering ---
 
@@ -3411,7 +3413,7 @@ if (localStorage.getItem("activeView") === "misterx") {
       // 3) Nachricht je nach Pfad bestimmen
       const isLocationPhase = (duration === durationInput && (durationInput2 ?? 0) > 0);
       const message = isLocationPhase
-        ? "Zeit abgelaufen, dein Standort wird einmalig geteilt.\nTippe auf OK (bzw. schließen), um fortzufahren."
+        ? "Zeit abgelaufen, dein Standort wird einmalig geteilt.\nTippe auf OK/Schließen, um fortzufahren."
         : "Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen.\n(Der Timer bleibt bis zu deinem nächsten Posten deaktiviert)";
 
       // 4) Alert auf *beiden* Geräten anzeigen
@@ -3484,11 +3486,6 @@ function shouldShowAlertOncePerDevice(expKey) {
   return true;
 }
 
-
-
-
-// Import (Firebase v9 modular):
-// import { ref, get, runTransaction, serverTimestamp, update, query, orderByChild, endAt } from "firebase/database";
 
 async function gcOldTimerClaims(rtdb, maxAgeMs = 48 * 60 * 60 * 1000) {
   let serverNow = Date.now();
@@ -3570,8 +3567,6 @@ function notifyAlreadyHandled() {
   log("Bereits von anderem Gerät erledigt.");
   // Oder non-blocking Toast, wenn du eine UI-Bibliothek verwendest.
 }
-
-
 
 
 function setTimerInputFromFirebase(){
@@ -4215,6 +4210,31 @@ mc.port1.onmessage = (event) => {
   });
 }
 
+// --- Einstellungen: Checkbox für Agenten-Standortanfrage ---
+function setupAgentReqSetting() {
+  const cb = document.getElementById("agentReqEnabledCheckbox");
+  if (!cb) return;
+
+  // Initialwert aus RTDB laden
+  get(ref(rtdb, AGENT_REQ_SETTING_PATH)).then(snap => {
+    const enabled = snap.exists() ? !!snap.val() : false;
+    cb.checked = enabled;
+    localStorage.setItem(LS_AGENT_REQ_ENABLED, enabled ? "1" : "0");
+    updateAgentReqButtonVisibility(enabled);
+  });
+
+  cb.addEventListener("change", async () => {
+    const enabled = cb.checked;
+    await set(ref(rtdb, AGENT_REQ_SETTING_PATH), enabled);
+    localStorage.setItem(LS_AGENT_REQ_ENABLED, enabled ? "1" : "0");
+    updateAgentReqButtonVisibility(enabled);
+  });
+}
+
+function updateAgentReqButtonVisibility(enabled) {
+  const btn = document.getElementById("btnRequestAgents");
+  if (btn) btn.style.display = enabled ? "" : "none";
+}
 
 // Beim Laden prüfen / initialisieren
 
@@ -4318,7 +4338,11 @@ async function startScript() {
     }
 
     // (D) Dein bestehendes App-Setup ohne Push:
+    updateStartButtonState(true)
+    document.getElementById("btnRequestAgents").style.display = "none";
     const savedView = localStorage.getItem('activeView') || 'start';
+
+    
     if (savedView !=='start'){switchView(savedView);}
     showLocationHistory();
     await ensurePostenLoadedOnce();
@@ -4336,6 +4360,7 @@ async function startScript() {
     attachDelegatedImageClick();
     setupLightboxOnce();
     fetchAndShowSwLogs().catch(() => {});
+    setupAgentReqSetting();
 
 
 
