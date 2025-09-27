@@ -1686,7 +1686,8 @@ function createOrReuseMap(lat, lon) {
       fullscreenControl: true,
       fullscreenControlOptions: {
         position: 'topleft'
-      }
+      },
+      maxBounds: [[-90, -180], [90, 180]],
     }).setView([lat, lon], 15);
 
   // Karten-Layer definieren
@@ -3334,144 +3335,210 @@ function updateCountdown(startTime, duration) {
   clearInterval(countdown);
   let ticking = false;
   countdown = setInterval(async() => {
-    
-    if (ticking) return;      // laufende Arbeit? Dann diesen Tick überspringen.
+    if (ticking) return;
     ticking = true;
-    try{
-    const now = Date.now();
-    const elapsed = Math.floor((now - startTime) / 1000);
-    const remaining = duration - elapsed;
-
-    let timeString;
-    if (remaining < 0) {
-      timeString = "abgelaufen";
-    } else {
-    const minutes = Math.floor(remaining / 60);
-    const seconds = remaining % 60;
-    timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    }
-    // Timer-Elemente holen
-    const misterxTimer = document.getElementById("timer");
-    const agentTimer = document.getElementById("agentTimer");
-    const settingsTimer = document.getElementById("settingsTimer");
-
-    // Funktion zum Timer-Style setzen
-    function setTimerStyle(timerElem) {
-      if (!timerElem) return;
-      if (remaining <= 300) {
-        timerElem.style.color = "red";
-        timerElem.style.animation = "blinker 1s linear infinite";
-      } else {
-        timerElem.style.color = "";
-        timerElem.style.animation = "";
-      }
-    }
-
-    // Timer-Text aktualisieren
-    if (settingsTimer) {
-      settingsTimer.innerText = `⏳ Aktueller Timer: ${timeString}`;
-      setTimerStyle(settingsTimer);
-    }
-    if (misterxTimer) {
-      misterxTimer.innerText = `⏳ Zeit bis zum nächsten Posten: ${timeString}`;
-      setTimerStyle(misterxTimer);
-    }
-    if (agentTimer) {
-      agentTimer.innerText = `⏳ Mister X Timer: ${timeString}`;
-      setTimerStyle(agentTimer);
-    }
-
-    if (remaining <= 0) {
-      // Timer ist abgelaufen
-      // Timer-Elemente zurücksetzen
-      [misterxTimer, agentTimer, settingsTimer].forEach(elem => {
-        if (elem) {
-          elem.style.color = "";
-          elem.style.animation = "";
-        }
-      });
-      
-if (localStorage.getItem("activeView") === "misterx") {
     try {
-      // 1) hole aktuelle Timer-Daten (um zu wissen, welche Nachricht angezeigt wird
-      const snap = await get(ref(rtdb, "timer"));
-      const data = snap.val() || {};
-      const { startTime, duration, durationInput, durationInput2 } = data || {};
+      const now = Date.now();
+      const elapsed = Math.floor((now - startTime) / 1000);
+      const remaining = duration - elapsed;
 
-      if (typeof startTime !== "number" || typeof duration !== "number") {
-        // Timer schon weg → nichts tun
-        return;
+      let timeString;
+      if (remaining < 0) {
+        timeString = "abgelaufen";
+      } else {
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
       }
 
-      const expKey = makeExpirationKey(startTime, duration);
+      // Timer-Elemente holen
+      const misterxTimer = document.getElementById("timer");
+      const agentTimer = document.getElementById("agentTimer");
+      const settingsTimer = document.getElementById("settingsTimer");
 
-      // 2) Alert nur 1× pro Gerät zeigen
-      if (!shouldShowAlertOncePerDevice(expKey)) {
-        return; // wir haben für diese Ablauf-Runde schon einen Alert gezeigt
-      }
-
-      // 3) Nachricht je nach Pfad bestimmen
-      const isLocationPhase = (duration === durationInput && (durationInput2 ?? 0) > 0);
-      const message = isLocationPhase
-        ? "Zeit abgelaufen, dein Standort wird einmalig geteilt.\nTippe auf OK/Schließen, um fortzufahren."
-        : "Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen.\n(Der Timer bleibt bis zu deinem nächsten Posten deaktiviert)";
-
-      // 4) Alert auf *beiden* Geräten anzeigen
-      alert(message);
-
-      // 5) Erst *jetzt* versuchen wir exklusiv zu handeln
-      const won = await doOncePerExpiration(rtdb, async (freshData) => {
-        // immer mit frischen Daten aus der Transaktion arbeiten
-        const di1 = freshData?.durationInput;
-        const di2 = freshData?.durationInput2;
-
-        const locationPhase = (duration === di1 && (di2 ?? 0) > 0);
-
-        if (locationPhase) {
-          // Nur EIN Gerät ruft getLocation() auf
-          await getLocation(); // deine bestehende Funktion (mit Second Look)
-          // getLocation() startet am Ende ggf. wieder den zweiten Timer via durationInput2
-          // (Du machst das dort bereits abhängig von durationInput2)
+      function setTimerStyle(timerElem) {
+        if (!timerElem) return;
+        if (remaining <= 300) {
+          timerElem.style.color = "red";
+          timerElem.style.animation = "blinker 1s linear infinite";
         } else {
-          // Nur EIN Gerät räumt Timer auf + sendet Notification
-          await Promise.all([
-            remove(ref(rtdb, "timer/duration")),
-            remove(ref(rtdb, "timer/startTime")),
-            remove(ref(rtdb, "timerMessage")),
-          ]);
-
-          clearInterval(countdown);
-          updateStartButtonState(false);
-
-          const misterxTimer = document.getElementById("timer");
-          const agentTimer = document.getElementById("agentTimer");
-          const settingsTimer = document.getElementById("settingsTimer");
-          if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
-          if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
-          if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
-
-          sendNotificationToRoles(
-            "Zeit abgelaufen!",
-            "Mister X muss sich per Live-Standort zeigen",
-            "all"
-          );
+          timerElem.style.color = "";
+          timerElem.style.animation = "";
         }
-      });
-
-      // 6) Verlierer zeigen nur eine kurze Info (optional)
-      if (!won) {
-        notifyAlreadyHandled();
       }
-    } catch (err) {
-      log("Fehler im Ablauf-Handling:", err);
+
+      if (settingsTimer) {
+        settingsTimer.innerText = `⏳ Aktueller Timer: ${timeString}`;
+        setTimerStyle(settingsTimer);
+      }
+      if (misterxTimer) {
+        misterxTimer.innerText = `⏳ Zeit bis zum nächsten Posten: ${timeString}`;
+        setTimerStyle(misterxTimer);
+      }
+      if (agentTimer) {
+        agentTimer.innerText = `⏳ Mister X Timer: ${timeString}`;
+        setTimerStyle(agentTimer);
+      }
+
+      if (remaining <= 0) {
+        [misterxTimer, agentTimer, settingsTimer].forEach(elem => {
+          if (elem) {
+            elem.style.color = "";
+            elem.style.animation = "";
+          }
+        });
+
+        if (localStorage.getItem("activeView") === "misterx") {
+          try {
+            const snap = await get(ref(rtdb, "timer"));
+            const data = snap.val() || {};
+            const { startTime, duration, durationInput, durationInput2 } = data || {};
+
+            if (typeof startTime !== "number" || typeof duration !== "number") {
+              return;
+            }
+
+            const expKey = makeExpirationKey(startTime, duration);
+
+            // 2) Alert nur 1× pro Gerät zeigen
+            if (!shouldShowAlertOncePerDevice(expKey)) {
+              return;
+            }
+
+            // 3) Nachricht je nach Pfad bestimmen
+            const isLocationPhase = (duration === durationInput && (durationInput2 ?? 0) > 0);
+
+            if (isLocationPhase) {
+              // Standortphase: Dialog mit Beschreibung/OK
+              const message = "Zeit abgelaufen, dein Standort wird einmalig geteilt.";
+              const dialogResult = await showLocationDialog(message);
+              // Prüfe TimerClaim erst jetzt!
+              const won = await doOncePerExpiration(rtdb, async (freshData) => {
+                const di1 = freshData?.durationInput;
+                const di2 = freshData?.durationInput2;
+                const locationPhase = (duration === di1 && (di2 ?? 0) > 0);
+
+                if (locationPhase) {
+                  if (dialogResult === "desc") {
+                    // Beschreibung abfragen und speichern
+                    const description = await promptForDescription();
+                    if (!description) return;
+                    // Standort versuchen zu holen
+                    try {
+                      const position = await getCurrentPositionPromise();
+                      const { latitude: lat, longitude: lon, accuracy } = position.coords;
+                      const timestamp = Date.now();
+                      if (accuracy <= 100) {
+                        await push(ref(rtdb, "locations"), {
+                          title: "Automatischer Standort",
+                          lat,
+                          lon,
+                          accuracy,
+                          description,
+                          timestamp,
+                        });
+                      } else {
+                        await push(ref(rtdb, "locations"), {
+                          description,
+                          timestamp,
+                        });
+                      }
+                    } catch (err) {
+                      await push(ref(rtdb, "locations"), {
+                        description,
+                        timestamp: Date.now(),
+                      });
+                    }
+                    postWriteSideEffects(di2);
+                  } else {
+                    // OK gedrückt: wie bisher
+                    await getLocation();
+                  }
+                }
+              });
+
+              if (!won) {
+                notifyAlreadyHandled();
+              }
+            } else {
+              // Live-Standortphase: Nur Alert anzeigen, keine Beschreibung
+              alert("Zeit abgelaufen, jetzt musst du deinen Live-Standort in der WhatsApp-Gruppe teilen.");
+              // TimerClaim erst nach OK
+              const won = await doOncePerExpiration(rtdb, async () => {
+                // Hier ggf. weitere Aktionen, z.B. Timer aufräumen
+                await Promise.all([
+                  remove(ref(rtdb, "timer/duration")),
+                  remove(ref(rtdb, "timer/startTime")),
+                  remove(ref(rtdb, "timerMessage")),
+                ]);
+                clearInterval(countdown);
+                updateStartButtonState(false);
+                if (misterxTimer) misterxTimer.innerText = "⏳ Zeit bis zum nächsten Posten: --:--";
+                if (agentTimer) agentTimer.innerText = "⏳ Mister X Timer: --:--";
+                if (settingsTimer) settingsTimer.innerText = "⏳ Aktueller Timer: --:--";
+                sendNotificationToRoles(
+                  "Zeit abgelaufen!",
+                  "Mister X muss sich per Live-Standort zeigen",
+                  "all"
+                );
+              });
+
+              if (!won) {
+                notifyAlreadyHandled();
+              }
+            }
+          } catch (err) {
+            log("Fehler im Ablauf-Handling:", err);
+          }
+        }
+      }
+    } finally {
+      ticking = false;
     }
-  }
+  }, 1000);
 }
-} finally {
-  ticking = false
-}
-}
-  , 1000);
+
+// Dialog mit Message-Text
+async function showLocationDialog(messageText) {
+  return new Promise((resolve) => {
+    const modal = document.createElement("div");
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100vw";
+    modal.style.height = "100vh";
+    modal.style.background = "rgba(0,0,0,0.7)";
+    modal.style.display = "flex";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.zIndex = "9999";
+
+    const box = document.createElement("div");
+    box.style.background = "#fff";
+    box.style.padding = "2em";
+    box.style.borderRadius = "10px";
+    box.style.maxWidth = "90vw";
+    box.style.textAlign = "center";
+    box.innerHTML = `
+      <div style="margin-bottom:1em;">
+        <strong>${messageText}</strong><br>
+        Du kannst optional eine Beschreibung hinzufügen (z.B. falls GPS ungenau ist oder du dich in der U-Bahn befindest).
+      </div>
+      <button id="loc-ok-btn" style="margin:0 1em 0 0;">OK</button>
+      <button id="loc-desc-btn">Standort-Beschreibung hinzufügen</button>
+    `;
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    document.getElementById("loc-ok-btn").onclick = () => {
+      document.body.removeChild(modal);
+      resolve("ok");
+    };
+    document.getElementById("loc-desc-btn").onclick = () => {
+      document.body.removeChild(modal);
+      resolve("desc");
+    };
+  });
 }
 
 
@@ -3707,7 +3774,7 @@ async function getLocation({
   }
 
   // Dialog anzeigen: OK oder Standort-Beschreibung hinzufügen
-  const dialogResult = await showLocationDialog();
+  /*const dialogResult = await showLocationDialog();
   if (dialogResult === "desc") {
     // Beschreibung abfragen
     const description = await promptForDescription();
@@ -3746,7 +3813,7 @@ async function getLocation({
       postWriteSideEffects(durationInput2);
     }
     return;
-  }
+  }*/
 
   // Wenn OK gedrückt wurde: wie bisher
   let retriesLeft = Math.max(0, maxRetries);
@@ -3819,49 +3886,6 @@ async function getLocation({
   navigator.geolocation.getCurrentPosition(success, error, options);
 }
 
-// Hilfsfunktionen für Dialog und Beschreibung
-async function showLocationDialog() {
-  return new Promise((resolve) => {
-    // Einfacher Dialog mit zwei Buttons
-    const modal = document.createElement("div");
-    modal.style.position = "fixed";
-    modal.style.top = "0";
-    modal.style.left = "0";
-    modal.style.width = "100vw";
-    modal.style.height = "100vh";
-    modal.style.background = "rgba(0,0,0,0.7)";
-    modal.style.display = "flex";
-    modal.style.alignItems = "center";
-    modal.style.justifyContent = "center";
-    modal.style.zIndex = "9999";
-
-    const box = document.createElement("div");
-    box.style.background = "#fff";
-    box.style.padding = "2em";
-    box.style.borderRadius = "10px";
-    box.style.maxWidth = "90vw";
-    box.style.textAlign = "center";
-    box.innerHTML = `
-      <div style="margin-bottom:1em;">
-        <strong>Dein Standort wird jetzt freigegeben.</strong><br>
-        Du kannst optional eine Beschreibung hinzufügen (z.B. falls GPS ungenau ist oder du dich in der U-Bahn befindest).
-      </div>
-      <button id="loc-ok-btn" style="margin:0 1em 0 0;">OK</button>
-      <button id="loc-desc-btn">Standort-Beschreibung hinzufügen</button>
-    `;
-    modal.appendChild(box);
-    document.body.appendChild(modal);
-
-    document.getElementById("loc-ok-btn").onclick = () => {
-      document.body.removeChild(modal);
-      resolve("ok");
-    };
-    document.getElementById("loc-desc-btn").onclick = () => {
-      document.body.removeChild(modal);
-      resolve("desc");
-    };
-  });
-}
 
 async function promptForDescription() {
   return new Promise((resolve) => {
@@ -4384,6 +4408,18 @@ async function startScript() {
     document.getElementById('toggleFollow')?.addEventListener('change', (e) => {
       followMe = e.target.checked;
     });
+
+    const clearBtn = document.getElementById("clearLocalStorageBtn");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        if (confirm("Möchtest du wirklich alle gespeicherten Daten (localStorage) löschen?")) {
+          localStorage.clear();
+          sessionStorage.clear();
+          alert("Alle lokalen Daten wurden gelöscht. Die Seite wird neu geladen.");
+          location.reload();
+        }
+      });
+    }
 
 
     // Foto-Upload Listener
