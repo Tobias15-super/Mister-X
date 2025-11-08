@@ -2,7 +2,8 @@ name: Supabase Keep Alive
 
 on:
   schedule:
-    - cron: '0 8 */3 * *' # alle 3 Tage um 8 Uhr
+    - cron: '0 8 */3 * *'
+  workflow_dispatch:
 
 jobs:
   ping:
