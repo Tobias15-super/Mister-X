@@ -191,18 +191,7 @@ const supabaseClient = supabase.createClient(
 async function saveTokenToSupabase(token) {
   const role = localStorage.getItem("role") || "start";
   try {
-    // Optional: stattdessen direkt upsert mit onConflict, dann brauchst du kein delete
-    const { error: delErr } = await supabaseClient
-      .from('fcm_tokens')
-      .delete()
-      .eq('device_name', deviceId);
-
-    if (delErr) {
-      log("❌ Fehler beim Löschen aus Supabase:", delErr);
-    } else {
-      log("✅ Alter Token aus Supabase gelöscht.");
-    }
-
+    // Wir nutzen upsert, um bestehende Einträge (z.B. Telefonnummer) nicht zu löschen
     const { error: upsertErr } = await supabaseClient
       .from('fcm_tokens')
       .upsert({ token, device_name: deviceId, role });
@@ -297,7 +286,7 @@ async function requestPermission() {
     saveDeviceName(deviceId)
     .then(() => {
     alert('✅ Benachrichtigungen aktiviert!');
-    })  
+    })
   } catch (error) {
     log('Fehler bei Berechtigung/Registrierung/Token:', error);
     alert('❌ Fehler: ' + (error?.message ?? String(error)));
@@ -534,7 +523,7 @@ async function askForDeviceIdAndPhone() {
   // Wenn der Server bereits eine gültige Nummer hat, synchronisiere lokal & fertig
   if (remote.allowSmsFallback === true && remote.tel) {
     saveSmsPrefs({ tel: remote.tel, allowSmsFallback: true, noTel: false });
-    await saveTelToRTDB(id, remote.tel, true);
+    await saveTelToSupabase(id, remote.tel, true);
     return;
   }
 
@@ -557,7 +546,7 @@ async function askForDeviceIdAndPhone() {
   // --- 6) Speichern (lokal + Server) ---
   const allow = !!tel;
   saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
-  await saveTelToRTDB(id, tel, allow);
+  await saveTelToSupabase(id, tel, allow);
 }
 
 // Hilfsfunktion: Firebase-Key-Validierung
@@ -869,7 +858,7 @@ async function sendNotificationToTokens(
 
 // 👉 SMS-Fallback NUR vom lokalen Zustand abhängig machen
   if (isFirstAttempt && recipientDeviceNames.length > 0) {
-    
+
     // fire-and-forget; bewusst NICHT awaiten
     triggerSmsFallbackIfNeeded(messageId, recipientDeviceNames, smsText, 15, {
         rtdbBase: RTDB_BASE,
@@ -884,7 +873,7 @@ async function sendNotificationToTokens(
       rtdbBase: RTDB_BASE
     });
   }
-    
+
 
   // Retry für fehlgeschlagene Tokens
   const failedTokens = Array.isArray(result?.failedTokens) ? result.failedTokens : [];
@@ -1282,13 +1271,21 @@ function saveSmsPrefs(next) {
 
 
 async function fetchRemoteSmsPrefs(deviceId) {
-  const key = sanitizeKey(deviceId);
-  const snap = await get(ref(rtdb, `roles/${key}`));
-  if (!snap.exists()) return { exists: false, allowSmsFallback: null, tel: null };
-  const data = snap.val() || {};
+  // Supabase statt RTDB
+  const { data, error } = await supabaseClient
+    .from('fcm_tokens')
+    .select('tel, allow_sms_fallback')
+    .eq('device_name', deviceId)
+    .single();
+
+  if (error || !data) {
+    // Falls Fehler oder nicht gefunden, Return "nicht existent"
+    return { exists: false, allowSmsFallback: null, tel: null };
+  }
+
   return {
     exists: true,
-    allowSmsFallback: (data.allowSmsFallback !== undefined) ? !!data.allowSmsFallback : null,
+    allowSmsFallback: (data.allow_sms_fallback !== undefined && data.allow_sms_fallback !== null) ? !!data.allow_sms_fallback : null,
     tel: data.tel ?? null
   };
 }
@@ -1323,15 +1320,24 @@ export function normalizeAtPhoneNumber(input) {
 
 
 
-async function saveTelToRTDB(deviceId, tel, allowSmsFallback) {
-  const safeId = sanitizeKey(deviceId);
-  const db = getDatabase(app);
+async function saveTelToSupabase(deviceId, tel, allowSmsFallback) {
+  // Speichert Telefonnummer in Supabase statt Firebase RTDB
   const updates = {
+    device_name: deviceId,
     tel: tel ?? null,
-    allowSmsFallback: !!allowSmsFallback,
-    ...(tel ? { telUpdatedAt: Date.now() } : {}),
+    allow_sms_fallback: !!allowSmsFallback,
+    ...(tel ? { tel_updated_at: new Date().toISOString() } : {}),
   };
-  await update(ref(rtdb, `roles/${safeId}`), updates);
+
+  const { error } = await supabaseClient
+    .from('fcm_tokens')
+    .upsert(updates);
+
+  if (error) {
+    log("❌ Fehler beim Speichern der Telefonnummer in Supabase:", error);
+  } else {
+    log("✅ Telefonnummer in Supabase gespeichert.");
+  }
 }
 
 
@@ -1866,7 +1872,7 @@ function showLocationHistory() {
     // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
     ensurePostenLayer();
     renderPostenMarkersFromCache({ nonDestructive: true });
-    
+
 
     console.log('map id', map?._leaflet_id);
     console.log('postenPane exists?', !!map?.getPane('postenPane'));
@@ -2304,7 +2310,7 @@ function setupLightboxOnce() {
 
 
 // Am besten nach map-Initialisierung ausführen (oder ganz am Ende deiner JS-Datei)(function attachDelegatedImageClick() {
-  
+
 function attachDelegatedImageClick() {
   const handler = (e) => {
     const img = e.target.closest('.posten-preview-img');
@@ -2365,7 +2371,7 @@ function renderPostenMarkersFromCache(options = {}) {
 
   ensurePanes();
   ensurePostenLayer();
-  
+
 
   const seen = new Set();
   let validCount = 0;
@@ -2481,8 +2487,8 @@ function getCurrentPositionPromise(options = { enableHighAccuracy:true, timeout:
   });
 }
 
-  
-  
+
+
 function collectActivePosts({ excludeVisited = true } = {}) {
   const list = [];
   for (const [color, node] of Object.entries(postenCache)) {
@@ -2541,7 +2547,7 @@ function renderSuggestions(items) {
       if (searchEl) {
         searchEl.value = `${chosen.title} [${color}]`;
       }
-      
+
       box.style.display = "none";
       const statusEl = document.getElementById("status");
       if (statusEl) statusEl.innerText = `✅ Posten ausgewählt: ${chosen.title} (${color})`;
@@ -3182,7 +3188,7 @@ async function switchView(view) {
       } else {
         updateStartButtonState(false);
     }
-    } 
+    }
   });
 };
 
@@ -3245,7 +3251,7 @@ async function startTimer(duration_for_function) {
   });
 
 
-  
+
   // 1) Sicherstellen: Es läuft kein anderer Online-Timer
   try {
     await supabaseClient.rpc('cancel_and_unschedule');
@@ -4192,7 +4198,7 @@ async function fetchAndShowSwLogs() {
       log('[SW-Log] PING -> Timeout (wir versuchen GET_SW_LOGS trotzdem)');
       resolve(); // wir versuchen Logs trotzdem
     }, timeoutMs);
-    
+
 mc.port1.onmessage = (event) => {
    if (event.data && event.data.type === 'PONG') {
      clearTimeout(to);
@@ -4202,7 +4208,7 @@ mc.port1.onmessage = (event) => {
   };
   reg.active.postMessage({ type: 'PING' }, [mc.port2]);
 
-    
+
   });
 
   // 2) Logs abrufen – Antwort direkt über MessageChannel
@@ -4319,7 +4325,7 @@ async function startScript() {
       }
     });
 
-    
+
     (async () => {
       const changedAt = await readSwFlag('pushSubscriptionChangedAt');
       if (changedAt) {
@@ -4366,7 +4372,7 @@ async function startScript() {
     document.getElementById("btnRequestAgents").style.display = "none";
     const savedView = localStorage.getItem('activeView') || 'start';
 
-    
+
     if (savedView !=='start'){switchView(savedView);}
     showLocationHistory();
     await ensurePostenLoadedOnce();
@@ -4389,7 +4395,7 @@ async function startScript() {
 
 
     //für Agentlocation:
-    
+
     const toggle = document.getElementById('toggleAgentLocations');
       if (toggle) {
         toggle.checked = showAgentLocations;
@@ -4491,7 +4497,7 @@ window.deleteAllLocations = deleteAllLocations;
 window.resetAllMisterXRollen = resetAllMisterXRollen;
 window.removeNotificationSetup = removeNotificationSetup;
 window.mxState = window.mxState || {};
-window.mxState.selectedPost = null; 
+window.mxState.selectedPost = null;
 window.openTeamSettings = openTeamSettings;
 window.closeTeamSettings = closeTeamSettings;
 window.leaveTeam = leaveTeam;
