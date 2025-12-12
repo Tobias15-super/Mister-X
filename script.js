@@ -1711,9 +1711,6 @@ function createOrReuseMap(lat, lon) {
       attribution: 'TopPlus Open © GeoBasis-DE / BKG',
     });
 
-    const jawgStreet = L.tileLayer('https://tile.jawg.io/jawg-streets/{z}/{x}/{y}{r}.png?access-token=sxLNDIsEdS0kt8fQKhSLB1Z7wVp3ZkV78F5HhvIElZWKDuahhvgWnCZkOceLTzYS', {
-      attribution: '© Jawg',
-    })
 
     const BasemapAT_orthofoto = L.tileLayer('https://mapsneu.wien.gv.at/basemap/bmaporthofoto30cm/{type}/google3857/{z}/{y}/{x}.{format}', {
       maxZoom: 20,
@@ -1734,7 +1731,6 @@ function createOrReuseMap(lat, lon) {
 
     const baseMaps = {
       "Standard": osm,
-      "Jawg Street": jawgStreet,
       "Reduziert": cartoLight,
       "Satellit": satellite,
       "Satellit (AT)": BasemapAT_orthofoto,
