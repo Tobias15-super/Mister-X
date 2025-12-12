@@ -1688,6 +1688,8 @@ function createOrReuseMap(lat, lon) {
         position: 'topleft'
       },
       maxBounds: [[-90, -180], [90, 180]],
+      doubleTapDragZoom: 'center',
+      doubleTapDragZoomOptions: { reverse: true }
     }).setView([lat, lon], 15);
 
   // Karten-Layer definieren
@@ -3913,8 +3915,8 @@ async function promptForDescription() {
         Bitte gib eine Beschreibung deines Standorts ein.
       </div>
       <textarea id="desc-input" rows="3" style="width:90%;"></textarea><br>
-      <button id="desc-ok-btn" style="margin-top:1em;">Speichern</button>
-      <button id="desc-cancel-btn" style="margin-top:1em; margin-left:1em;">Abbrechen</button>
+      <button id="desc-cancel-btn" style="margin-top:1em;">Abbrechen</button>
+      <button id="desc-ok-btn" style="margin-top:1em; margin-left:1em;">OK</button>
     `;
     modal.appendChild(box);
     document.body.appendChild(modal);
