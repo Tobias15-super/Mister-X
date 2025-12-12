@@ -42,11 +42,14 @@ type Payload = {
   body: string;
   dueInSec: number; // Pflicht
   messageId?: string;
-
   link?: string;
   recipientDeviceNames?: string[];
   tokens?: string[];
   rtdbBase?: string;
+
+  // NEU:
+  roles?: string[];                      // Rollen zur Auflösung beim Versand
+  resolveRecipientsAtSendTime?: boolean; // Flag: true -> Empfänger erst zur Versandzeit ermitteln
 };
 
 // --- Handler ---
@@ -102,6 +105,10 @@ Deno.serve(async (req) => {
       p_tokens: p.tokens ?? [],
       p_rtdb_base: p.rtdbBase ?? null,
       p_due_at: dueAt.toISOString(),
+
+      // NEU: roles + resolveRecipientsAtSendTime weiterreichen
+      p_roles: p.roles ?? [],
+      p_resolve_recipients_at_send_time: !!p.resolveRecipientsAtSendTime,
     });
 
     if (rpcErr) {

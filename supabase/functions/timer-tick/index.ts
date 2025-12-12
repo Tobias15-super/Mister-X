@@ -50,51 +50,69 @@ async function handleJob(job: any) {
     rtdb_base,
     message_id,
     id: dbId,
+
+    // NEU:
+    roles,
+    resolve_recipients_at_send_time,
   } = job;
 
   const messageKey: string = message_id ?? dbId;
 
   // --- 1) Push senden (idempotent) ---
-  let pushOk = false;
-  let pushBody: any = null;
-
-  let shouldSendPush = true;
-  try {
-    // NEU: Idempotenz für Push – nur der erste Worker/Lauf gewinnt
-    const first = await claimStageOnce(messageKey, "push");
-    shouldSendPush = first === true;
-  } catch (e) {
-    console.error("claim_job_stage_once(push) threw:", e);
-    // Strategie: Wenn Claim fehlschlägt, KEIN Push senden (konservativ),
-    // um Doppelungen zu vermeiden. Alternativ könntest du auf true lassen.
-    shouldSendPush = false;
-    pushBody = { error: "push-claim-failed", detail: String(e) };
-  }
-
+  // ...
   if (shouldSendPush) {
     try {
-      const { data, error } = await supa.functions.invoke(SEND_FN, {
-        body: {
-          title,
-          body,
-          tokens: tokens ?? [],
-          senderName: "cron",
-          link: link ?? "/Mister-X/",
-          messageId: messageKey,
-          rtdbBase: rtdb_base ?? "",
-          recipientDeviceNames: recipient_device_names ?? [],
-          setRecipientsMode: "set_once",
-          attempt: 1,
-        },
-        headers: {
-          Authorization: `Bearer ${SERVICE_KEY}`,
-          apikey: SERVICE_KEY, // falls deine send-to-all das prüft
-        },
-      });
+      // Wenn wir zur Versandzeit Empfänger nach Rollen auflösen sollen:
+      if (resolve_recipients_at_send_time && Array.isArray(roles) && roles.length > 0) {
+        const resp = await supa.functions.invoke(SEND_FN, {
+          body: {
+            title,
+            body,
+            senderName: "cron",
+            link: link ?? "/Mister-X/",
+            messageId: messageKey,
+            rtdbBase: rtdb_base ?? "",
+            roles,                            // Rollen mitgeben
+            resolveRecipientsAtSendTime: true,
+            setRecipientsMode: "set_once",    // optional: damit recipients geschrieben werden wenn gewünscht
+            attempt: 1,
+          },
+          headers: {
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            apikey: SERVICE_KEY,
+          },
+        });
 
-      // Expliziter Erfolg: kein error und data?.ok === true
-      pushOk = !error && (data?.ok === true);
-      pushBody = error ? { error: error.message ?? String(error) } : data;
+        // parse result
+        const { data, error } = resp;
+        pushOk = !error && (data?.ok === true);
+        pushBody = error ? { error: error.message ?? String(error) } : data;
+      } else {
+        // Altes Verhalten: token + recipientDeviceNames weiterreichen
+        const resp = await supa.functions.invoke(SEND_FN, {
+          body: {
+            title,
+            body,
+            tokens: tokens ?? [],
+            senderName: "cron",
+            link: link ?? "/Mister-X/",
+            messageId: messageKey,
+            rtdbBase: rtdb_base ?? "",
+            recipientDeviceNames: recipient_device_names ?? [],
+            setRecipientsMode: "set_once",
+            attempt: 1,
+          },
+          headers: {
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            apikey: SERVICE_KEY,
+          },
+        });
+
+        const { data, error } = resp;
+        pushOk = !error && (data?.ok === true);
+        pushBody = error ? { error: error.message ?? String(error) } : data;
+      }
+
       console.log("send-to-all:", {
         ok: pushOk,
         statusInfo: pushBody?.status ?? null,
@@ -140,7 +158,7 @@ async function handleJob(job: any) {
 
     // SMS-Text (auf 280 chars kürzen)
     const smsText = `${title}: ${body}
-Diese Nachricht wurde automatisch gesendet (unter Android kommt das unverhinderbar manchmal vor, unter iOS bitte einmal die App neu laden über den Knopf oben rechts)`.slice(0, 280);
+Diese Nachricht wurde automatisch gesendet.`.slice(0, 280);
 
     // Direkt per fetch rufen -> volle Header-Kontrolle
     try {

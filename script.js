@@ -3293,8 +3293,8 @@ async function startTimer(duration_for_function) {
       dueInSec,
       messageId,
       link: "/Mister-X/",
-      recipientDeviceNames: misterxDevices,
-      tokens: misterxTokens,              // optional, falls du per Token zielst
+      roles: ["misterx"],
+      resolveRecipientsAtSendTime: true,
       rtdbBase: RTDB_BASE,     // falls dein Fallback das braucht
     }
   });

@@ -257,6 +257,8 @@ serve(async (req) => {
       recipientDeviceNames = [],
       setRecipientsMode = "none", // 'set_once' | 'append' | 'none'
       attempt = 1,
+      roles: providedRoles = [],  // NEU: Rollen optional
+      resolveRecipientsAtSendTime = false, // NEU: Flag zur dynamischen Auflösung
     } = await req.json();
 
     if (!title || !body) {
@@ -270,11 +272,23 @@ serve(async (req) => {
     const rtdbAccessToken = await getAccessToken(OAUTH_SCOPES.RTDB);
     const rtdbAuthHeaders = { Authorization: `Bearer ${rtdbAccessToken}` };
 
-    // 1) Tokenliste holen (falls nicht geliefert)
+    // 1) Tokenliste holen (falls nicht geliefert oder "resolveRecipientsAtSendTime" gesetzt)
     let tokenList: string[] = [];
-    if (Array.isArray(providedTokens) && providedTokens.length > 0) {
+    if (!resolveRecipientsAtSendTime && Array.isArray(providedTokens) && providedTokens.length > 0) {
       tokenList = [...new Set(providedTokens)].filter(Boolean);
+    } else if (resolveRecipientsAtSendTime && Array.isArray(providedRoles) && providedRoles.length > 0) {
+      // Holen Tokens für die angegebenen Rollen ermitteln (dynamisch zur Versandzeit)
+      const roleParam = providedRoles.map(r => encodeURIComponent(String(r))).join(',');
+      const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name&role=in.(${roleParam})`, {
+        headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+      });
+      if (!tokensRes.ok) throw new Error(`Token fetch by role failed: ${tokensRes.status} ${await tokensRes.text().catch(() => '')}`);
+      const rows = (await tokensRes.json()) as Array<{ token: string; device_name?: string | null }>;
+      tokenList = [...new Set(rows.map((r) => r.token).filter(Boolean))];
+      // Optional: recipientDeviceNames (z. B. für RTDB recipients-Map/debug)
+      recipientDeviceNames = rows.map(r => r.device_name).filter(Boolean) as string[];
     } else {
+      // fallback: hole alle Tokens (wie bisher)
       const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name`, {
         headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
       });
@@ -283,12 +297,58 @@ serve(async (req) => {
       tokenList = [...new Set(rows.map((r) => r.token).filter(Boolean))];
     }
 
+
     // 2) messageId
     const messageId = providedMessageId ?? crypto.randomUUID();
+
+    // --- NEW: Check global setting in RTDB "settings/messages" ---
+    try {
+      const settingsUrl = `${rtdbBase}/settings/messages.json`;
+      const settingsRes = await fetch(settingsUrl, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
+      if (settingsRes.ok) {
+        const val = await settingsRes.json().catch(() => null);
+        const messagesEnabled = val === null ? true : !!val;
+        if (!messagesEnabled) {
+          const now = Date.now();
+
+          // Create an explicit notification entry with empty recipients
+          const notif = {
+            sender: senderName ?? "Unbekannt",
+            title,
+            body,
+            recipients: {}, // NO recipients when messages are disabled
+            timestamp: now,
+            attempts: { [attempt]: { at: now, count: 0 } },
+            lastAttemptAt: now,
+          };
+
+          const putRes = await fetch(`${rtdbBase}/notifications/${messageId}.json`, {
+            method: "PUT",
+            headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify(notif),
+          });
+
+          if (!putRes.ok) {
+            console.error("[send-to-all] Could not write notif while messages disabled:", await putRes.text().catch(() => ""));
+          } else {
+            console.log("[send-to-all] messages disabled -> notification written without recipients", { messageId });
+          }
+
+          return new Response(JSON.stringify({ ok: true, skipped: "messages_disabled", messageId }), {
+            status: 200,
+            headers: corsHeaders,
+          });
+        }
+      }
+    } catch (err) {
+      // If something goes wrong during read, continue with sending (fail-open)
+      console.warn("[send-to-all] Could not read settings/messages - proceeding with send:", err);
+    }
 
     // 3) recipientsMap nur beim 1. Versuch setzen
     let recipientsMap: Record<string, boolean> | null = null;
     if (setRecipientsMode === "set_once") {
+
       const names = new Set<string>();
       for (const n of Array.isArray(recipientDeviceNames) ? recipientDeviceNames : []) {
         const safe = sanitizeKey(n);
