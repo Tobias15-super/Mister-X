@@ -910,6 +910,37 @@ async function sendNotificationToTokens(
 
 
 async function sendNotificationToRoles(title, body, roles, opts = {}) {
+  // --- Early: determine messageId & rtdbBase so we can write an RTDB entry even if we skip sending ---
+  const rtdbBase = opts.rtdbBase ?? RTDB_BASE;
+  const messageId = opts.messageId ?? createMessageId();
+  const senderName =
+    (typeof getDeviceId === 'function' ? getDeviceId() : null) || 'unknown';
+
+  // --- NEW: Check global setting "settings/messages" in RTDB ---
+  try {
+    const settingSnap = await get(ref(rtdb, 'settings/messages'));
+    const messagesEnabled = !settingSnap.exists() ? true : !!settingSnap.val();
+    if (!messagesEnabled) {
+      // Write a notification object without recipients and return early
+      const payloadForDb = {
+        title: String(title ?? ''),
+        body: String(body ?? ''),
+        link: opts.link || '/Mister-X/',
+        sender: senderName,
+        timestamp: Date.now(),
+        messageId,
+        recipients: {} // explicit empty recipients
+      };
+      await set(ref(rtdb, `notifications/${messageId}`), payloadForDb);
+      log('[sendNotificationToRoles] Global setting "settings/messages" = false, wrote notification without recipients', payloadForDb);
+      return { ok: true, skipped: 'messages_disabled', messageId };
+    }
+  } catch (err) {
+    log('[sendNotificationToRoles] Could not read settings/messages, proceeding as enabled:', err);
+    // proceed normally if read fails
+  }
+
+  // --- existing code continues below ---
   // RTDB lesen
   const [rolesSnapshot, tokensSnapshot] = await Promise.all([
     get(ref(rtdb, 'roles')),
@@ -963,12 +994,7 @@ async function sendNotificationToRoles(title, body, roles, opts = {}) {
   const uniqueInstantSMS  = unique(instantSMSDevices);
 
   const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
-  const rtdbBase = opts.rtdbBase ?? RTDB_BASE;
-  const messageId = opts.messageId ?? createMessageId();
-
-  // 💬 Debug, damit du sofort siehst, was passiert:
-  console.log('[sendNotificationToRoles] instantSMS:', uniqueInstantSMS);
-  console.log('[sendNotificationToRoles] tokens:', uniqueTokens.length);
+  // rtdbBase, messageId already computed earlier and used by downstream code
 
   // 🟨 Fall A: Es gibt Push-Tokens -> sende Push + ggf. Instant-SMS
   if (uniqueTokens.length > 0) {
