@@ -101,8 +101,9 @@ Deno.serve(async (req) => {
       p_title: p.title,
       p_body: p.body,
       p_link: p.link ?? "/Mister-X/",
-      p_recipient_device_names: p.recipientDeviceNames ?? [],
-      p_tokens: p.tokens ?? [],
+      // Stelle sicher, dass es ein Array von Strings ist
+      p_recipient_device_names: p.recipientDeviceNames ?? [], // bleibt ein Array
+      p_tokens: p.tokens ?? [], // bleibt ein Array
       p_rtdb_base: p.rtdbBase ?? null,
       p_due_at: dueAt.toISOString(),
 
@@ -110,6 +111,8 @@ Deno.serve(async (req) => {
       p_roles: p.roles ?? [],
       p_resolve_recipients_at_send_time: !!p.resolveRecipientsAtSendTime,
     });
+    console.log("recipientDeviceNames", p.recipientDeviceNames);
+    console.log("[arm-timer-cron] cancel_active_and_insert_timer_job response:", { rpcData, rpcErr });
 
     if (rpcErr) {
       return jsonWithCors(req, {
@@ -121,9 +124,25 @@ Deno.serve(async (req) => {
       }, { status: 500 });
     }
 
-    // Optional: rpcData[0] enthält inserted_message_id & inserted_due_at (je nach Supabase-Client als Array)
-    // Wir geben die lokal berechneten Werte zurück (sind identisch).
-    // --- Ende NEU ---
+    // NEU: verify insertion by reading timer_jobs table
+    try {
+      const { data: insertedRow, error: selErr } = await supa
+        .from("timer_jobs")
+        .select("*")
+        .eq("message_id", messageId)
+        .maybeSingle();
+
+      console.log("[arm-timer-cron] verify: timer_jobs lookup result:", { insertedRow, selErr });
+
+      if (selErr) {
+        // selErr may be null, but log if present
+        console.warn("[arm-timer-cron] timer_jobs select returned error:", selErr);
+      } else if (!insertedRow) {
+        console.warn("[arm-timer-cron] No timer_jobs row found for messageId", messageId);
+      }
+    } catch (err) {
+      console.error("[arm-timer-cron] verify query failed:", err);
+    }
 
     // Cron/Schedule sicherstellen (wie gehabt)
     const { error: cronErr } = await supa.rpc("ensure_timer_tick_schedule");

@@ -58,6 +58,33 @@ async function handleJob(job: any) {
 
   const messageKey: string = message_id ?? dbId;
 
+  // --- NEW: prepare push state & decide whether to send push ---
+  let pushOk = false;
+  let pushBody = null;
+
+  const hasTokens = Array.isArray(tokens) && tokens.length > 0;
+  const hasRecipientNames = Array.isArray(recipient_device_names) && recipient_device_names.length > 0;
+  const shouldResolveByRoles = !!(resolve_recipients_at_send_time && Array.isArray(roles) && roles.length > 0);
+
+  // Only attempt push when there's something to send to (tokens/recipient names) or we must resolve by roles.
+  let shouldSendPush = hasTokens || hasRecipientNames || shouldResolveByRoles;
+
+  if (shouldSendPush) {
+    try {
+      // Make the push stage idempotent: only the caller that successfully claims the 'push' stage will send it.
+      shouldSendPush = await claimStageOnce(messageKey, "push");
+      if (!shouldSendPush) {
+        // someone else already sent; treat as skipped
+        console.log("Push already claimed earlier for", messageKey);
+      }
+    } catch (err) {
+      console.error("claimStageOnce for push failed:", err);
+      // Avoid sending if claim failed; push will be retried later by other workers
+      shouldSendPush = false;
+    }
+  }
+
+
   // --- 1) Push senden (idempotent) ---
   // ...
   if (shouldSendPush) {

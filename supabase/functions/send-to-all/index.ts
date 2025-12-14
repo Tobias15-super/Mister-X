@@ -246,6 +246,9 @@ serve(async (req) => {
   }
 
   try {
+    // --- parse payload ---
+    const payload = await req.json();
+
     const {
       title,
       body,
@@ -254,12 +257,18 @@ serve(async (req) => {
       link = "/Mister-X/",
       messageId: providedMessageId,
       rtdbBase = RTDB_BASE_FALLBACK,
-      recipientDeviceNames = [],
       setRecipientsMode = "none", // 'set_once' | 'append' | 'none'
       attempt = 1,
       roles: providedRoles = [],  // NEU: Rollen optional
       resolveRecipientsAtSendTime = false, // NEU: Flag zur dynamischen Auflösung
-    } = await req.json();
+    } = payload;
+
+    // ensure messageId exists before any early uses
+    const messageId = providedMessageId ?? crypto.randomUUID();
+
+    // recipientDeviceNames may be reassigned later -> use let
+    let recipientDeviceNames: string[] = Array.isArray(payload.recipientDeviceNames) ? payload.recipientDeviceNames : [];
+
 
     if (!title || !body) {
       return new Response(JSON.stringify({ error: "title and body required" }), { status: 400, headers: corsHeaders });
@@ -274,9 +283,11 @@ serve(async (req) => {
 
     // 1) Tokenliste holen (falls nicht geliefert oder "resolveRecipientsAtSendTime" gesetzt)
     let tokenList: string[] = [];
+    const rolesRequested = Array.isArray(providedRoles) && providedRoles.length > 0;
+
     if (!resolveRecipientsAtSendTime && Array.isArray(providedTokens) && providedTokens.length > 0) {
       tokenList = [...new Set(providedTokens)].filter(Boolean);
-    } else if (resolveRecipientsAtSendTime && Array.isArray(providedRoles) && providedRoles.length > 0) {
+    } else if (resolveRecipientsAtSendTime && rolesRequested) {
       // Holen Tokens für die angegebenen Rollen ermitteln (dynamisch zur Versandzeit)
       const roleParam = providedRoles.map(r => encodeURIComponent(String(r))).join(',');
       const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name&role=in.(${roleParam})`, {
@@ -287,8 +298,65 @@ serve(async (req) => {
       tokenList = [...new Set(rows.map((r) => r.token).filter(Boolean))];
       // Optional: recipientDeviceNames (z. B. für RTDB recipients-Map/debug)
       recipientDeviceNames = rows.map(r => r.device_name).filter(Boolean) as string[];
+
+      // Wenn KEINE passende Tokens und KEINE Instant-SMS-Empfänger → NICHTS senden
+      if (tokenList.length === 0) {
+        // Prüfen, ob Rollen-Einträger Instant-SMS markiert haben (RTDB roles)
+        let instantSmsCandidates: string[] = [];
+        try {
+          const rolesRes = await fetch(`${rtdbBase}/roles.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
+          if (rolesRes.ok) {
+            const rolesMap = await rolesRes.json().catch(() => null);
+            if (rolesMap && typeof rolesMap === "object") {
+              for (const dev in rolesMap) {
+                const r = rolesMap[dev];
+                if (r && r.role && providedRoles.includes(r.role) && r.instantSMS === true) {
+                  instantSmsCandidates.push(dev);
+                }
+              }
+            }
+          } else {
+            console.warn("[send-to-all] Could not fetch RTDB roles to check instantSMS:", rolesRes.status);
+          }
+        } catch (err) {
+          console.warn("[send-to-all] Checking RTDB roles for instantSMS failed:", err);
+        }
+
+        if (instantSmsCandidates.length === 0) {
+          // Keine Targets gefunden: trotzdem Notification in RTDB anlegen (recipients: {})
+          const now = Date.now();
+          const notif = {
+            sender: senderName ?? "Unbekannt",
+            title,
+            body,
+            recipients: {}, // KEINE Empfänger
+            timestamp: now,
+            attempts: { [attempt]: { at: now, count: 0 } },
+            lastAttemptAt: now,
+          };
+          const putRes = await fetch(`${rtdbBase}/notifications/${messageId}.json`, {
+            method: "PUT",
+            headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify(notif),
+          });
+
+          if (!putRes.ok) {
+            console.error("[send-to-all] Could not write notif while roles resolved to no recipients:", await putRes.text().catch(() => ""));
+          } else {
+            console.log("[send-to-all] roles resolved to no recipients -> notification written without recipients", { messageId, providedRoles });
+          }
+
+          return new Response(JSON.stringify({ ok: true, skipped: "no_recipients_for_roles", messageId }), {
+            status: 200,
+            headers: corsHeaders,
+          });
+        } else {
+          // Es gab Instant-SMS-only Empfänger -> wir proceed mit SMS-only flow weiter unten
+          recipientDeviceNames = recipientDeviceNames.concat(instantSmsCandidates);
+        }
+      }
     } else {
-      // fallback: hole alle Tokens (wie bisher)
+      // fallback: hole alle Tokens (wie bisher) — nur wenn kein resolveRecipientsAtSendTime flag gesetzt
       const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name`, {
         headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
       });
@@ -297,9 +365,6 @@ serve(async (req) => {
       tokenList = [...new Set(rows.map((r) => r.token).filter(Boolean))];
     }
 
-
-    // 2) messageId
-    const messageId = providedMessageId ?? crypto.randomUUID();
 
     // --- NEW: Check global setting in RTDB "settings/messages" ---
     try {
