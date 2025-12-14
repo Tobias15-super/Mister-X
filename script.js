@@ -1067,6 +1067,63 @@ async function resolveRecipientsForRoles(roleOrRoles) {
 }
 
 
+/**
+ * Resolve recipients (tokens + device names + instantSMS) for given team ids.
+ * Respects per-device notification opt-out and instantSMS flag from `roles`.
+ */
+async function resolveRecipientsForTeams(teamOrTeams) {
+  const teamIds = Array.isArray(teamOrTeams) ? teamOrTeams : [teamOrTeams];
+
+  // Read canonical data
+  const [teamsSnap, rolesSnap, tokensSnap] = await Promise.all([
+    get(ref(rtdb, 'teams')),
+    get(ref(rtdb, 'roles')),
+    get(ref(rtdb, 'tokens')),
+  ]);
+
+  const teamsData = teamsSnap.exists() ? teamsSnap.val() : {};
+  const rolesData = rolesSnap.exists() ? rolesSnap.val() : {};
+  const tokensData = tokensSnap.exists() ? tokensSnap.val() : {};
+
+  const tokens = [];
+  const deviceNames = [];
+  const instantSMSDevices = [];
+
+  const seenDevices = new Set();
+
+  for (const teamId of teamIds) {
+    const team = teamsData?.[teamId];
+    if (!team || !team.members) continue;
+    for (const deviceName of Object.keys(team.members || {})) {
+      if (seenDevices.has(deviceName)) continue; // avoid duplicates across teams
+      seenDevices.add(deviceName);
+
+      const roleEntry = rolesData[deviceName] || {};
+      const notificationEnabled = (roleEntry.notification !== false); // default true
+      const instantSMS = roleEntry.instantSMS === true;
+
+      if (!notificationEnabled) continue;
+
+      // Collect tokens
+      const devTokens = normalizeTokens(tokensData[deviceName]);
+      if (devTokens.length > 0) {
+        tokens.push(...devTokens);
+        deviceNames.push(deviceName);
+        continue; // Push available -> prefer push
+      }
+
+      // No push tokens -> maybe instant SMS
+      if (instantSMS) {
+        instantSMSDevices.push(deviceName);
+        deviceNames.push(deviceName);
+      }
+    }
+  }
+
+  return { tokens: unique(tokens), deviceNames: unique(deviceNames), instantSMSDevices: unique(instantSMSDevices) };
+}
+
+
 
 function uploadToCloudinary(file, callback) {
   const cloudName = "ddvf141hb";
@@ -2861,8 +2918,7 @@ function startup_Header() {
 
 
 async function triggerAgentLocationRequest() {
-  const confirm = confirm('Möchtest du wirklich alle Teams anfragen, ihren Standort zu teilen?');
-  if (!confirm) return;
+  if (!confirm("Möchtest du wirklich die Standorte der Agenten anfragen?")) return;
   try {
     // 1) Teams zum Zeitpunkt der Anfrage erfassen (Cache oder Fallback)
     let teamsObj = teamsSnapshotCache;
@@ -2908,13 +2964,35 @@ async function triggerAgentLocationRequest() {
     // 4) Schreiben: Einzelner „current“-Knoten wird überschrieben (simpler Flow)
     await set(ref(rtdb, 'agentLocationRequest'), requestPayload);
 
-    // 5) Push-Benachrichtigung (angepasster Text: Standort wird automatisch geteilt)
-    // Rollen-Filter kannst du beibehalten; Inhalt angepasst, da keine Bestätigung nötig ist.
-    sendNotificationToRoles(
-      'Mister X hat deinen Standort angefragt',
-      'Öffne die App, um deinen Standort freizugeben!',
-      ['agent', 'settings', 'start']
-    );
+    // 5) Push-Benachrichtigung: nur an Mitglieder der betroffenen Teams senden
+    const teamIds = Object.keys(teamsAtRequest);
+    try {
+      const { tokens, deviceNames, instantSMSDevices } = await resolveRecipientsForTeams(teamIds);
+
+      const title = 'Mister X hat deinen Standort angefragt';
+      const body = 'Öffne die App, um deinen Standort freizugeben!';
+
+      if ((tokens && tokens.length > 0) || (instantSMSDevices && instantSMSDevices.length > 0)) {
+        // Wenn es Push-Tokens gibt, nutze den gewohnten Versand-Pfad
+        if (tokens && tokens.length > 0) {
+          await sendNotificationToTokens(title, body, tokens, {
+            recipientDeviceNames: deviceNames,
+            link: '/Mister-X/',
+            rtdbBase: RTDB_BASE,
+          });
+        }
+
+        // Falls einige Geräte nur Instant-SMS möchten und keine Push-Tokens haben
+        if ((instantSMSDevices && instantSMSDevices.length > 0) && (!tokens || tokens.length === 0)) {
+          const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
+          await triggerSmsDirectIfNeeded(createMessageId(), instantSMSDevices, smsText, { rtdbBase: RTDB_BASE });
+        }
+      } else {
+        log?.('[triggerAgentLocationRequest] Keine Empfänger in den ausgewählten Teams gefunden.');
+      }
+    } catch (e) {
+      log?.('[triggerAgentLocationRequest] Fehler beim Ermitteln der Empfänger', e);
+    }
 
     log?.('[triggerAgentLocationRequest] Anfrage ausgelöst', { reqId, totalTeams: Object.keys(teamsAtRequest).length });
     return reqId;
