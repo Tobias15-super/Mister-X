@@ -46,6 +46,7 @@ const LS_AGENT_REQ_ENABLED = "agentReqEnabled";
 
 // Firebase-Setting-Path
 const AGENT_REQ_SETTING_PATH = "settings/agentReqEnabled";
+const MESSAGE_TOGGLE_PATH = "settings/messages"
 
 
 
@@ -4284,6 +4285,26 @@ function updateAgentReqButtonVisibility(enabled) {
   if (btn) btn.style.display = enabled ? "" : "none";
 }
 
+function setupMessageToggle() {
+  const cb = document.getElementById("messageToggle");
+  if (!cb) return;
+
+  // Initialwert aus RTDB laden
+  get(ref(rtdb, MESSAGE_TOGGLE_PATH)).then(snap => {
+    const enabled = snap.exists() ? !!snap.val() : false;
+    cb.checked = enabled;
+    localStorage.setItem(MESSAGE_TOGGLE_ENABLED, enabled ? "1" : "0");
+  });
+
+  cb.addEventListener("change", async () => {
+    const enabled = cb.checked;
+    await set(ref(rtdb, MESSAGE_TOGGLE_PATH), enabled);
+    localStorage.setItem(MESSAGE_TOGGLE_ENABLED, enabled ? "1" : "0");
+  });
+}
+
+
+
 // Beim Laden prüfen / initialisieren
 
 async function startScript() {
@@ -4409,6 +4430,7 @@ async function startScript() {
     setupLightboxOnce();
     fetchAndShowSwLogs().catch(() => {});
     setupAgentReqSetting();
+    setupMessageToggle();
 
 
 
