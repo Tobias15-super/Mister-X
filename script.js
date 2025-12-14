@@ -2861,6 +2861,8 @@ function startup_Header() {
 
 
 async function triggerAgentLocationRequest() {
+  const confirm = confirm('Möchtest du wirklich alle Teams anfragen, ihren Standort zu teilen?');
+  if (!confirm) return;
   try {
     // 1) Teams zum Zeitpunkt der Anfrage erfassen (Cache oder Fallback)
     let teamsObj = teamsSnapshotCache;
