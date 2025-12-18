@@ -43,6 +43,7 @@ const currentTeamName = 'Mein Team'; // Teamname
 let postenLayer, historyLayer, userLayer;
 
 const LS_AGENT_REQ_ENABLED = "agentReqEnabled";
+let MESSAGE_TOGGLE_ENABLED;
 
 // Firebase-Setting-Path
 const AGENT_REQ_SETTING_PATH = "settings/agentReqEnabled";
