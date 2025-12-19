@@ -2856,7 +2856,7 @@ function renderNotif(n) {
                     : status === 'blue' ? 'teamblue'
                     : 'red';
 
-    const symbol = status === 'green' ? '✅' : status === 'blue' ? '🟦' : status === 'orange' ? '⏳' : '🔴';
+    const symbol = status === 'green' ? '✅' : status === 'blue' ? '🟦' : status === 'orange' ? '📰' : '🔴';
 
     const div = document.createElement('div');
     div.className = `recipient-chip ${chipClass}`;
