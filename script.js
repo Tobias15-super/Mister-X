@@ -43,7 +43,7 @@ const currentTeamName = 'Mein Team'; // Teamname
 let postenLayer, historyLayer, userLayer;
 
 const LS_AGENT_REQ_ENABLED = "agentReqEnabled";
-let MESSAGE_TOGGLE_ENABLED;
+let MESSAGE_TOGGLE_ENABLED = "messageToggleEnabled";
 
 // Firebase-Setting-Path
 const AGENT_REQ_SETTING_PATH = "settings/agentReqEnabled";
@@ -1013,7 +1013,6 @@ async function sendNotificationToRoles(title, body, roles, opts = {}) {
 
   // 🟩 Fall B: Es gibt KEINE Tokens, aber Instant-SMS-Empfänger -> nur SMS-Direkt
   if (uniqueInstantSMS.length > 0) {
-    console.log('[sendNotificationToRoles] Nur Instant-SMS, keine Push-Tokens.');
     // Du willst delivered markieren, daher sms-direct direkt triggern:
     await triggerSmsDirectIfNeeded(messageId, uniqueInstantSMS, smsText, {
       rtdbBase,
@@ -1023,7 +1022,7 @@ async function sendNotificationToRoles(title, body, roles, opts = {}) {
   }
 
   // 🟥 Fall C: Weder Tokens noch Instant-SMS → nichts zu tun
-  console.warn(`⚠️ Keine passenden Empfänger für Rollen "${Array.isArray(roles) ? roles.join(',') : roles}".`);
+  log(`⚠️ Keine passenden Empfänger für Rollen "${Array.isArray(roles) ? roles.join(',') : roles}".`);
   return { ok: true, skipped: 'no_recipients' };
 }
 
@@ -2816,42 +2815,61 @@ function renderNotif(n) {
   const total = names.length;
 
   // --- Team-Logik ---
-  let allStatus = []; // "green", "blue", "orange"
-  recipientList.innerHTML = '';
-  names.sort((a,b)=>a.localeCompare(b)).forEach(name => {
-    const ok = rec[name] === true;
-    let status = ok ? 'green' : 'orange';
-    let team = null;
-    for (const [teamId, teamObj] of Object.entries(teamsSnapshotCache || {})) {
-      if (teamObj.members && teamObj.members[name]) {
-        team = teamObj;
-        break;
+  // 1) Basestatus: delivered -> green; smsTriggered -> orange; else -> red (default)
+  const baseStatus = {}; // name -> 'green'|'orange'|'red'
+  names.forEach(name => {
+    if (rec[name] === true) baseStatus[name] = 'green';
+    else if (n && n.smsTriggered === true) baseStatus[name] = 'orange';
+    else baseStatus[name] = 'red';
+  });
+
+  // 2) Upgrade to 'blue' for non-delivered devices when at least one teammate is green or orange
+  const finalStatus = {};
+  names.forEach(name => {
+    const team = (() => {
+      for (const [teamId, teamObj] of Object.entries(teamsSnapshotCache || {})) {
+        if (teamObj.members && teamObj.members[name]) return teamObj;
       }
-    }
-    if (!ok && team) {
+      return null;
+    })();
+
+    let status = baseStatus[name];
+    if (status !== 'green' && team) {
       const otherMembers = Object.keys(team.members).filter(m => m !== name);
-      const otherOk = otherMembers.some(m => rec[m] === true);
-      if (otherOk) status = 'blue';
+      const hasGood = otherMembers.some(m => baseStatus[m] === 'green' || baseStatus[m] === 'orange');
+      if (hasGood) status = 'blue';
     }
+    finalStatus[name] = status;
+  });
+
+  recipientList.innerHTML = '';
+  const allStatus = [];
+
+  names.sort((a,b)=>a.localeCompare(b)).forEach(name => {
+    const status = finalStatus[name];
     allStatus.push(status);
 
-    // Chip-Style: grün, orange, blau
+    // Chip-Style mapping: green -> ok, orange -> wait, blue -> teamblue, red -> red
     const chipClass = status === 'green' ? 'ok'
                     : status === 'orange' ? 'wait'
-                    : 'teamblue';
+                    : status === 'blue' ? 'teamblue'
+                    : 'red';
+
+    const symbol = status === 'green' ? '✅' : status === 'blue' ? '🟦' : status === 'orange' ? '⏳' : '🔴';
 
     const div = document.createElement('div');
     div.className = `recipient-chip ${chipClass}`;
-    div.innerHTML = `<span class="dot"></span><span>${name}</span><span>${ok ? '✅' : (status === 'blue' ? '🟦' : '⏳')}</span>`;
+    div.innerHTML = `<span class="dot"></span><span>${name}</span><span>${symbol}</span>`;
     recipientList.appendChild(div);
   });
 
-  // --- Status-Lampe ---
-  let statusColor = '#ff9800'; // orange
-  if (allStatus.length > 0 && allStatus.every(s => s === 'green')) {
-    statusColor = '#4caf50'; // grün
-  } else if (allStatus.length > 0 && allStatus.every(s => s === 'green' || s === 'blue')) {
-    statusColor = '#2196f3'; // blau
+  // --- Status-Lampe (Priority: if any red -> red; else if any blue -> blue; else if any orange -> orange; else all green -> green) ---
+  let statusColor = '#FF5252'; // default: rot
+  if (allStatus.length > 0) {
+    if (allStatus.some(s => s === 'red')) statusColor = '#FF5252';
+    else if (allStatus.some(s => s === 'blue')) statusColor = '#1E90FF';
+    else if (allStatus.some(s => s === 'orange')) statusColor = '#FF8C00';
+    else statusColor = '#2ECC71';
   }
   notifStatusDot.style.background = statusColor;
   if (notifCountEl) notifCountEl.textContent = `${okCount}/${total} bestätigt`;

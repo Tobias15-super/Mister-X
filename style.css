@@ -325,6 +325,7 @@ input[type="file"] {
 .recipient-chip.ok { border-color: #4caf50; background: #eaf6ec; }
 .recipient-chip.wait { border-color: #ff9800; background: #fff4e5; }
 .recipient-chip.teamblue { border-color: #2196f3; background: #e3f2fd; }
+.recipient-chip.red { border-color: #FF5252; background: #fdeaea; }
 
 .recipient-chip .dot {
   width: .5rem;
@@ -336,4 +337,5 @@ input[type="file"] {
 .recipient-chip.ok .dot { background: #4caf50; }
 .recipient-chip.wait .dot { background: #ff9800; }
 .recipient-chip.teamblue .dot { background: #2196f3; }
+.recipient-chip.red .dot { background: #FF5252; }
 
