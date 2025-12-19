@@ -2815,15 +2815,16 @@ function renderNotif(n) {
   const total = names.length;
 
   // --- Team-Logik ---
-  // 1) Basestatus: delivered -> green; smsTriggered -> orange; else -> red (default)
+  // 1) Basestatus: delivered -> green; per-device fallbackTargets -> orange; else -> red (default)
   const baseStatus = {}; // name -> 'green'|'orange'|'red'
   names.forEach(name => {
+    const safeName = sanitizeKey(name);
     if (rec[name] === true) baseStatus[name] = 'green';
-    else if (n && n.smsTriggered === true) baseStatus[name] = 'orange';
+    else if (n && n.fallbackTargets && n.fallbackTargets[safeName]) baseStatus[name] = 'orange';
     else baseStatus[name] = 'red';
   });
 
-  // 2) Upgrade to 'blue' for non-delivered devices when at least one teammate is green or orange
+  // 2) Upgrade to 'blue' ONLY for devices that are still RED when at least one teammate is green or orange
   const finalStatus = {};
   names.forEach(name => {
     const team = (() => {
@@ -2834,7 +2835,7 @@ function renderNotif(n) {
     })();
 
     let status = baseStatus[name];
-    if (status !== 'green' && team) {
+    if (status === 'red' && team) {
       const otherMembers = Object.keys(team.members).filter(m => m !== name);
       const hasGood = otherMembers.some(m => baseStatus[m] === 'green' || baseStatus[m] === 'orange');
       if (hasGood) status = 'blue';

@@ -418,41 +418,59 @@ Deno.serve(async (req) => {
       return jsonWithCors(req, { ok: true, skipped: "all_delivered" });
     }
 
-    // 8) Telefonnummern aus roles/<deviceName> holen
-    const telPromises = pendingDevices.map(async (dn) => {
+    // 8) Telefonnummern aus roles/<deviceName> holen (liefert device + tel)
+    const deviceTelPromises = pendingDevices.map(async (dn) => {
       const roleUrl = `${baseUrl}/${rolesPath}/${encodeURIComponent(dn)}.json`;
       try {
         const data =
           (bearer
             ? await rtdbGetJson<TelRole | null>(roleUrl, bearer)
             : await rtdbGetJson<TelRole | null>(appendAuthQuery(roleUrl, rtdbAuth))) || {};
-        return data.allowSmsFallback && isValidE164(data.tel) ? data.tel! : null;
+        const tel = data.allowSmsFallback && isValidE164(data.tel) ? data.tel! : null;
+        return { deviceName: dn, tel };
       } catch {
-        return null;
+        return { deviceName: dn, tel: null };
       }
     });
-    const tels = unique((await Promise.all(telPromises)).filter((x): x is string => !!x));
-    if (tels.length === 0) {
+
+    const deviceResults = await Promise.all(deviceTelPromises);
+    const valid = deviceResults.filter((r) => !!r.tel) as { deviceName: string; tel: string }[];
+    if (valid.length === 0) {
       return jsonWithCors(req, { ok: true, skipped: "no_tel_or_consent" });
     }
+
+    const tels = unique(valid.map((r) => r.tel));
+    const devicesSent = valid.map((r) => r.deviceName);
 
     // 9) SMS senden
     const trimmedSms = smsText.slice(0, 280);
     await sendSmsViaTextBee(tels, trimmedSms);
 
-    // 10) (Optional) Log zurückschreiben
+    // 10) (Optional) Log & fallbackTargets zurückschreiben
     const logUrl = `${baseUrl}/${recipientsPath}/${messageKey}.json`;
+    const patchBody: any = { smsCount: tels.length, smsAt: Date.now(), smsSentTo: devicesSent };
     if (bearer) {
-      rtdbPatch(logUrl, { smsCount: tels.length, smsAt: Date.now() }, bearer).catch(() => {});
+      rtdbPatch(logUrl, patchBody, bearer).catch(() => {});
+      // Patch fallbackTargets per device
+      const fallbackMap = Object.fromEntries(devicesSent.map(d => [sanitizeKey(d), true]));
+      const fallbackUrl = `${baseUrl}/${recipientsPath}/${messageKey}/fallbackTargets.json`;
+      rtdbPatch(fallbackUrl, fallbackMap, bearer).catch(() => {});
     } else if (rtdbAuth) {
       fetch(appendAuthQuery(logUrl, rtdbAuth), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ smsCount: tels.length, smsAt: Date.now() }),
+        body: JSON.stringify(patchBody),
+      }).catch(() => {});
+      const fallbackMap = Object.fromEntries(devicesSent.map(d => [sanitizeKey(d), true]));
+      const fallbackUrl = `${baseUrl}/${recipientsPath}/${messageKey}/fallbackTargets.json`;
+      fetch(appendAuthQuery(fallbackUrl, rtdbAuth), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackMap),
       }).catch(() => {});
     }
 
-    return jsonWithCors(req, { ok: true, sent: tels.length });
+    return jsonWithCors(req, { ok: true, sent: tels.length, devices: devicesSent });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return jsonWithCors(req, { ok: false, error: message }, { status: 500 });
