@@ -1125,7 +1125,7 @@ async function resolveRecipientsForTeams(teamOrTeams) {
 
 
 
-function uploadToCloudinary(file, callback) {
+function uploadToCloudinary(file, callback, errorCallback) {
   const cloudName = "ddvf141hb";
   const uploadPreset = "Misterx-upload";
 
@@ -1142,12 +1142,12 @@ function uploadToCloudinary(file, callback) {
       if (data.secure_url && data.public_id) {
         callback({url: data.secure_url}); // Bild-URL zurückgeben
       } else {
-        alert("Fehler beim Hochladen zu Cloudinary.");
+        if (typeof errorCallback === "function") errorCallback(new Error("Fehler beim Hochladen zu Cloudinary."));
       }
     })
     .catch(error => {
       log("Upload-Fehler:", error);
-      alert("Fehler beim Hochladen zu Cloudinary.");
+      if (typeof errorCallback === "function") errorCallback(error);
     });
 }
 
@@ -1250,13 +1250,21 @@ async function sendLocationWithPhoto() {
   startTimer();
 
   // 6) Foto im Hintergrund hochladen und URL aktualisieren
-  uploadToCloudinary(file, async ({ url }) => {
-    try {
-      await update(locRef, { photoURL: url });
-    } catch (e) {
-      log("Foto-URL konnte nicht gesetzt werden", e);
+  uploadToCloudinary(file,
+    async ({ url }) => {
+      try {
+        await update(locRef, { photoURL: url });
+        statusEl.innerText = "✅ Foto hochgeladen";
+      } catch (e) {
+        statusEl.innerText = "❌ Foto-URL konnte nicht gesetzt werden";
+        log("Foto-URL konnte nicht gesetzt werden", e);
+      }
+    },
+    (error) => {
+      statusEl.innerText = "❌ Foto konnte nicht hochgeladen werden";
+      log("Upload-Fehler:", error);
     }
-  });
+  );
 
   // 7) UI Reset
   document.getElementById("photoInput").value = "";
@@ -1265,7 +1273,7 @@ async function sendLocationWithPhoto() {
   document.getElementById("postenSearch").value = "";
   setSelectedPost(null);
 
-  statusEl.innerText = "✅ Posten/Farbe gemeldet & Foto wird hochgeladen.";
+  statusEl.innerText = "🔄️ Posten/Farbe gemeldet & Foto wird hochgeladen.";
   startTimer?.();
 }
 
