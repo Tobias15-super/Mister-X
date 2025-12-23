@@ -15,6 +15,7 @@ if (typeof L !== 'undefined' && FullScreen) {
 
 let countdown;
 let timerListenerRegistered = false;
+let locationDialogOpen = false;
 let map;
 let marker;
 let historyMarkers = [];
@@ -79,6 +80,18 @@ const meIcon = L.icon({
   popupAnchor: [1, -34],
   shadowSize: [41, 41]
 });
+
+// Workaround: Vite/Build kann Leaflet's relative image path kaputt machen.
+// Setze die Default-Icon-URLs explizit auf das CDN, damit Markerbilder angezeigt werden.
+if (typeof L !== 'undefined' && L.Icon && L.Icon.Default && typeof L.Icon.Default.mergeOptions === 'function') {
+  // Set imagePath to the CDN and provide filenames (Leaflet will compose correct URLs).
+  L.Icon.Default.mergeOptions({
+    imagePath: 'https://unpkg.com/leaflet@1/dist/images/',
+    iconUrl: 'marker-icon.png',
+    iconRetinaUrl: 'marker-icon-2x.png',
+    shadowUrl: 'marker-shadow.png'
+  });
+}
 
 const spielbereich = [
   [48.21778257924239,16.37016154994435],
@@ -1821,6 +1834,9 @@ function createOrReuseMap(lat, lon) {
         log('leaflet.fullscreen: failed to add control programmatically', err);
       }
     }
+
+    // Expose the map object to window for easier debugging in the console
+    try { window.__map = map; } catch (e) { /* ignore */ }
 
   // Karten-Layer definieren
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -3573,8 +3589,8 @@ function updateCountdown(startTime, duration) {
 
             const expKey = makeExpirationKey(startTime, duration);
 
-            // 2) Alert nur 1× pro Gerät zeigen
-            if (!shouldShowAlertOncePerDevice(expKey)) {
+            // 2) Alert nur 1× pro Gerät zeigen (wenn schon erledigt oder Dialog offen, überspringen)
+            if (wasAlertHandledForDevice(expKey) || locationDialogOpen) {
               return;
             }
 
@@ -3584,18 +3600,24 @@ function updateCountdown(startTime, duration) {
             if (isLocationPhase) {
               // Standortphase: Dialog mit Beschreibung/OK
               const message = "Zeit abgelaufen, dein Standort wird einmalig geteilt.";
+              locationDialogOpen = true;
               const dialogResult = await showLocationDialog(message);
-              // Prüfe TimerClaim erst jetzt!
-              const won = await doOncePerExpiration(rtdb, async (freshData) => {
-                const di1 = freshData?.durationInput;
-                const di2 = freshData?.durationInput2;
-                const locationPhase = (duration === di1 && (di2 ?? 0) > 0);
+              locationDialogOpen = false;
 
-                if (locationPhase) {
-                  if (dialogResult === "desc") {
-                    // Beschreibung abfragen und speichern
-                    const description = await promptForDescription();
-                    if (!description) return;
+              if (dialogResult === "desc") {
+                // Beschreibung abfragen (wenn Abbrechen -> nichts weiter tun, kein Claim)
+                const description = await promptForDescription();
+                if (!description) {
+                  // Nutzer hat abgebrochen – weder geschrieben noch geclaimed. Beim nächsten Lauf wird erneut gefragt.
+                } else {
+                  // Claim erst kurz vor dem tatsächlichen Schreiben
+                  const won = await doOncePerExpiration(rtdb, async (freshData) => {
+                    const di1 = freshData?.durationInput;
+                    const di2 = freshData?.durationInput2;
+                    const locationPhase = (duration === di1 && (di2 ?? 0) > 0);
+
+                    if (!locationPhase) return;
+
                     // Standort versuchen zu holen
                     try {
                       const position = await getCurrentPositionPromise();
@@ -3622,16 +3644,20 @@ function updateCountdown(startTime, duration) {
                         timestamp: Date.now(),
                       });
                     }
-                    postWriteSideEffects(di2);
-                  } else {
-                    // OK gedrückt: wie bisher
-                    await getLocation();
-                  }
-                }
-              });
 
-              if (!won) {
-                notifyAlreadyHandled();
+                    postWriteSideEffects(di2);
+                  });
+
+                  // Markieren, dass die Alert/Expiration verarbeitet wurde (egal ob gewonnen oder verloren)
+                  markAlertHandledForDevice(expKey);
+                  if (!won) notifyAlreadyHandled();
+                }
+              } else {
+                // OK gedrückt: getLocation übernimmt Claim kurz vor dem tatsächlichen Schreiben
+                const handled = await getLocation();
+                // handled==true => eigener Write; handled==false => entweder Abbruch oder ein anderes Gerät hat geschrieben
+                markAlertHandledForDevice(expKey);
+                if (!handled) notifyAlreadyHandled();
               }
             } else {
               // Live-Standortphase: Nur Alert anzeigen, keine Beschreibung
@@ -3719,11 +3745,13 @@ function makeExpirationKey(startTime, duration) {
   return `${startTime}_${duration}`;
 }
 
-function shouldShowAlertOncePerDevice(expKey) {
-  const key = `alertShown_${expKey}`;
-  if (sessionStorage.getItem(key) === "1") return false;
+function wasAlertHandledForDevice(expKey) {
+  const key = `alertHandled_${expKey}`;
+  return sessionStorage.getItem(key) === "1";
+}
+function markAlertHandledForDevice(expKey) {
+  const key = `alertHandled_${expKey}`;
   sessionStorage.setItem(key, "1");
-  return true;
 }
 
 
@@ -3903,15 +3931,32 @@ async function askManualAndWrite(durationInput2) {
     return false;
   }
 
-  if (await secondLookAbort()) return false;
+  // Claim erst kurz vor dem Schreiben
+  const snap = await get(ref(rtdb, "timer"));
+  const data = snap.val() || {};
+  const expKey = makeExpirationKey(data.startTime, data.duration);
 
-  await push(ref(rtdb, "locations"), {
-    description,
-    timestamp: Date.now(),
+  const won = await doOncePerExpiration(rtdb, async (freshData) => {
+    const di2 = freshData?.durationInput2;
+    const locationPhase = (data?.duration === freshData?.durationInput && (di2 ?? 0) > 0);
+    if (!locationPhase) return;
+
+    if (await secondLookAbort()) return;
+
+    await push(ref(rtdb, "locations"), {
+      description,
+      timestamp: Date.now(),
+    });
+    postWriteSideEffects(di2);
   });
 
-  postWriteSideEffects(durationInput2);
-  return true;
+  // Markieren, dass die Alert/Expiration verarbeitet wurde (egal ob gewonnen oder verloren)
+  markAlertHandledForDevice(expKey);
+  if (!won) {
+    notifyAlreadyHandled();
+  }
+
+  return won;
 }
 
 
@@ -3924,71 +3969,35 @@ async function getLocation({
 } = {}) {
   // 1) Timer-Check
   let durationInput2;
+  let timerData;
   try {
-    const data = await readTimer();
-    durationInput2 = data.durationInput2;
+    timerData = await readTimer();
+    durationInput2 = timerData.durationInput2;
 
-    if (isTimerRunning(data)) {
+    if (isTimerRunning(timerData)) {
       log("Timer wurde verlängert – Abbruch.");
-      return;
+      return false;
     }
   } catch (err) {
     log("Timer lesen fehlgeschlagen:", err);
-    return;
+    return false;
   }
+
+  // ExpKey für Markierung
+  const expKey = makeExpirationKey(timerData.startTime, timerData.duration);
 
   // 2) Geolocation prüfen
   if (!("geolocation" in navigator)) {
     document.getElementById("status").innerText =
       "Geolocation wird nicht unterstützt.";
     // Trotzdem manuellen Fallback anbieten:
-    await askManualAndWrite(durationInput2);
-    return;
+    const manual = await askManualAndWrite(durationInput2);
+    // markiere, dass die Alert/Expiration verarbeitet wurde (unabhängig vom Ergebnis)
+    markAlertHandledForDevice(expKey);
+    return !!manual;
   }
 
-  // Dialog anzeigen: OK oder Standort-Beschreibung hinzufügen
-  /*const dialogResult = await showLocationDialog();
-  if (dialogResult === "desc") {
-    // Beschreibung abfragen
-    const description = await promptForDescription();
-    if (!description) return; // Abbruch
-
-    // Standort versuchen zu holen
-    try {
-      const position = await getCurrentPositionPromise();
-      const { latitude: lat, longitude: lon, accuracy } = position.coords;
-      const timestamp = Date.now();
-
-      if (accuracy <= 100) {
-        // Genau genug: Standort + Beschreibung speichern
-        await push(ref(rtdb, "locations"), {
-          title: "Automatischer Standort",
-          lat,
-          lon,
-          accuracy,
-          description,
-          timestamp,
-        });
-      } else {
-        // Zu ungenau: Nur Beschreibung speichern
-        await push(ref(rtdb, "locations"), {
-          description,
-          timestamp,
-        });
-      }
-      postWriteSideEffects(durationInput2);
-    } catch (err) {
-      // Standort nicht verfügbar: Nur Beschreibung speichern
-      await push(ref(rtdb, "locations"), {
-        description,
-        timestamp: Date.now(),
-      });
-      postWriteSideEffects(durationInput2);
-    }
-    return;
-  }*/
-
-  // Wenn OK gedrückt wurde: wie bisher
+  // Wenn OK gedrückt wurde: wie bisher, aber Claim erst direkt vor dem Schreiben
   let retriesLeft = Math.max(0, maxRetries);
   let askedManualOnce = false;
 
@@ -3998,65 +4007,84 @@ async function getLocation({
     timeout: 15000,
   };
 
-  const success = async (position) => {
-    if (await secondLookAbort()) return;
+  return await new Promise((resolve) => {
+    const success = async (position) => {
+      if (await secondLookAbort()) return resolve(false);
 
-    const { latitude: lat, longitude: lon, accuracy } = position.coords;
-    const timestamp = Date.now();
+      const { latitude: lat, longitude: lon, accuracy } = position.coords;
+      const timestamp = Date.now();
 
-    if (accuracy > 100) {
-      document.getElementById("status").innerText =
-        "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
-      await askManualAndWrite(durationInput2);
-      return;
-    }
+      if (accuracy > 100) {
+        document.getElementById("status").innerText =
+          "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
+        const manualResult = await askManualAndWrite(durationInput2);
+        markAlertHandledForDevice(expKey);
+        return resolve(!!manualResult);
+      }
 
-    await push(ref(rtdb, "locations"), {
-      title: "Automatischer Standort",
-      lat,
-      lon,
-      accuracy,
-      timestamp,
-    });
+      // Claim und Schreiboperation
+      const won = await doOncePerExpiration(rtdb, async (freshData) => {
+        const di1 = freshData?.durationInput;
+        const di2 = freshData?.durationInput2;
+        const locationPhase = (timerData.duration === di1 && (di2 ?? 0) > 0);
+        if (!locationPhase) return;
 
-    postWriteSideEffects(durationInput2);
-  };
+        await push(ref(rtdb, "locations"), {
+          title: "Automatischer Standort",
+          lat,
+          lon,
+          accuracy,
+          timestamp,
+        });
 
-  const retry = () => {
-    if (!autoRetry || retriesLeft <= 0) return;
-    retriesLeft--;
-    setTimeout(() => {
-      navigator.geolocation.getCurrentPosition(success, error, options);
-    }, retryDelayMs);
-  };
+        postWriteSideEffects(di2);
+      });
 
-  const error = async (err) => {
-    let message = "❌ Fehler beim Abrufen des Standorts.";
-    switch (err.code) {
-      case err.PERMISSION_DENIED:
-        message += " Zugriff verweigert.";
-        break;
-      case err.POSITION_UNAVAILABLE:
-        message += " Standortinformationen nicht verfügbar.";
-        break;
-      case err.TIMEOUT:
-        message += " Zeitüberschreitung bei der Standortabfrage.";
-        break;
-    }
-    message += " Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
-    document.getElementById("status").innerText = message;
+      // Markieren, dass die Alert/Expiration verarbeitet wurde (egal ob gewonnen oder verloren)
+      markAlertHandledForDevice(expKey);
+      resolve(!!won);
+    };
 
-    if (!askedManualOnce) {
-      askedManualOnce = true;
-      await askManualAndWrite(durationInput2);
-    }
+    const retry = () => {
+      if (!autoRetry || retriesLeft <= 0) return;
+      retriesLeft--;
+      setTimeout(() => {
+        navigator.geolocation.getCurrentPosition(success, error, options);
+      }, retryDelayMs);
+    };
 
-    if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
-      retry();
-    }
-  };
+    const error = async (err) => {
+      let message = "❌ Fehler beim Abrufen des Standorts.";
+      switch (err.code) {
+        case err.PERMISSION_DENIED:
+          message += " Zugriff verweigert.";
+          break;
+        case err.POSITION_UNAVAILABLE:
+          message += " Standortinformationen nicht verfügbar.";
+          break;
+        case err.TIMEOUT:
+          message += " Zeitüberschreitung bei der Standortabfrage.";
+          break;
+      }
+      message += " Bitte erneut versuchen oder Standortbeschreibung manuell eingeben.";
+      document.getElementById("status").innerText = message;
 
-  navigator.geolocation.getCurrentPosition(success, error, options);
+      if (!askedManualOnce) {
+        askedManualOnce = true;
+        const manualResult = await askManualAndWrite(durationInput2);
+        markAlertHandledForDevice(expKey);
+        return resolve(!!manualResult);
+      }
+
+      if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
+        retry();
+      } else {
+        resolve(false);
+      }
+    };
+
+    navigator.geolocation.getCurrentPosition(success, error, options);
+  });
 }
 
 
