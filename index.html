@@ -9,14 +9,14 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@1.6.0/Control.FullScreen.css" />
 <script src="https://unpkg.com/leaflet.fullscreen@1.6.0/Control.FullScreen.js"></script>
-<script src="https://unpkg.com/leaflet-doubletapdrag"></script>
-<script src="https://unpkg.com/leaflet-doubletapdragzoom"></script>
+<link rel="stylesheet" href="leaflet-double-touch-drag-zoom.css" />
+<script src="leaflet-double-touch-drag-zoom.js"></script>
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Mister X Spiel</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <script type="module" crossorigin src="/Mister-X/assets/index-FuxPRYmn.js"></script>
+  <script type="module" crossorigin src="/Mister-X/assets/index-DBRkFdhf.js"></script>
   <link rel="modulepreload" crossorigin href="/Mister-X/assets/vendor-O8nsH46x.js">
   <link rel="modulepreload" crossorigin href="/Mister-X/assets/vendor_firebase-k7avh9Mj.js">
   <link rel="stylesheet" crossorigin href="/Mister-X/assets/index-SQq3iRyr.css">
@@ -34,7 +34,7 @@
                     background:none;border:none;cursor:pointer">✕</button>
     </div>
 
-<div id="teamStatusBar" class="team-status" onclick="openTeamSettings()">
+<div id="teamStatusBar" class="team-status" onclick="openCloseTeamSettings()">
   <span id="teamStatusName">Kein Team</span>
   <span class="sep">•</span>
   <span id="teamStatusCount">-</span>
@@ -77,7 +77,7 @@
     <button onclick="switchView('misterx')">🕵️ Mister X</button>
     <button onclick="switchView('agent')">🧭 Agent</button>
     <button onclick="switchView('settings')">⚙️ Einstellungen</button>
-    <button id="openTeamSettings" onclick="openTeamSettings()">Team-Einstellungen</button>
+    <button id="openCloseTeamSettings" onclick="openCloseTeamSettings()">Team-Einstellungen</button>
     <button class ="small-button" id="permissionButton" onclick="requestPermission()" style="display:none;">Benachrichtigungen aktivieren</button>
   </div>
 
