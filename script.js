@@ -1,3 +1,18 @@
+import 'leaflet.fullscreen/dist/Control.FullScreen.css';
+import FullScreen from 'leaflet.fullscreen';
+
+// Some distributions export the class but do not register the factory on L.control
+// when imported as an ES module. Ensure the factory exists so map options work.
+if (typeof L !== 'undefined' && FullScreen) {
+  if (!L.Control?.FullScreen) {
+    L.Control.FullScreen = FullScreen;
+  }
+  if (!L.control?.fullscreen) {
+    L.control.fullscreen = function(opts) { return new FullScreen(opts); };
+  }
+  console.debug('leaflet.fullscreen registered:', !!L.control?.fullscreen);
+}
+
 let countdown;
 let timerListenerRegistered = false;
 let map;
@@ -172,6 +187,11 @@ import { rtdb, storage } from './firebase.js';
 import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp, endAt } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+
+
+import '@petoc/leaflet-double-touch-drag-zoom';
+import 'leaflet/dist/leaflet.css';
+import '@petoc/leaflet-double-touch-drag-zoom/src/leaflet-double-touch-drag-zoom.css';
 
 const appCheck = initializeAppCheck(app, {
   provider: new ReCaptchaV3Provider('6LcVXbQrAAAAAI5Wgi8DenjAM4cz-ubrfcwIRPVJ'),
@@ -1498,15 +1518,21 @@ function initTeamModule() {
 document.addEventListener('DOMContentLoaded', initTeamModule);
 
 // --- View Switch ---
-function openTeamSettings() {
+function openCloseTeamSettings() {
+  if (document.getElementById("teamSettings").style.display !== "none") {
+    return closeTeamSettings();
+  } 
+
+  document.getElementById("startView").style.display = "none";
+  document.getElementById("startView2").style.display = "none";
+  document.querySelectorAll(".view").forEach(v => v.style.display = "none");
   show($('teamSettings'));
-  hide($('startView'));
   ensureTeamListeners(); // falls noch nicht aktiv
 }
 function closeTeamSettings() {
-  show($('startView'));
+  let targetView = localStorage.getItem('activeView') || 'start';
   hide($('teamSettings'));
-  // Listener bewusst anlassen, damit Statusbar aktuell bleibt
+  switchView(targetView)
 }
 
 // --- Listener einrichten ---
@@ -1780,9 +1806,21 @@ function createOrReuseMap(lat, lon) {
         position: 'topleft'
       },
       maxBounds: [[-90, -180], [90, 180]],
-      doubleTapDragZoom: 'center',
-      doubleTapDragZoomOptions: { reverse: true }
+      doubleTouchDragZoom: true,
     }).setView([lat, lon], 15);
+
+    // Debug: check fullscreen factory presence; if missing, try to add control programmatically
+    console.debug('createOrReuseMap: L.control.fullscreen=', typeof L.control?.fullscreen, 'map.options.fullscreenControl=', (map && map.options && map.options.fullscreenControl));
+    if (typeof L.control?.fullscreen === 'function') {
+      // If the control did not get auto-added, add it now
+      try {
+        if (!map.fullscreenControl) {
+          L.control.fullscreen({ position: 'topleft', title: 'Vollbild', titleCancel: 'Vollbild verlassen', forceSeparateButton: true }).addTo(map);
+        }
+      } catch (err) {
+        log('leaflet.fullscreen: failed to add control programmatically', err);
+      }
+    }
 
   // Karten-Layer definieren
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -3278,6 +3316,8 @@ async function switchView(view) {
     }
   }
 
+  if (view === "start") return goBack();
+
 
   document.getElementById("startView").style.display = "none";
   document.getElementById("startView2").style.display = "none";
@@ -4646,7 +4686,7 @@ window.resetAllMisterXRollen = resetAllMisterXRollen;
 window.removeNotificationSetup = removeNotificationSetup;
 window.mxState = window.mxState || {};
 window.mxState.selectedPost = null; 
-window.openTeamSettings = openTeamSettings;
+window.openCloseTeamSettings = openCloseTeamSettings;
 window.closeTeamSettings = closeTeamSettings;
 window.leaveTeam = leaveTeam;
 window.createTeam = createTeam;

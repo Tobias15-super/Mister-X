@@ -7,10 +7,9 @@
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@1.6.0/Control.FullScreen.css" />
-<script src="https://unpkg.com/leaflet.fullscreen@1.6.0/Control.FullScreen.js"></script>
-<script src="https://unpkg.com/leaflet-doubletapdrag"></script>
-<script src="https://unpkg.com/leaflet-doubletapdragzoom"></script>
+
+
+
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -31,7 +30,7 @@
                     background:none;border:none;cursor:pointer">✕</button>
     </div>
 
-<div id="teamStatusBar" class="team-status">
+<div id="teamStatusBar" class="team-status" onclick="openCloseTeamSettings()">
   <span id="teamStatusName">Kein Team</span>
   <span class="sep">•</span>
   <span id="teamStatusCount">-</span>
@@ -74,7 +73,7 @@
     <button onclick="switchView('misterx')">🕵️ Mister X</button>
     <button onclick="switchView('agent')">🧭 Agent</button>
     <button onclick="switchView('settings')">⚙️ Einstellungen</button>
-    <button id="openTeamSettings" onclick="openTeamSettings()">Team-Einstellungen</button>
+    <button id="openCloseTeamSettings" onclick="openCloseTeamSettings()">Team-Einstellungen</button>
     <button class ="small-button" id="permissionButton" onclick="requestPermission()" style="display:none;">Benachrichtigungen aktivieren</button>
   </div>
 
