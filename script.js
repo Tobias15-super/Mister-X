@@ -3623,26 +3623,43 @@ function updateCountdown(startTime, duration) {
                       const position = await getCurrentPositionPromise();
                       const { latitude: lat, longitude: lon, accuracy } = position.coords;
                       const timestamp = Date.now();
-                      if (accuracy <= 100) {
-                        await push(ref(rtdb, "locations"), {
-                          title: "Automatischer Standort",
-                          lat,
-                          lon,
-                          accuracy,
-                          description,
-                          timestamp,
-                        });
-                      } else {
-                        await push(ref(rtdb, "locations"), {
-                          description,
-                          timestamp,
-                        });
+
+                      // Bevor wir schreiben: prüfen, ob der Timer noch expired ist
+                    try {
+                      if (await secondLookAbort()) {
+                        log('showLocationDialog: timer no longer expired - abort write');
+                        notifyAlreadyHandled();
+                        return;
+                      }
+                    } catch (e) {
+                      log('showLocationDialog: secondLookAbort failed - proceeding with write attempt', e);
+                    }
+
+                    const payload = (accuracy <= 100) ? {
+                        title: "Automatischer Standort",
+                        lat,
+                        lon,
+                        accuracy,
+                        description,
+                        timestamp,
+                      } : {
+                        description,
+                        timestamp,
+                      };
+
+                      const wrote = await safePushLocationForExpiration(freshData, payload);
+                      if (!wrote) {
+                        // jemand war schneller oder Claim verloren
+                        log('showLocationDialog: write skipped because existing entry detected or claim lost');
+                        notifyAlreadyHandled();
                       }
                     } catch (err) {
-                      await push(ref(rtdb, "locations"), {
-                        description,
-                        timestamp: Date.now(),
-                      });
+                      const payload = { description, timestamp: Date.now() };
+                      const wrote = await safePushLocationForExpiration(freshData, payload);
+                      if (!wrote) {
+                        log('showLocationDialog: write skipped (exception path)');
+                        notifyAlreadyHandled();
+                      }
                     }
 
                     postWriteSideEffects(di2);
@@ -3754,6 +3771,80 @@ function markAlertHandledForDevice(expKey) {
   sessionStorage.setItem(key, "1");
 }
 
+// ----- Helpers: race-safe location writes for timer expirations -----
+// Prüft, ob bereits ein Standort für die gegebene Expiration existiert
+async function existingLocationForTimer(startTime, duration, windowMs = 60000) {
+  try {
+    const expTs = startTime + duration * 1000;
+    const q = query(ref(rtdb, 'locations'), orderByChild('timestamp'), startAt(Math.max(0, startTime - 5000)), endAt(expTs + windowMs));
+    const snap = await get(q);
+    if (!snap.exists()) return false;
+    const vals = snap.val();
+    return Object.keys(vals || {}).length > 0;
+  } catch (e) {
+    log('existingLocationForTimer failed', e);
+    // Auf Nummer sicher: wenn die Prüfung fehlschlägt, antworte mit false, damit die Aktion nicht fälschlich unterdrückt wird
+    return false;
+  }
+}
+
+// Versucht atomar zu claimen und schiebt einen Location-Eintrag nur, wenn noch keiner existiert.
+async function safePushLocationForExpiration(timerData, locationPayload) {
+  const { startTime, duration } = timerData || {};
+  if (typeof startTime !== 'number' || typeof duration !== 'number') {
+    log('safePushLocationForExpiration: invalid timerData', timerData);
+    return false;
+  }
+  const expKey = makeExpirationKey(startTime, duration);
+
+  // 1) Schnelle Prüfung: existierende Locations in Zeitfenster
+  const exists = await existingLocationForTimer(startTime, duration);
+  if (exists) {
+    log('safePushLocationForExpiration: detected existing location for expKey', expKey);
+    return false;
+  }
+
+  // 2) Atomare Claim-Transaktion auf locationClaims/expKey (defensive, falls caller nicht bereits geclaimt hat)
+  const claimRef = ref(rtdb, `locationClaims/${expKey}`);
+  const me = getDeviceId();
+  try {
+    const txRes = await runTransaction(claimRef, (current) => {
+      if (current && current.claimed) return current;
+      return { claimed: true, by: me, at: serverTimestamp() };
+    }, { applyLocally: false });
+
+    const committed = txRes?.committed;
+    const val = txRes?.snapshot?.val();
+    const iAmWinner = committed && val && val.by === me;
+    if (!iAmWinner) {
+      log('safePushLocationForExpiration: lost claim for expKey', expKey);
+      return false;
+    }
+
+    // 3) Nochmals prüfen (redundant, aber schützt bei sehr engen Rennen)
+    const exists2 = await existingLocationForTimer(startTime, duration);
+    if (exists2) {
+      log('safePushLocationForExpiration: someone wrote meanwhile for expKey', expKey);
+      return false;
+    }
+
+    // 4) Push mit Metadaten
+    const ts = locationPayload.timestamp || Date.now();
+    const payload = { ...locationPayload, expKey, claimedBy: me, timestamp: ts };
+    await push(ref(rtdb, 'locations'), payload);
+
+    // 5) Optional: setze eine Marker im timer-Node, damit andere Clients das eindeutig sehen können
+    try {
+      await update(ref(rtdb, `timer`), { lastLocationFor: expKey });
+    } catch (e) { /* don't fail overall */ }
+
+    return true;
+  } catch (e) {
+    log('safePushLocationForExpiration failed', e);
+    return false;
+  }
+}
+
 
 async function gcOldTimerClaims(rtdb, maxAgeMs = 48 * 60 * 60 * 1000) {
   let serverNow = Date.now();
@@ -3819,6 +3910,27 @@ async function doOncePerExpiration(rtdb, actionIfWinner) {
 
   if (!iAmWinner) return false;
 
+  // Defensive check: wenn bereits ein Location-Eintrag für diese Expiration existiert, nichts tun
+  try {
+    const already = await existingLocationForTimer(startTime, duration);
+    if (already) {
+      log('doOncePerExpiration: existing location detected for', expKey);
+      return false;
+    }
+  } catch (e) {
+    log('doOncePerExpiration: existing-location check failed, proceeding with action', e);
+  }
+
+  // Zusätzlich: Prüfen, ob der Timer zwischenzeitlich wieder aktiv/verlängert wurde
+  try {
+    if (await secondLookAbort()) {
+      log('doOncePerExpiration: timer no longer expired - aborting action for', expKey);
+      return false;
+    }
+  } catch (e) {
+    log('doOncePerExpiration: secondLookAbort failed - proceeding with action', e);
+  }
+
   await actionIfWinner(data);
     try {
     await gcOldTimerClaims(rtdb, 5 * 60 * 1000);
@@ -3831,9 +3943,14 @@ async function doOncePerExpiration(rtdb, actionIfWinner) {
 
 /** Optional: kleine Helfer-UI für Verlierer */
 function notifyAlreadyHandled() {
-  // Minimal-Variante:
+  // Sichtbare Rückmeldung für Nutzer: Dialog/Status informieren
   log("Bereits von anderem Gerät erledigt.");
-  // Oder non-blocking Toast, wenn du eine UI-Bibliothek verwendest.
+  try {
+    const statusEl = document.getElementById("status");
+    if (statusEl) statusEl.innerText = "ℹ️ Der Standort wurde bereits von einem anderen Gerät geteilt.";
+  } catch (e) {}
+  // Kurz und deutlich: ein Alert ist eine einfache Lösung
+  try { alert('ℹ️ Jemand anderes hat bereits den Standort geteilt. Dein Eintrag wurde nicht hinzugefügt.'); } catch (e) {}
 }
 
 
@@ -3943,10 +4060,9 @@ async function askManualAndWrite(durationInput2) {
 
     if (await secondLookAbort()) return;
 
-    await push(ref(rtdb, "locations"), {
-      description,
-      timestamp: Date.now(),
-    });
+    const wrote = await safePushLocationForExpiration(data, { description, timestamp: Date.now() });
+    if (!wrote) log('askManualAndWrite: write skipped because existing entry detected or claim lost');
+
     postWriteSideEffects(di2);
   });
 
@@ -4022,20 +4138,23 @@ async function getLocation({
         return resolve(!!manualResult);
       }
 
-      // Claim und Schreiboperation
+      // Claim und Schreiboperation (sicher)
       const won = await doOncePerExpiration(rtdb, async (freshData) => {
         const di1 = freshData?.durationInput;
         const di2 = freshData?.durationInput2;
         const locationPhase = (timerData.duration === di1 && (di2 ?? 0) > 0);
         if (!locationPhase) return;
 
-        await push(ref(rtdb, "locations"), {
+        const payload = {
           title: "Automatischer Standort",
           lat,
           lon,
           accuracy,
           timestamp,
-        });
+        };
+
+        const wrote = await safePushLocationForExpiration(freshData, payload);
+        if (!wrote) log('getLocation: write skipped because existing entry detected or claim lost');
 
         postWriteSideEffects(di2);
       });
