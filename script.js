@@ -859,7 +859,7 @@ async function sendNotificationToTokens(
     recipientDeviceNames = [],
     link = '/Mister-X/',
     attempt = 1,
-    maxAttempts = 5,
+    maxAttempts = 1,
     waitSec = 15,
     sendEndpoint = 'https://axirbthvnznvhfagduyj.supabase.co/functions/v1/send-to-all',
     rtdbBase = RTDB_BASE,
@@ -3102,6 +3102,23 @@ async function shareTeamLocationForRequest(req) {
     return;
   }
 
+  // Zusätzliche Prüfung: Existiert die Anfrage noch (wurde sie nicht zwischenzeitlich gelöscht)?
+  const reqRef = ref(rtdb, 'agentLocationRequest');
+  const reqSnap = await get(reqRef);
+  if (!reqSnap.exists()) {
+    // Anfrage wurde zurückgezogen -> nicht senden
+    alert('Die Anfrage wurde zurückgezogen — Standort wird nicht gesendet.');
+    try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+    return;
+  }
+  const reqVal = reqSnap.val();
+  if (reqVal?.id && reqVal.id !== req.id) {
+    // Anfrage wurde durch eine neuere ersetzt -> nicht senden
+    alert('Es gibt inzwischen eine andere Anfrage — Standort wird nicht gesendet.');
+    try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+    return;
+  }
+
   // Geolocation abfragen
   const position = await new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('Geolocation nicht verfügbar'));
@@ -3116,6 +3133,15 @@ async function shareTeamLocationForRequest(req) {
   // Teamname ermitteln (nice to have)
   const teamName = (teamsSnapshotCache?.[currentTeamId]?.name) || 'Team';
   alert("Dein Standort wird jetzt freigegeben")
+
+  // Nochmals prüfen, ob die Anfrage noch aktiv ist (zwischenzeitlich evtl. gelöscht/ersetzt)
+  const latestReqSnap = await get(reqRef);
+  if (!latestReqSnap.exists() || (latestReqSnap.val()?.id && latestReqSnap.val().id !== req.id)) {
+    alert('Die Anfrage wurde zurückgezogen oder ersetzt — Standort wird nicht gesendet.');
+    try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+    return;
+  }
+
   // Transaktion: nur schreiben, wenn noch keine Antwort des Teams existiert
   await runTransaction(teamRespRef, (current) => {
     if (current) {
