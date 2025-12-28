@@ -3283,6 +3283,76 @@ async function shareTeamLocationForRequest(req) {
   }
 }
 
+// Try to deliver a pending agent response object (from localStorage) to RTDB using the same
+// transaction logic as normal sending. Returns true if committed.
+async function sendPendingAgentResponse(pending) {
+  if (!pending || !pending.reqId || !pending.teamId) return false;
+  const reqRef = ref(rtdb, 'agentLocationRequest');
+  try {
+    const txRes = await runTransaction(reqRef, (current) => {
+      if (!current) return;
+      if (current.id !== pending.reqId) return;
+      const responses = current.responses || {};
+      if (responses[pending.teamId]) return current; // already answered
+      responses[pending.teamId] = {
+        teamId: pending.teamId,
+        teamName: pending.teamName || ((teamsSnapshotCache?.[pending.teamId]?.name) || 'Team'),
+        lat: pending.lat,
+        lon: pending.lon,
+        accuracy: typeof pending.accuracy === 'number' ? pending.accuracy : null,
+        deviceId,
+        timestamp: serverTimestamp(),
+      };
+      current.responses = responses;
+      return current;
+    }, { applyLocally: false });
+
+    const committed = !!txRes?.committed;
+    if (committed) {
+      try { localStorage.removeItem('pendingAgentResponse'); localStorage.setItem(LS_LAST_RESPONDED_REQ, pending.reqId); } catch (e) {}
+      showToast('Standort wurde im Hintergrund gesendet.', { type: 'success' });
+      log('sendPendingAgentResponse: committed for ' + pending.reqId);
+      return true;
+    }
+    log('sendPendingAgentResponse: transaction not committed');
+    return false;
+  } catch (e) {
+    log('sendPendingAgentResponse error', e);
+    return false;
+  }
+}
+
+// Called when we see an active agentLocationRequest — if we have a persisted pending response
+// for the same reqId, attempt to deliver it and if it fails, prompt the user again.
+async function checkAndDeliverPendingResponse(data) {
+  try {
+    const raw = localStorage.getItem('pendingAgentResponse');
+    if (!raw) return;
+    const pending = JSON.parse(raw);
+    if (!pending || !pending.reqId) return;
+    if (!data || !data.id || data.id !== pending.reqId) return;
+    if (!currentTeamId || pending.teamId !== currentTeamId) return;
+
+    // Quick check: if a response is already present on server, remove pending and mark
+    const teamRespRef = ref(rtdb, `agentLocationRequest/responses/${currentTeamId}`);
+    const existing = await get(teamRespRef);
+    if (existing.exists()) {
+      try { localStorage.removeItem('pendingAgentResponse'); localStorage.setItem(LS_LAST_RESPONDED_REQ, pending.reqId); } catch (e) {}
+      return;
+    }
+
+    // Try to send immediately
+    const sent = await sendPendingAgentResponse(pending);
+    if (sent) return;
+
+    // If not sent, re-prompt the user to confirm when they are back in the app
+    showToast('Dein Standort konnte nicht automatisch gesendet werden. Bitte bestätige erneut.', { type: 'warn' });
+    try { await shareTeamLocationForRequest(data); } catch (e) { log('checkAndDeliverPendingResponse share prompt failed', e); }
+  } catch (e) {
+    log('checkAndDeliverPendingResponse error', e);
+  }
+}
+
 function resetAgentLocations(){
   remove(ref(rtdb,"agentLocationRequest"))
   hideAgentReqUi();
@@ -3305,8 +3375,11 @@ function attachAgentReqListener() {
 
     renderAgentRequestOverlay(data);
 
-    // Wenn eine Anfrage aktiv ist und dieses Gerät NICHT der Ersteller ist → Standort sofort teilen
+    // Wenn eine Anfrage aktiv ist und dieses Gerät NICHT der Ersteller ist → prüfe ob wir eine hängige (lokale) Antwort haben und sende oder prompten
     if (data && data.createdBy !== deviceId && currentTeamId) {
+      // Versuche zunächst, eine zuvor persistierte Antwort zu liefern
+      try { checkAndDeliverPendingResponse(data).catch(e => log('checkAndDeliverPendingResponse error', e)); } catch (e) {}
+      // Normales Verhalten: Standort teilen (this may prompt the user if needed)
       autoShareLocation(data);
     }
   };
@@ -3919,7 +3992,8 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
     teamNameEl.style.fontSize = '14px';
     teamNameEl.style.color = '#333';
     teamNameEl.style.marginBottom = '0.6em';
-    teamNameEl.textContent = '';
+    const teamName = (teamsSnapshotCache?.[currentTeamId]?.name) || '';
+    teamNameEl.textContent = teamName;
 
     const status = document.createElement('div');
     status.style.marginBottom = '0.8em';
@@ -3967,11 +4041,35 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
     const timerRef = ref(rtdb, 'agentLocationRequest');
     let timeoutId = null;
 
+    const onPageHide = async () => {
+      // Try a best-effort immediate send of the pending position when the page is being hidden/unloaded
+      try {
+        const pend = localStorage.getItem('pendingAgentResponse');
+        if (!pend) return;
+        const parsed = JSON.parse(pend);
+        await sendPendingAgentResponse(parsed);
+      } catch (e) {
+        log('onPageHide: error trying to send pending response', e);
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) onPageHide();
+    };
+
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('beforeunload', onPageHide);
+
     const cleanup = () => {
       try { if (watchId != null) navigator.geolocation.clearWatch(watchId); } catch (e) {}
       try { off(timerRef, 'value', onTimerChange); } catch (e) {}
       try { if (modal && document.body.contains(modal)) document.body.removeChild(modal); } catch (e) {}
       try { if (timeoutId) clearTimeout(timeoutId); } catch (e) {}
+      try { localStorage.removeItem('pendingAgentResponse'); } catch (e) {}
+      try { window.removeEventListener('pagehide', onPageHide); } catch (e) {}
+      try { window.removeEventListener('visibilitychange', onVisibilityChange); } catch (e) {}
+      try { window.removeEventListener('beforeunload', onPageHide); } catch (e) {}
     };
 
     const setBest = (pos) => {
@@ -3988,15 +4086,27 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
       accuracyEl.textContent = acc != null ? `Genauigkeit: ±${acc} m` : 'Genauigkeit: -';
       status.textContent = acc != null ? (acc <= desiredAccuracy ? 'Gute Genauigkeit erreicht' : 'Standort ermittelt — du kannst jetzt teilen') : 'Standort ermittelt';
       confirmBtn.disabled = false;
+
+      // Persist a pending response so it can be sent if the user leaves the app
+      try {
+        const pending = {
+          reqId,
+          teamId: currentTeamId || null,
+          teamName: (teamsSnapshotCache?.[currentTeamId]?.name) || null,
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracy: acc,
+          timestamp: Date.now()
+        };
+        localStorage.setItem('pendingAgentResponse', JSON.stringify(pending));
+      } catch (e) {}
     };
 
     const onSuccess = (pos) => {
       setBest(pos);
       updateUIWithPos(pos);
-      if (pos.coords && typeof pos.coords.accuracy === 'number' && pos.coords.accuracy <= desiredAccuracy) {
-        try { if (watchId != null) navigator.geolocation.clearWatch(watchId); } catch (e) {}
-        watchId = null;
-      }
+      // Keep watching to allow accuracy to improve until timeout or user confirms
+      // (do not clear the watch here)
     };
 
     const onError = (err) => {
@@ -4028,12 +4138,6 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
     // Stop watch after maxWaitMs but keep last best position
     timeoutId = setTimeout(() => {
       timedOut = true;
-      if (bestPos) {
-        updateUIWithPos(bestPos);
-        status.textContent = 'Verwende beste verfügbare Messung';
-      } else {
-        status.textContent = 'Keine Messung erhalten';
-      }
       // enable confirm even if no measurement — no cancel allowed
       try { confirmBtn.disabled = false; } catch (e) {}
       try { if (watchId != null) navigator.geolocation.clearWatch(watchId); } catch (e) {}
