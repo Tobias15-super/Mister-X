@@ -3344,11 +3344,11 @@ function renderAgentRequestOverlay(data = activeAgentReq) {
     // Wenn Genauigkeit vorhanden, zeige einen dezenten Kreis auf der Karte
     if (typeof resp.accuracy === 'number') {
       try {
-        const circ = L.circle([resp.lat, resp.lon], { radius: resp.accuracy, color: '#888', weight: 1, fillColor: '#888', fillOpacity: 0.08, pane: 'agentenPane' }).addTo(map);
+        const circ = L.circle([resp.lat, resp.lon], { radius: resp.accuracy, color: '#888', weight: 1, fillColor: '#888', fillOpacity: 0.08, pane: 'agentenPane', interactive: false }).addTo(map);
         agentReqMarkers.push(circ);
       } catch (e) {
         // ignore errors from circle creation
-        log('Could not draw accuracy circle', e);
+        log('Konnte Genauigkeitskreis von Agentenstandort nicht erzeugen', e);
       }
     }
   }
