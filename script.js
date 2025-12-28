@@ -54,6 +54,7 @@ const LS_LAST_PROMPTED_REQ = 'lastPromptedAgentReqId';
 const LS_LAST_RESPONDED_REQ = 'lastRespondedAgentReqId';
 let showAgentLocations = (localStorage.getItem(LS_SHOW_AGENT_LOCS) ?? '1') === '1';
 let unsubscribeAgentReq = null;
+const agentReqInFlight = new Set(); // prevent duplicate prompts/writes per request id
 const currentTeamName = 'Mein Team'; // Teamname
 
 let postenLayer, historyLayer, userLayer;
@@ -3140,19 +3141,45 @@ async function triggerAgentLocationRequest() {
 
 
 async function shareTeamLocationForRequest(req) {
-  if (!currentTeamId) {
-    showToast('Du bist in keinem Team. Standortfreigabe abgebrochen.', { type: 'warn' });
+  if (!req || !req.id) return;
+
+  // Prevent duplicate concurrent prompts/writes for the same request id
+  if (agentReqInFlight.has(req.id)) {
+    log('shareTeamLocationForRequest: already in flight for ' + req.id);
     return;
   }
 
-  // Vorab prüfen, ob Team schon geantwortet hat (race-sicherer Schutz folgt per Transaktion)
-  const teamRespRef = ref(rtdb, `agentLocationRequest/responses/${currentTeamId}`);
-  const existing = await get(teamRespRef);
-  if (existing.exists()) {
-    // Schon vorhanden – nichts mehr senden
-    try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
-    return;
-  }
+  // If a previous prompt was started (maybe from another tab) we avoid prompting again
+  try {
+    if (localStorage.getItem(LS_LAST_PROMPTED_REQ) === req.id) {
+      log('shareTeamLocationForRequest: already prompted (LS) for ' + req.id);
+      return;
+    }
+  } catch (e) {}
+
+  agentReqInFlight.add(req.id);
+  try {
+    if (!currentTeamId) {
+      showToast('Du bist in keinem Team. Standortfreigabe abgebrochen.', { type: 'warn' });
+      return;
+    }
+
+    // Quick local check: if we've already responded to this request earlier, skip
+    try {
+      if (localStorage.getItem(LS_LAST_RESPONDED_REQ) === req.id) {
+        log('shareTeamLocationForRequest: already responded (LS) for ' + req.id);
+        return;
+      }
+    } catch (e) {}
+
+    // Vorab prüfen, ob Team schon geantwortet hat (race-sicherer Schutz folgt per Transaktion)
+    const teamRespRef = ref(rtdb, `agentLocationRequest/responses/${currentTeamId}`);
+    const existing = await get(teamRespRef);
+    if (existing.exists()) {
+      // Schon vorhanden – nichts mehr senden
+      try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+      return;
+    }
 
   // Zusätzliche Prüfung: Existiert die Anfrage noch (wurde sie nicht zwischenzeitlich gelöscht)?
   const reqRef = ref(rtdb, 'agentLocationRequest');
@@ -3171,22 +3198,32 @@ async function shareTeamLocationForRequest(req) {
     return;
   }
 
-  // Geolocation abfragen
-  const position = await new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error('Geolocation nicht verfügbar'));
-    navigator.geolocation.getCurrentPosition(resolve, reject, {
-      enableHighAccuracy: true, timeout: 15000, maximumAge: 0
-    });
-  });
+    // Mark local that we've prompted for this request (survive reload briefly)
+  try { localStorage.setItem(LS_LAST_PROMPTED_REQ, req.id); } catch (e) {}
 
+  // Show a non-blocking confirm dialog that gathers location in background and returns only when user confirms/cancels
+  const confirmResult = await showConfirmLocationDialog('Dein Standort wird jetzt für Mister X freigegeben', req.id, { maxWaitMs: 10000, desiredAccuracy: 30 });
+
+  if (confirmResult === null) {
+    // auto-closed (request removed/changed)
+    log('shareTeamLocationForRequest: confirm dialog auto-closed');
+    try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch (e) {}
+    return;
+  }
+  if (confirmResult === 'cancel') {
+    showToast('Standortfreigabe abgebrochen.', { type: 'info' });
+    try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch (e) {}
+    return;
+  }
+
+  const position = confirmResult.position;
   const lat = position.coords.latitude;
   const lon = position.coords.longitude;
-  // Genauigkeit (in Metern), falls verfügbar
   const accuracy = typeof position.coords.accuracy === 'number' ? Math.round(position.coords.accuracy) : null;
 
   // Teamname ermitteln (nice to have)
   const teamName = (teamsSnapshotCache?.[currentTeamId]?.name) || 'Team';
-  alert("Dein Standort wird jetzt für Mister X freigegeben")
+  showToast("Standort freigegeben", { type: 'success' })
 
   // Nochmals prüfen, ob die Anfrage noch aktiv ist (zwischenzeitlich evtl. gelöscht/ersetzt)
   const latestReqSnap = await get(reqRef);
@@ -3238,6 +3275,12 @@ async function shareTeamLocationForRequest(req) {
   // Erfolgreich geantwortet
   try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
   log('Standortantwort erfolgreich gesetzt (agentLocationRequest.responses/' + currentTeamId + ')');
+  } finally {
+    // clear in-flight flag so subsequent requests (other ids) can proceed
+    try { agentReqInFlight.delete(req.id); } catch (e) {}
+    // remove prompted marker
+    try { localStorage.removeItem(LS_LAST_PROMPTED_REQ); } catch (e) {}
+  }
 }
 
 function resetAgentLocations(){
@@ -3840,6 +3883,209 @@ function updateCountdown(startTime, duration) {
       ticking = false;
     }
   }, 1000);
+}
+
+// Non-blocking confirm-location dialog: gathers location in background and requires user confirmation
+async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000, desiredAccuracy = 30 } = {}) {
+  return new Promise((resolve) => {
+    const modal = document.createElement("div");
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100vw";
+    modal.style.height = "100vh";
+    modal.style.background = "rgba(0,0,0,0.6)";
+    modal.style.display = "flex";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.zIndex = "99999";
+
+    const box = document.createElement("div");
+    box.style.background = "#fff";
+    box.style.padding = "1.2em";
+    box.style.borderRadius = "8px";
+    box.style.width = "min(520px, 92vw)";
+    box.style.maxWidth = "520px";
+    box.style.textAlign = "center";
+
+    box.style.position = 'relative';
+
+    const title = document.createElement('div');
+    title.style.fontWeight = '600';
+    title.style.marginBottom = '0.4em';
+    title.textContent = messageText;
+
+    const teamNameEl = document.createElement('div');
+    teamNameEl.style.fontSize = '14px';
+    teamNameEl.style.color = '#333';
+    teamNameEl.style.marginBottom = '0.6em';
+    teamNameEl.textContent = '';
+
+    const status = document.createElement('div');
+    status.style.marginBottom = '0.8em';
+    status.textContent = 'Standort wird ermittelt...';
+
+    const accuracyEl = document.createElement('div');
+    // small corner accuracy
+    accuracyEl.style.position = 'absolute';
+    accuracyEl.style.top = '8px';
+    accuracyEl.style.right = '10px';
+    accuracyEl.style.fontSize = '11px';
+    accuracyEl.style.color = '#666';
+    accuracyEl.textContent = '± – m';
+
+    const hint = document.createElement('div');
+    hint.style.fontSize = '12px';
+    hint.style.color = '#666';
+    hint.style.marginBottom = '0.8em';
+    hint.textContent = 'Die Messung läuft im Hintergrund. Bestätige, um zu teilen.';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.display = 'flex';
+    btnRow.style.justifyContent = 'center';
+
+    // No cancel button per requirement — only confirm
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Standort teilen';
+    confirmBtn.className = 'small-button';
+    confirmBtn.disabled = true;
+
+    btnRow.appendChild(confirmBtn);
+
+    box.appendChild(title);
+    box.appendChild(teamNameEl);
+    box.appendChild(status);
+    box.appendChild(hint);
+    box.appendChild(btnRow);
+    box.appendChild(accuracyEl);
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    let bestPos = null;
+    let watchId = null;
+    let timedOut = false;
+    const timerRef = ref(rtdb, 'agentLocationRequest');
+    let timeoutId = null;
+
+    const cleanup = () => {
+      try { if (watchId != null) navigator.geolocation.clearWatch(watchId); } catch (e) {}
+      try { off(timerRef, 'value', onTimerChange); } catch (e) {}
+      try { if (modal && document.body.contains(modal)) document.body.removeChild(modal); } catch (e) {}
+      try { if (timeoutId) clearTimeout(timeoutId); } catch (e) {}
+    };
+
+    const setBest = (pos) => {
+      if (!pos) return;
+      if (!bestPos) { bestPos = pos; return; }
+      const a = typeof pos.coords.accuracy === 'number' ? pos.coords.accuracy : Infinity;
+      const b = typeof bestPos.coords.accuracy === 'number' ? bestPos.coords.accuracy : Infinity;
+      if (a < b) bestPos = pos;
+    };
+
+    const updateUIWithPos = (pos) => {
+      if (!pos) return;
+      const acc = typeof pos.coords.accuracy === 'number' ? Math.round(pos.coords.accuracy) : null;
+      accuracyEl.textContent = acc != null ? `Genauigkeit: ±${acc} m` : 'Genauigkeit: -';
+      status.textContent = acc != null ? (acc <= desiredAccuracy ? 'Gute Genauigkeit erreicht' : 'Standort ermittelt — du kannst jetzt teilen') : 'Standort ermittelt';
+      confirmBtn.disabled = false;
+    };
+
+    const onSuccess = (pos) => {
+      setBest(pos);
+      updateUIWithPos(pos);
+      if (pos.coords && typeof pos.coords.accuracy === 'number' && pos.coords.accuracy <= desiredAccuracy) {
+        try { if (watchId != null) navigator.geolocation.clearWatch(watchId); } catch (e) {}
+        watchId = null;
+      }
+    };
+
+    const onError = (err) => {
+      if (err && err.code === err.PERMISSION_DENIED) {
+        showToast('Standortzugriff verweigert. Freigabe nicht möglich.', { type: 'error' });
+        cleanup();
+        resolve('cancel');
+      } else {
+        showToast('Fehler beim Ermitteln des Standorts.', { type: 'warn' });
+      }
+    };
+
+    if (!('geolocation' in navigator)) {
+      showToast('Geolocation wird nicht unterstützt.', { type: 'error' });
+      cleanup();
+      resolve('cancel');
+      return;
+    }
+
+    try {
+      watchId = navigator.geolocation.watchPosition(onSuccess, onError, { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 });
+    } catch (e) {
+      showToast('Fehler beim Starten der Standortabfrage.', { type: 'error' });
+      cleanup();
+      resolve('cancel');
+      return;
+    }
+
+    // Stop watch after maxWaitMs but keep last best position
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      if (bestPos) {
+        updateUIWithPos(bestPos);
+        status.textContent = 'Verwende beste verfügbare Messung';
+      } else {
+        status.textContent = 'Keine Messung erhalten';
+      }
+      // enable confirm even if no measurement — no cancel allowed
+      try { confirmBtn.disabled = false; } catch (e) {}
+      try { if (watchId != null) navigator.geolocation.clearWatch(watchId); } catch (e) {}
+      watchId = null;
+    }, maxWaitMs);
+
+    // Listen for request removal, replacement or a response for our team — close dialog if that happens
+    const onTimerChange = (snap) => {
+      const d = snap.exists() ? snap.val() : null;
+      try {
+        if (!d || (d.id && d.id !== reqId)) {
+          cleanup();
+          resolve(null);
+          return;
+        }
+        // If another device already posted a response for our team, close dialog
+        if (d.responses && typeof teamId !== 'undefined' && d.responses[teamId]) {
+          cleanup();
+          showToast('Standort wurde bereits von einem Gerät deines Teams geteilt.', { type: 'info' });
+          resolve(null);
+          return;
+        }
+      } catch (e) {}
+    };
+    onValue(timerRef, onTimerChange);
+
+    const finishAndResolveConfirm = () => {
+      cleanup();
+      if (bestPos) return resolve({ action: 'confirm', position: bestPos });
+      navigator.geolocation.getCurrentPosition((p) => resolve({ action: 'confirm', position: p }), (err) => { showToast('Kein Standort verfügbar.', { type: 'warn' }); resolve('cancel'); }, { enableHighAccuracy: true, timeout: 8000 });
+    };
+
+    // No cancel button available per design (user must confirm). Confirm will finish with best or current position.
+    confirmBtn.onclick = () => {
+      finishAndResolveConfirm();
+    };
+
+    // Safety: if request already changed, abort at start
+    (async () => {
+      try {
+        const snap = await get(timerRef);
+        const d = snap.exists() ? snap.val() : null;
+        if (!d || (d.id && d.id !== reqId)) {
+          cleanup();
+          resolve(null);
+          return;
+        }
+        // set team name if passed in options
+        if (typeof teamName !== 'undefined' && teamNameEl) teamNameEl.textContent = teamName;
+      } catch (e) {}
+    })();
+  });
 }
 
 // Dialog mit Message-Text

@@ -2,7 +2,7 @@
 <div id="smsSettings">
   <label>
     <input type="checkbox" id="allowSmsFallback">
-    SMS‑Fallback erlauben (kann Kosten verursachen)
+    SMS‑Fallback erlauben 
   </label>
   <div style="margin-top:8px">
     <input id="telInput" placeholder="+43… oder 0664…" style="width:260px">
@@ -37,9 +37,9 @@ document.getElementById('saveSmsPrefsBtn').onclick = async () => {
     const prefs = setTelAndConsent(normalized, allow);
     await syncSmsPrefsToRTDB(getDeviceId());
     render();
-    alert("SMS‑Einstellungen gespeichert.");
+    window.showToast("SMS‑Einstellungen gespeichert.", { type: 'success' });
   } catch (e) {
-    alert(String(e));
+    window.showToast(String(e), { type: 'error' });
   }
 };
 
