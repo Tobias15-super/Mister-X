@@ -3627,8 +3627,15 @@ function updateCountdown(startTime, duration) {
               // Standortphase: Dialog mit Beschreibung/OK
               const message = "Zeit abgelaufen, dein Standort wird einmalig geteilt.";
               locationDialogOpen = true;
-              const dialogResult = await showLocationDialog(message);
+              const dialogResult = await showLocationDialog(message, { startTime, duration });
               locationDialogOpen = false;
+
+              // Wenn das Dialogfenster automatisch geschlossen wurde (z. B. weil der Timer wieder verlängert oder zurückgesetzt wurde),
+              // abbrechen und nichts weiter tun.
+              if (dialogResult === null) {
+                log('showLocationDialog: automatisch geschlossen, Timer wurde verlängert, ersetzt oder zurückgesetzt.');
+                return;
+              }
 
               if (dialogResult === "desc") {
                 // Beschreibung abfragen (wenn Abbrechen -> nichts weiter tun, kein Claim)
@@ -3741,7 +3748,7 @@ function updateCountdown(startTime, duration) {
 }
 
 // Dialog mit Message-Text
-async function showLocationDialog(messageText) {
+async function showLocationDialog(messageText, expectedTimer = null) {
   return new Promise((resolve) => {
     const modal = document.createElement("div");
     modal.style.position = "fixed";
@@ -3772,14 +3779,75 @@ async function showLocationDialog(messageText) {
     modal.appendChild(box);
     document.body.appendChild(modal);
 
-    document.getElementById("loc-ok-btn").onclick = () => {
-      document.body.removeChild(modal);
-      resolve("ok");
+    // Listener: wenn der Timer wieder aktiv/verlängert wird, oder wenn der Timer verändert/gelöscht wurde -> Dialog schließen
+    const timerRef = ref(rtdb, 'timer');
+    const onTimerChange = (snap) => {
+      const d = snap.exists() ? snap.val() : null;
+      try {
+        // 1) Timer wurde entfernt/gelöscht -> Dialog schließen
+        if (d === null) {
+          if (document.body.contains(modal)) {
+            try { document.body.removeChild(modal); } catch (e) {}
+          }
+          try { off(timerRef, 'value', onTimerChange); } catch (e) {}
+          resolve(null);
+          return;
+        }
+
+        // 2) Timer wurde geändert: wenn startTime/duration nicht mehr zu unserer erwarteten Expiration passen -> schließen
+        if (expectedTimer && (d.startTime !== expectedTimer.startTime || d.duration !== expectedTimer.duration)) {
+          if (document.body.contains(modal)) {
+            try { document.body.removeChild(modal); } catch (e) {}
+          }
+          try { off(timerRef, 'value', onTimerChange); } catch (e) {}
+          resolve(null);
+          return;
+        }
+
+        // 3) Timer wurde wieder aktiviert/verlängert (läuft jetzt) -> Dialog schließen
+        if (isTimerRunning(d)) {
+          if (document.body.contains(modal)) {
+            try { document.body.removeChild(modal); } catch (e) {}
+          }
+          try { off(timerRef, 'value', onTimerChange); } catch (e) {}
+          resolve(null); // signalisiert automatisches Schließen
+        }
+      } catch (e) {
+        // ignore
+      }
     };
-    document.getElementById("loc-desc-btn").onclick = () => {
-      document.body.removeChild(modal);
-      resolve("desc");
+
+    onValue(timerRef, onTimerChange);
+
+    const cleanupAndResolve = (val) => {
+      try { off(timerRef, 'value', onTimerChange); } catch (e) {}
+      if (document.body.contains(modal)) {
+        try { document.body.removeChild(modal); } catch (e) {}
+      }
+      resolve(val);
     };
+
+    document.getElementById("loc-ok-btn").onclick = () => cleanupAndResolve("ok");
+    document.getElementById("loc-desc-btn").onclick = () => cleanupAndResolve("desc");
+
+    // Safety: falls Timer bereits wieder aktiv/anders ist, abbrechen
+    (async () => {
+      try {
+        const snap = await get(timerRef);
+        const d = snap.exists() ? snap.val() : null;
+        if (d === null) {
+          cleanupAndResolve(null);
+          return;
+        }
+        if (expectedTimer && (d.startTime !== expectedTimer.startTime || d.duration !== expectedTimer.duration)) {
+          cleanupAndResolve(null);
+          return;
+        }
+        if (isTimerRunning(d)) {
+          cleanupAndResolve(null);
+        }
+      } catch (e) {}
+    })();
   });
 }
 
