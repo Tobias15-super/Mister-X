@@ -1192,11 +1192,11 @@ async function sendLocationWithPhoto() {
 
   const selectedPost = getselectedPost();
   if (!selectedPost) {
-    alert("Bitte zuerst einen Posten auswählen.");
+    showToast("Bitte zuerst einen Posten auswählen.", { type: "error" });
     return;
   }
   if (!file) {
-    alert("Bitte ein Foto auswählen.");
+    showToast("Bitte ein Foto auswählen.", { type: "error" });
     return;
   }
 
@@ -1474,6 +1474,58 @@ const getLocalTeamId = () => {
   try { return localStorage.getItem(LS_KEY) || ''; } catch { return ''; }
 };
 
+// --- Toast helper (non-blocking notifications) ---
+function ensureToastContainer() {
+  let c = document.getElementById('toastContainer');
+  if (c) return c;
+  c = document.createElement('div');
+  c.id = 'toastContainer';
+  c.setAttribute('aria-live', 'polite');
+  c.style.position = 'fixed';
+  c.style.left = '16px';
+  c.style.bottom = '16px';
+  c.style.zIndex = 2147483647;
+  c.style.display = 'flex';
+  c.style.flexDirection = 'column';
+  c.style.gap = '8px';
+  c.style.maxWidth = 'calc(100vw - 32px)';
+  document.body.appendChild(c);
+
+  // minimal CSS for toasts (one-time)
+  const s = document.createElement('style');
+  s.innerHTML = `#toastContainer .toast{background:#222;color:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.2);opacity:0;transform:translateY(6px);transition:opacity .22s,transform .22s;font-size:15px;max-width:380px;word-break:break-word}
+#toastContainer .toast.show{opacity:1;transform:translateY(0)}
+#toastContainer .toast.info{background:#333}
+#toastContainer .toast.success{background:#2ECC71}
+#toastContainer .toast.warn{background:#FF8C00}
+#toastContainer .toast.error{background:#FF5252}
+`;
+  document.head.appendChild(s);
+  return c;
+}
+
+function showToast(message, { timeout = 6500, type = 'info' } = {}) {
+  try {
+    const container = ensureToastContainer();
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = message;
+    container.appendChild(t);
+    // force paint then show
+    requestAnimationFrame(() => t.classList.add('show'));
+    const to = setTimeout(() => {
+      t.classList.remove('show');
+      t.addEventListener('transitionend', () => { try { t.remove(); } catch (e) {} });
+    }, timeout);
+    // allow manual dismissal by click
+    t.addEventListener('click', () => { clearTimeout(to); t.classList.remove('show'); t.addEventListener('transitionend', () => { try { t.remove(); } catch (e) {} }); });
+    return t;
+  } catch (e) {
+    // fallback to alert if something goes wrong
+    try { alert(message); } catch (e) {}
+  }
+}
+
 
 function normalizeTimestamp(ts) {
   if (typeof ts === 'number') return ts;
@@ -1749,7 +1801,7 @@ async function createTeam() {
 async function joinTeam(teamId, btnEl) {
   if (!teamId) return;
   const team = teamsSnapshotCache[teamId];
-  if (!team) { alert('Team existiert nicht (mehr).'); return; }
+  if (!team) { showToast('Team existiert nicht (mehr).', { type: "error" }); return; }
 
   if (btnEl) btnEl.disabled = true;
   try {
@@ -1764,7 +1816,7 @@ async function joinTeam(teamId, btnEl) {
 
     saveLocalTeamId(teamId);
   } catch (err) {
-    alert(err?.message || 'Beitritt nicht möglich.');
+    showToast(err?.message || 'Beitritt nicht möglich.', { type: "error" });
     log(err);
   } finally {
     if (btnEl) btnEl.disabled = false;
@@ -3025,7 +3077,7 @@ async function triggerAgentLocationRequest() {
 
     if (Object.keys(teamsAtRequest).length === 0) {
       log?.('[triggerAgentLocationRequest] Abbruch: keine adressierbaren Teams gefunden.');
-      alert('Keine Teams gefunden, die angefragt werden können.');
+      showToast('Keine Teams gefunden, die angefragt werden können.', { type: "error" });
       return;
     }
 
@@ -3080,7 +3132,7 @@ async function triggerAgentLocationRequest() {
     return reqId;
   } catch (e) {
     log?.('[triggerAgentLocationRequest] Anfrage fehlgeschlagen', e);
-    alert('Konnte die Anfrage nicht auslösen.');
+    showToast('Konnte die Anfrage nicht auslösen.', { type: 'error' });
     throw e;
   }
 }
@@ -3089,7 +3141,7 @@ async function triggerAgentLocationRequest() {
 
 async function shareTeamLocationForRequest(req) {
   if (!currentTeamId) {
-    alert('Du bist in keinem Team. Standortfreigabe abgebrochen.');
+    showToast('Du bist in keinem Team. Standortfreigabe abgebrochen.', { type: 'warn' });
     return;
   }
 
@@ -3107,14 +3159,14 @@ async function shareTeamLocationForRequest(req) {
   const reqSnap = await get(reqRef);
   if (!reqSnap.exists()) {
     // Anfrage wurde zurückgezogen -> nicht senden
-    alert('Die Anfrage wurde zurückgezogen — Standort wird nicht gesendet.');
+    showToast('Die Anfrage wurde zurückgezogen — Standort wird nicht gesendet.', { type: 'warn' });
     try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
     return;
   }
   const reqVal = reqSnap.val();
   if (reqVal?.id && reqVal.id !== req.id) {
     // Anfrage wurde durch eine neuere ersetzt -> nicht senden
-    alert('Es gibt inzwischen eine andere Anfrage — Standort wird nicht gesendet.');
+    showToast('Es gibt inzwischen eine andere Anfrage — Standort wird nicht gesendet.', { type: 'warn' });
     try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
     return;
   }
@@ -3129,36 +3181,63 @@ async function shareTeamLocationForRequest(req) {
 
   const lat = position.coords.latitude;
   const lon = position.coords.longitude;
+  // Genauigkeit (in Metern), falls verfügbar
+  const accuracy = typeof position.coords.accuracy === 'number' ? Math.round(position.coords.accuracy) : null;
 
   // Teamname ermitteln (nice to have)
   const teamName = (teamsSnapshotCache?.[currentTeamId]?.name) || 'Team';
-  alert("Dein Standort wird jetzt freigegeben")
+  alert("Dein Standort wird jetzt für Mister X freigegeben")
 
   // Nochmals prüfen, ob die Anfrage noch aktiv ist (zwischenzeitlich evtl. gelöscht/ersetzt)
   const latestReqSnap = await get(reqRef);
   if (!latestReqSnap.exists() || (latestReqSnap.val()?.id && latestReqSnap.val().id !== req.id)) {
-    alert('Die Anfrage wurde zurückgezogen oder ersetzt — Standort wird nicht gesendet.');
+    showToast('Die Anfrage wurde zurückgezogen oder ersetzt — Standort wird nicht gesendet.', { type: 'warn' });
     try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
     return;
   }
 
-  // Transaktion: nur schreiben, wenn noch keine Antwort des Teams existiert
-  await runTransaction(teamRespRef, (current) => {
-    if (current) {
-      // Jemand war schneller – nichts überschreiben
+  // Atomare Transaktion auf dem Parent-Knoten 'agentLocationRequest':
+  // prüft, dass die Anfrage noch existiert und die id mit req.id übereinstimmt
+  // und schreibt die Antwort nur wenn noch keine vorhanden ist
+  const txRes = await runTransaction(reqRef, (current) => {
+    if (!current) {
+      // Anfrage wurde zwischenzeitlich entfernt -> abort
+      return;
+    }
+    if (current.id !== req.id) {
+      // Andere Anfrage aktiv -> abort
+      return;
+    }
+    const responses = current.responses || {};
+    if (responses[currentTeamId]) {
+      // Unser Team hat bereits geantwortet
       return current;
     }
-    log ("Standort für AgentLocation ausgesendet")
-    return {
+
+    responses[currentTeamId] = {
       teamId: currentTeamId,
       teamName,
-      lat, lon,
+      lat,
+      lon,
+      accuracy: typeof accuracy === 'number' ? accuracy : null,
       deviceId,
-      timestamp: serverTimestamp()
+      timestamp: serverTimestamp(),
     };
-  });
+    current.responses = responses;
+    return current;
+  }, { applyLocally: false });
 
+  const committed = !!txRes?.committed;
+  if (!committed) {
+    // Transaction wurde nicht angewendet (z. B. weil Anfrage weg war oder ersetzt wurde)
+    showToast('Standort nicht gesendet: die Anfrage wurde zurückgezogen oder bereits beantwortet.', { type: 'warn' });
+    try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+    return;
+  }
+
+  // Erfolgreich geantwortet
   try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+  log('Standortantwort erfolgreich gesetzt (agentLocationRequest.responses/' + currentTeamId + ')');
 }
 
 function resetAgentLocations(){
@@ -3255,8 +3334,23 @@ function renderAgentRequestOverlay(data = activeAgentReq) {
     });
 
     const marker = L.marker([resp.lat, resp.lon], { icon, pane: 'agentenPane' }).addTo(map);
-    marker.bindPopup(`<strong>${escapeHtml(resp.teamName || 'Team')}</strong>`);
+
+    // Popup: Teamname und optional Genauigkeit in Klammern
+    const accText = (typeof resp.accuracy === 'number') ? ` (±${Math.round(resp.accuracy)} m)` : '';
+    marker.bindPopup(`<strong>${escapeHtml(resp.teamName || 'Team')}${accText}</strong>`);
+
     agentReqMarkers.push(marker);
+
+    // Wenn Genauigkeit vorhanden, zeige einen dezenten Kreis auf der Karte
+    if (typeof resp.accuracy === 'number') {
+      try {
+        const circ = L.circle([resp.lat, resp.lon], { radius: resp.accuracy, color: '#888', weight: 1, fillColor: '#888', fillOpacity: 0.08, pane: 'agentenPane' }).addTo(map);
+        agentReqMarkers.push(circ);
+      } catch (e) {
+        // ignore errors from circle creation
+        log('Could not draw accuracy circle', e);
+      }
+    }
   }
 }
 
@@ -3310,7 +3404,7 @@ function resetAllMisterXRollen() {
         });
       }
     }
-    alert("Alle Mister X Rollen wurden zurückgesetzt.");
+    showToast("Alle Mister X Rollen wurden zurückgesetzt.", { type: "info" });
   });
 }
 
@@ -3344,7 +3438,7 @@ async function switchView(view) {
     if (view==="misterx"){
       const allowed = await canSwitchToMisterX();
       if (!allowed){
-        alert("Es ist bereits ein Gerät als Mister X angemeldet!")
+        showToast("Es sind bereits die maximal erlaubten Mister X Spieler aktiv.", { type: "error" });
         goBack();
         return;
       }
@@ -3633,6 +3727,7 @@ function updateCountdown(startTime, duration) {
               // Wenn das Dialogfenster automatisch geschlossen wurde (z. B. weil der Timer wieder verlängert oder zurückgesetzt wurde),
               // abbrechen und nichts weiter tun.
               if (dialogResult === null) {
+                showToast('Dialog geschlossen: Timer wurde verlängert oder zurückgesetzt', { type: 'info' });
                 log('showLocationDialog: automatisch geschlossen, Timer wurde verlängert, ersetzt oder zurückgesetzt.');
                 return;
               }
@@ -4043,8 +4138,8 @@ function notifyAlreadyHandled() {
     const statusEl = document.getElementById("status");
     if (statusEl) statusEl.innerText = "ℹ️ Der Standort wurde bereits von einem anderen Gerät geteilt.";
   } catch (e) {}
-  // Kurz und deutlich: ein Alert ist eine einfache Lösung
-  try { alert('ℹ️ Jemand anderes hat bereits den Standort geteilt. Dein Eintrag wurde nicht hinzugefügt.'); } catch (e) {}
+  // Kurz und deutlich: nicht-blockierender Hinweis
+  try { showToast('ℹ️ Jemand anderes hat bereits den Standort geteilt. Dein Eintrag wurde nicht hinzugefügt.', { type: 'info' }); } catch (e) {}
 }
 
 
@@ -4371,7 +4466,7 @@ async function deleteAllLocations() {
 
   try {
     await remove(ref(rtdb, "locations"));
-    alert("Alle Standorte wurden gelöscht.");
+    showToast("Alle Standorte wurden gelöscht.", { type: "info" });
     historyMarkers = [];
 
     // Optional: Status zurücksetzen
@@ -4383,7 +4478,7 @@ async function deleteAllLocations() {
     renderPostenMarkersFromCache();
   } catch (err) {
     log(err);
-    alert("Fehler beim Löschen der Standorte.");
+    showToast("Fehler beim Löschen der Standorte.", { type: "error" });
   }
 }
 
