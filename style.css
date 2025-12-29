@@ -337,5 +337,20 @@ input[type="file"] {
 .recipient-chip.ok .dot { background: #4caf50; }
 .recipient-chip.wait .dot { background: #ff9800; }
 .recipient-chip.teamblue .dot { background: #2196f3; }
+
+/* Members modal */
+#membersModal .member-row { display:flex;align-items:center;justify-content:space-between;padding:.5rem .25rem;border-bottom:1px solid #f3f3f3}
+#membersModal .member-left { display:flex;align-items:center;gap:12px }
+#membersModal .member-name { font-weight:600 }
+#membersModal .member-meta { color:#666; font-size:.9rem }
+#membersModal .member-actions { display:flex;gap:8px;align-items:center }
+#membersModal .member-row .badge { margin-left:6px }
+#membersModal .member-toggle { transform: scale(1.05); }
+#membersModal .member-row.hidden { opacity:0.6 }
+#membersModal .small-muted { font-size:.85rem;color:#666 }
+#membersModal .danger-ghost { background:#fff;border:1px solid #ffb3b3;color:#900 }
+#membersModal .ghost { background:#fff;border:1px solid #ddd;color:#333 }
+#membersModal h4 { margin-bottom:6px }
+#membersModal input[type="search"] { min-width:180px }
 .recipient-chip.red .dot { background: #FF5252; }
 

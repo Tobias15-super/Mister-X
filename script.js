@@ -5231,6 +5231,232 @@ function updateUbahnButtonVisibility(enabled) {
   btn.style.display = (enabled && inMisterXView) ? "" : "none";
 }
 
+// --- Mitgliederverwaltung ---
+function getHiddenMembers() {
+  try { return JSON.parse(localStorage.getItem('hiddenMembers') || '{}'); } catch { return {}; }
+}
+function setHiddenMembers(obj) {
+  try { localStorage.setItem('hiddenMembers', JSON.stringify(obj || {})); } catch {}
+}
+
+let _membersCache = null;
+let _membersShowHidden = false;
+
+function toggleShowHidden() {
+  _membersShowHidden = !_membersShowHidden;
+  document.getElementById('membersHiddenList').style.display = _membersShowHidden ? '' : 'none';
+  document.getElementById('membersShowHiddenBtn').textContent = _membersShowHidden ? 'Ausgeblendete verbergen' : 'Ausgeblendete anzeigen';
+  renderMembersUI();
+}
+
+function openMembersManagement() {
+  const modal = document.getElementById('membersModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  modal.focus && modal.focus();
+  // reset search & sort
+  const s = document.getElementById('membersSearch'); if (s) s.value = '';
+  const so = document.getElementById('membersSort'); if (so) so.value = 'name';
+  _membersShowHidden = false; document.getElementById('membersHiddenList').style.display = 'none';
+  document.getElementById('membersShowHiddenBtn').textContent = 'Ausgeblendete anzeigen';
+  // wire quick events
+  document.getElementById('membersSearch').addEventListener('input', () => renderMembersUI());
+  document.getElementById('membersSort').addEventListener('change', () => renderMembersUI());
+  // close on ESC
+  document.addEventListener('keydown', membersEscHandler);
+  loadAndRenderMembers();
+}
+function closeMembersManagement() { const modal = document.getElementById('membersModal'); if (modal) modal.style.display = 'none'; document.removeEventListener('keydown', membersEscHandler); }
+
+function membersEscHandler(e) { if (e.key === 'Escape') closeMembersManagement(); }
+
+async function loadAndRenderMembers() {
+  _membersCache = {};
+  try {
+    const snap = await get(ref(rtdb, 'roles'));
+    const data = snap.exists() ? snap.val() : {};
+    for (const name of Object.keys(data || {})) {
+      const entry = data[name] || {};
+      const last = entry.telUpdatedAt || entry.lastUpdated || entry.joinedAt || 0;
+      _membersCache[name] = {
+        id: name,
+        name,
+        role: entry.role || '-',
+        allowSmsFallback: !!entry.allowSmsFallback,
+        instantSMS: entry.instantSMS === true,
+        notification: entry.notification === false ? false : true,
+        telPresent: !!entry.tel,
+        lastActivity: last,
+        raw: entry
+      };
+    }
+  } catch (err) {
+    console.error('Fehler beim Laden der Rollen:', err);
+    showToast('Fehler beim Laden der Mitglieder.');
+  }
+  renderMembersUI();
+}
+
+function renderMembersUI() {
+  const listEl = document.getElementById('membersList');
+  const hiddenInner = document.getElementById('membersHiddenInner');
+  if (!listEl) return;
+  const query = (document.getElementById('membersSearch')?.value || '').trim().toLowerCase();
+  const sortBy = document.getElementById('membersSort')?.value || 'name';
+
+  const arr = Object.values(_membersCache || {});
+
+  // filter by search
+  let filtered = arr.filter(m => m.name.toLowerCase().includes(query) || (m.role || '').toLowerCase().includes(query));
+
+  // hidden filter
+  const hidden = getHiddenMembers();
+  const visibleItems = filtered.filter(m => !hidden[m.name]);
+  const hiddenItems  = filtered.filter(m => !!hidden[m.name]);
+
+  // sort
+  const sorter = {
+    name: (a,b) => a.name.localeCompare(b.name),
+    role: (a,b) => (a.role||'').localeCompare(b.role||''),
+    lastActivity: (a,b) => (b.lastActivity||0) - (a.lastActivity||0),
+    hasTel: (a,b) => (b.telPresent?1:0) - (a.telPresent?1:0),
+    allowSmsFallback: (a,b) => (b.allowSmsFallback?1:0) - (a.allowSmsFallback?1:0)
+  };
+  filtered = (sorter[sortBy] ? filtered.sort(sorter[sortBy]) : filtered.sort(sorter.name));
+
+  // render visible
+  listEl.innerHTML = '';
+  for (const m of visibleItems) {
+    const row = document.createElement('div'); row.className = 'member-row';
+    const left = document.createElement('div'); left.className = 'member-left';
+    const name = document.createElement('div'); name.className = 'member-name'; name.innerHTML = escapeHtml(m.name);
+    const meta = document.createElement('div'); meta.className = 'member-meta';
+    meta.innerHTML = `${escapeHtml(m.role)} · ${normalizeTimestamp(m.lastActivity) || '—'} · ${m.telPresent ? 'Tel ✓' : '—'}`;
+    left.appendChild(name); left.appendChild(meta);
+
+    const actions = document.createElement('div'); actions.className = 'member-actions';
+
+    // allowSmsFallback toggle
+    const smsLabel = document.createElement('label'); smsLabel.className = 'member-meta small-muted';
+    smsLabel.style.display = 'inline-flex'; smsLabel.style.alignItems = 'center'; smsLabel.style.gap = '6px';
+    const smsCb = document.createElement('input'); smsCb.type = 'checkbox'; smsCb.checked = !!m.allowSmsFallback; smsCb.className = 'member-toggle';
+    smsCb.addEventListener('change', () => updateRoleField(m.name, { allowSmsFallback: smsCb.checked }));
+    smsLabel.appendChild(smsCb); smsLabel.appendChild(document.createTextNode('SMS-Fallback'));
+    actions.appendChild(smsLabel);
+
+    // instantSMS toggle
+    const instLabel = document.createElement('label'); instLabel.className = 'member-meta small-muted';
+    instLabel.style.display = 'inline-flex'; instLabel.style.alignItems = 'center'; instLabel.style.gap = '6px';
+    const instCb = document.createElement('input'); instCb.type = 'checkbox'; instCb.checked = !!m.instantSMS; instCb.className = 'member-toggle';
+    instCb.addEventListener('change', () => updateRoleField(m.name, { instantSMS: instCb.checked }));
+    instLabel.appendChild(instCb); instLabel.appendChild(document.createTextNode('Instant-SMS'));
+    actions.appendChild(instLabel);
+
+    // notification toggle
+    const nLabel = document.createElement('label'); nLabel.className = 'member-meta small-muted';
+    nLabel.style.display = 'inline-flex'; nLabel.style.alignItems = 'center'; nLabel.style.gap = '6px';
+    const nCb = document.createElement('input'); nCb.type = 'checkbox'; nCb.checked = !!m.notification; nCb.className = 'member-toggle';
+    nCb.addEventListener('change', () => updateRoleField(m.name, { notification: nCb.checked }));
+    nLabel.appendChild(nCb); nLabel.appendChild(document.createTextNode('Benachr.'));
+    actions.appendChild(nLabel);
+
+    // hide button
+    const hideBtn = document.createElement('button'); hideBtn.className = 'small-button ghost'; hideBtn.textContent = 'Ausblenden';
+    hideBtn.addEventListener('click', () => { const h = getHiddenMembers(); h[m.name] = true; setHiddenMembers(h); renderMembersUI(); });
+    actions.appendChild(hideBtn);
+
+    // remove tel
+    const delTelBtn = document.createElement('button'); delTelBtn.className = 'small-button ghost'; delTelBtn.textContent = 'Nummer löschen';
+    delTelBtn.addEventListener('click', () => removeTel(m.name));
+    actions.appendChild(delTelBtn);
+
+    // delete member
+    const delBtn = document.createElement('button'); delBtn.className = 'small-button danger-ghost'; delBtn.textContent = 'Spieler löschen';
+    delBtn.addEventListener('click', () => deleteMember(m.name));
+    actions.appendChild(delBtn);
+
+    row.appendChild(left); row.appendChild(actions);
+    listEl.appendChild(row);
+  }
+
+  // render hidden list
+  hiddenInner.innerHTML = '';
+  for (const m of hiddenItems) {
+    const r = document.createElement('div'); r.className = 'member-row hidden';
+    r.innerHTML = `<div class="member-left"><div class="member-name">${escapeHtml(m.name)}</div><div class="member-meta">${escapeHtml(m.role)} · ${normalizeTimestamp(m.lastActivity) || '—'}</div></div>`;
+    const a = document.createElement('div'); a.className = 'member-actions';
+    const showBtn = document.createElement('button'); showBtn.className = 'small-button ghost'; showBtn.textContent = 'Wieder einblenden';
+    showBtn.addEventListener('click', () => { const h = getHiddenMembers(); delete h[m.name]; setHiddenMembers(h); renderMembersUI(); });
+    a.appendChild(showBtn);
+    const delBtn = document.createElement('button'); delBtn.className = 'small-button danger-ghost'; delBtn.textContent = 'Spieler löschen';
+    delBtn.addEventListener('click', () => deleteMember(m.name));
+    a.appendChild(delBtn);
+    r.appendChild(a);
+    hiddenInner.appendChild(r);
+  }
+}
+
+async function updateRoleField(deviceName, updates) {
+  try {
+    const safe = sanitizeKey(deviceName);
+    await update(ref(rtdb, `roles/${safe}`), updates);
+    showToast('Änderung gespeichert', { timeout: 1500, type: 'info' });
+    loadAndRenderMembers();
+  } catch (err) { console.error(err); showToast('Fehler beim Speichern'); }
+}
+
+async function deleteMember(deviceName) {
+  const ok = confirm(`Spieler ${deviceName} wirklich löschen? Diese Aktion entfernt alle Rollen-/Tel-Daten.`);
+  if (!ok) return;
+  try {
+    await remove(ref(rtdb, `roles/${sanitizeKey(deviceName)}`));
+    showToast('Spieler gelöscht', { timeout:2000, type:'info' });
+    loadAndRenderMembers();
+  } catch (err) { console.error(err); showToast('Fehler beim Löschen'); }
+}
+
+async function removeTel(deviceName) {
+  const ok = confirm(`Nummer von ${deviceName} wirklich löschen?`);
+  if (!ok) return;
+  try {
+    await update(ref(rtdb, `roles/${sanitizeKey(deviceName)}`), { tel: null, allowSmsFallback: false });
+    showToast('Nummer entfernt', { timeout:1500, type:'info' });
+    loadAndRenderMembers();
+  } catch (err) { console.error(err); showToast('Fehler beim Entfernen'); }
+}
+
+function unhideAllMembers() { setHiddenMembers({}); renderMembersUI(); }
+
+function exportMembersCSV() {
+  const rows = [];
+  const headers = ['name','role','allowSmsFallback','instantSMS','notification','telPresent','lastActivity'];
+  rows.push(headers.join(','));
+  const h = getHiddenMembers();
+  const arr = Object.values(_membersCache || {}).filter(m => !h[m.name]);
+  for (const m of arr) {
+    const r = [
+      `"${m.name.replace(/"/g,'""')}"`,
+      `"${(m.role||'').replace(/"/g,'""')}"`,
+      m.allowSmsFallback ? '1' : '0',
+      m.instantSMS ? '1' : '0',
+      m.notification ? '1' : '0',
+      m.telPresent ? '1' : '0',
+      m.lastActivity || ''
+    ];
+    rows.push(r.join(','));
+  }
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'members.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+// expose to global
+window.openMembersManagement = openMembersManagement;
+window.closeMembersManagement = closeMembersManagement;
+window.toggleShowHidden = toggleShowHidden;
+window.unhideAllMembers = unhideAllMembers;
+window.exportMembersCSV = exportMembersCSV;
+
 // Aktion: U-Bahn-Einstieg melden (mit Confirm)
 async function announceUBahn() {
   const ok = confirm("Bestätige, dass du in eine U-Bahn eingestiegen bist.");
