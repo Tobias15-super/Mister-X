@@ -2180,83 +2180,9 @@ function showLocationHistory() {
   if (!__ubahnListenerAttached) attachUbahnListener();
 }
 
-    console.log('map id', map?._leaflet_id);
-    console.log('postenPane exists?', !!map?.getPane('postenPane'));
-    console.log('postenPane zIndex', map?.getPane('postenPane')?.style?.zIndex);
-    console.log('historyPane zIndex', map?.getPane('historyPane')?.style?.zIndex);
-    console.log('userPane zIndex', map?.getPane('userPane')?.style?.zIndex);
-    console.log('postenLayer on map?', map?.hasLayer(postenLayer));
-    console.log('postenMarkers count', Object.keys(postenMarkers || {}).length);
-
-
-    // 4) Mask optional (Pane beachten!)
-
-
-    if (map && mask && typeof mask.addTo === 'function') {
-      try {
-        mask.addTo(map);
-      } catch (err) {
-        log('Fehler beim Hinzufügen von mask:', err);
-      }
-    }
-
-
-
-
-    document.getElementById("map").style.display = "block";
-
-    const feed = document.getElementById("locationFeed");
-    feed.innerHTML = "";
-
-    if (entries.length > 0){
-      entries.forEach((loc, index) => {
-        const entryTitle = loc.title ? loc.title : "Automatischer Standort";
-        const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
-        const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" class="zoomable-photo" style="max-width: 100%; max-height: 60vh; border: 1px solid #ccc; margin-top: 5px; cursor: zoom-in;" data-index="${index}">` : "";
-
-        const entryDiv = document.createElement("div");
-        entryDiv.style.marginBottom = "1em";
-        entryDiv.innerHTML = `
-          <strong class="location-title" data-lat="${loc.lat}" data-lon="${loc.lon}" style="cursor: pointer;">${entryTitle} (${entryTime})</strong><br>
-          ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
-          ${photoHTML}
-        `;
-        feed.appendChild(entryDiv);
-      });
-    }
-
-    document.querySelectorAll(".location-title").forEach(el => {
-      el.addEventListener("click", () => {
-        const lat = parseFloat(el.dataset.lat);
-        const lon = parseFloat(el.dataset.lon);
-        if (map && !isNaN(lat) && !isNaN(lon)) {
-          map.setView([lat, lon], 17);
-        }
-      });
-    });
-
-    document.querySelectorAll(".zoomable-photo").forEach(img => {
-      img.addEventListener("click", () => {
-        const modal = document.createElement("div");
-        modal.style.position = "fixed";
-        modal.style.top = "0";
-        modal.style.left = "0";
-        modal.style.width = "100vw";
-        modal.style.height = "100vh";
-        modal.style.backgroundColor = "rgba(0,0,0,0.8)";
-        modal.style.display = "flex";
-        modal.style.alignItems = "center";
-        modal.style.justifyContent = "center";
-        modal.style.zIndex = "9999";
-        modal.innerHTML = `<img src="${img.src}" style="max-width: 90%; max-height: 90%; border: 2px solid white;">`;
-
-        modal.addEventListener("click", () => {
-          document.body.removeChild(modal);
-        });
-
-        document.body.appendChild(modal);
-      });
-    });
+// The feed rendering and event wiring are handled by renderFeedsFromLatest() and
+// by the existing click handlers set there. Removed duplicate top-level block that
+// referenced `entries` outside of its scope to avoid ReferenceErrors.
 
 
 
@@ -5307,7 +5233,7 @@ function updateUbahnButtonVisibility(enabled) {
 
 // Aktion: U-Bahn-Einstieg melden (mit Confirm)
 async function announceUBahn() {
-  const ok = confirm("Bist du sicher, dass du in eine U-Bahn eingestiegen bist? Dies wird an alle anderen Spieler gesendet.");
+  const ok = confirm("Bestätige, dass du in eine U-Bahn eingestiegen bist.");
   if (!ok) return;
 
   const message = "Mister X ist in eine U-Bahn eingestiegen";
