@@ -1539,6 +1539,16 @@ function normalizeTimestamp(ts) {
   return 0;
 }
 
+function formatDatetime(ms) {
+  if (!ms) return '—';
+  try {
+    const d = new Date(ms);
+    return d.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  } catch (e) {
+    return new Date(ms).toString();
+  }
+}
+
 
 function getDisplayName(devId) {
   if (!devId) return 'Unbekannt';
@@ -5232,13 +5242,6 @@ function updateUbahnButtonVisibility(enabled) {
 }
 
 // --- Mitgliederverwaltung ---
-function getHiddenMembers() {
-  try { return JSON.parse(localStorage.getItem('hiddenMembers') || '{}'); } catch { return {}; }
-}
-function setHiddenMembers(obj) {
-  try { localStorage.setItem('hiddenMembers', JSON.stringify(obj || {})); } catch {}
-}
-
 let _membersCache = null;
 let _membersShowHidden = false;
 
@@ -5249,19 +5252,54 @@ function toggleShowHidden() {
   renderMembersUI();
 }
 
+// Persist hidden flag in RTDB
+async function setMemberHidden(deviceName, hidden) {
+  try {
+    const safe = sanitizeKey(deviceName);
+    await update(ref(rtdb, `roles/${safe}`), { hidden: !!hidden });
+    showToast(hidden ? 'Spieler ausgeblendet' : 'Spieler wieder eingeblendet', { timeout: 1500, type: 'info' });
+    await loadAndRenderMembers();
+  } catch (err) { console.error('setMemberHidden err', err); showToast('Fehler beim Aktualisieren'); }
+}
+
+async function unhideAllMembers() {
+  const ok = confirm('Alle ausgeblendeten Spieler wirklich wieder einblenden?');
+  if (!ok) return;
+  try {
+    const updates = {};
+    for (const m of Object.values(_membersCache || {})) {
+      if (m.hidden) {
+        updates[`roles/${sanitizeKey(m.name)}/hidden`] = null; // remove flag
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      // Use multi-path update via update(ref(rtdb), updates)
+      await update(ref(rtdb), updates);
+      showToast('Alle ausgeblendeten Spieler wieder sichtbar', { timeout: 1500, type: 'info' });
+    }
+    await loadAndRenderMembers();
+  } catch (err) { console.error(err); showToast('Fehler beim Rückgängig machen'); }
+}
+
 function openMembersManagement() {
   const modal = document.getElementById('membersModal');
   if (!modal) return;
   modal.style.display = 'flex';
   modal.focus && modal.focus();
-  // reset search & sort
+  // reset search
   const s = document.getElementById('membersSearch'); if (s) s.value = '';
-  const so = document.getElementById('membersSort'); if (so) so.value = 'name';
+  // restore sort from localStorage if available
+  const so = document.getElementById('membersSort');
+  if (so) {
+    so.value = localStorage.getItem('membersSort') || 'name';
+    // assign onchange to avoid duplicate handlers when opening modal repeatedly
+    so.onchange = () => { localStorage.setItem('membersSort', so.value); renderMembersUI(); };
+  }
   _membersShowHidden = false; document.getElementById('membersHiddenList').style.display = 'none';
   document.getElementById('membersShowHiddenBtn').textContent = 'Ausgeblendete anzeigen';
   // wire quick events
-  document.getElementById('membersSearch').addEventListener('input', () => renderMembersUI());
-  document.getElementById('membersSort').addEventListener('change', () => renderMembersUI());
+  const searchEl = document.getElementById('membersSearch');
+  if (searchEl) searchEl.addEventListener('input', () => renderMembersUI());
   // close on ESC
   document.addEventListener('keydown', membersEscHandler);
   loadAndRenderMembers();
@@ -5287,6 +5325,7 @@ async function loadAndRenderMembers() {
         notification: entry.notification === false ? false : true,
         telPresent: !!entry.tel,
         lastActivity: last,
+        hidden: !!entry.hidden,
         raw: entry
       };
     }
@@ -5309,12 +5348,7 @@ function renderMembersUI() {
   // filter by search
   let filtered = arr.filter(m => m.name.toLowerCase().includes(query) || (m.role || '').toLowerCase().includes(query));
 
-  // hidden filter
-  const hidden = getHiddenMembers();
-  const visibleItems = filtered.filter(m => !hidden[m.name]);
-  const hiddenItems  = filtered.filter(m => !!hidden[m.name]);
-
-  // sort
+  // sort BEFORE splitting into visible/hidden
   const sorter = {
     name: (a,b) => a.name.localeCompare(b.name),
     role: (a,b) => (a.role||'').localeCompare(b.role||''),
@@ -5324,6 +5358,10 @@ function renderMembersUI() {
   };
   filtered = (sorter[sortBy] ? filtered.sort(sorter[sortBy]) : filtered.sort(sorter.name));
 
+  // hidden filter uses RTDB-stored flag (m.hidden)
+  const visibleItems = filtered.filter(m => !m.hidden);
+  const hiddenItems  = filtered.filter(m => !!m.hidden);
+
   // render visible
   listEl.innerHTML = '';
   for (const m of visibleItems) {
@@ -5331,7 +5369,8 @@ function renderMembersUI() {
     const left = document.createElement('div'); left.className = 'member-left';
     const name = document.createElement('div'); name.className = 'member-name'; name.innerHTML = escapeHtml(m.name);
     const meta = document.createElement('div'); meta.className = 'member-meta';
-    meta.innerHTML = `${escapeHtml(m.role)} · ${normalizeTimestamp(m.lastActivity) || '—'} · ${m.telPresent ? 'Tel ✓' : '—'}`;
+    const dt = m.lastActivity ? formatDatetime(normalizeTimestamp(m.lastActivity)) : '—';
+    meta.innerHTML = `${escapeHtml(m.role)} · ${dt} · ${m.telPresent ? 'Tel ✓' : '—'}`;
     left.appendChild(name); left.appendChild(meta);
 
     const actions = document.createElement('div'); actions.className = 'member-actions';
@@ -5362,7 +5401,8 @@ function renderMembersUI() {
 
     // hide button
     const hideBtn = document.createElement('button'); hideBtn.className = 'small-button ghost'; hideBtn.textContent = 'Ausblenden';
-    hideBtn.addEventListener('click', () => { const h = getHiddenMembers(); h[m.name] = true; setHiddenMembers(h); renderMembersUI(); });
+    hideBtn.setAttribute('title', 'Spieler in der App ausblenden (gespeichert)');
+    hideBtn.addEventListener('click', () => setMemberHidden(m.name, true));
     actions.appendChild(hideBtn);
 
     // remove tel
@@ -5383,10 +5423,11 @@ function renderMembersUI() {
   hiddenInner.innerHTML = '';
   for (const m of hiddenItems) {
     const r = document.createElement('div'); r.className = 'member-row hidden';
-    r.innerHTML = `<div class="member-left"><div class="member-name">${escapeHtml(m.name)}</div><div class="member-meta">${escapeHtml(m.role)} · ${normalizeTimestamp(m.lastActivity) || '—'}</div></div>`;
+    const dt = m.lastActivity ? formatDatetime(normalizeTimestamp(m.lastActivity)) : '—';
+    r.innerHTML = `<div class="member-left"><div class="member-name">${escapeHtml(m.name)}</div><div class="member-meta">${escapeHtml(m.role)} · ${dt}</div></div>`;
     const a = document.createElement('div'); a.className = 'member-actions';
     const showBtn = document.createElement('button'); showBtn.className = 'small-button ghost'; showBtn.textContent = 'Wieder einblenden';
-    showBtn.addEventListener('click', () => { const h = getHiddenMembers(); delete h[m.name]; setHiddenMembers(h); renderMembersUI(); });
+    showBtn.addEventListener('click', () => setMemberHidden(m.name, false));
     a.appendChild(showBtn);
     const delBtn = document.createElement('button'); delBtn.className = 'small-button danger-ghost'; delBtn.textContent = 'Spieler löschen';
     delBtn.addEventListener('click', () => deleteMember(m.name));
@@ -5425,37 +5466,13 @@ async function removeTel(deviceName) {
   } catch (err) { console.error(err); showToast('Fehler beim Entfernen'); }
 }
 
-function unhideAllMembers() { setHiddenMembers({}); renderMembersUI(); }
-
-function exportMembersCSV() {
-  const rows = [];
-  const headers = ['name','role','allowSmsFallback','instantSMS','notification','telPresent','lastActivity'];
-  rows.push(headers.join(','));
-  const h = getHiddenMembers();
-  const arr = Object.values(_membersCache || {}).filter(m => !h[m.name]);
-  for (const m of arr) {
-    const r = [
-      `"${m.name.replace(/"/g,'""')}"`,
-      `"${(m.role||'').replace(/"/g,'""')}"`,
-      m.allowSmsFallback ? '1' : '0',
-      m.instantSMS ? '1' : '0',
-      m.notification ? '1' : '0',
-      m.telPresent ? '1' : '0',
-      m.lastActivity || ''
-    ];
-    rows.push(r.join(','));
-  }
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'members.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-}
+// Note: actual unhide implementation (writes to RTDB) is defined earlier as async function unhideAllMembers() { /* no-op placeholder removed */ }
 
 // expose to global
 window.openMembersManagement = openMembersManagement;
 window.closeMembersManagement = closeMembersManagement;
 window.toggleShowHidden = toggleShowHidden;
 window.unhideAllMembers = unhideAllMembers;
-window.exportMembersCSV = exportMembersCSV;
 
 // Aktion: U-Bahn-Einstieg melden (mit Confirm)
 async function announceUBahn() {

@@ -339,6 +339,7 @@ input[type="file"] {
 .recipient-chip.teamblue .dot { background: #2196f3; }
 
 /* Members modal */
+#membersModal > div { max-height: calc(100vh - 120px); overflow: auto; }
 #membersModal .member-row { display:flex;align-items:center;justify-content:space-between;padding:.5rem .25rem;border-bottom:1px solid #f3f3f3}
 #membersModal .member-left { display:flex;align-items:center;gap:12px }
 #membersModal .member-name { font-weight:600 }
@@ -352,5 +353,13 @@ input[type="file"] {
 #membersModal .ghost { background:#fff;border:1px solid #ddd;color:#333 }
 #membersModal h4 { margin-bottom:6px }
 #membersModal input[type="search"] { min-width:180px }
+
+/* Lists inside modal */
+#membersModal #membersList { max-height: 44vh; overflow:auto; }
+#membersModal #membersHiddenList { max-height: 30vh; overflow:auto; margin-top:12px; border-top:1px dashed #eee; padding-top:8px }
+
+/* Ensure buttons/wrapping inside actions don't force wide layout */
+#membersModal .member-actions button { white-space:nowrap }
+
 .recipient-chip.red .dot { background: #FF5252; }
 
