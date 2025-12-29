@@ -65,6 +65,8 @@ let MESSAGE_TOGGLE_ENABLED = "messageToggleEnabled";
 // Firebase-Setting-Path
 const AGENT_REQ_SETTING_PATH = "settings/agentReqEnabled";
 const MESSAGE_TOGGLE_PATH = "settings/messages"
+const UBAHN_SETTING_PATH = "settings/uBahnEinstieg";
+const LS_UBAHN_ENABLED = "uBahnEnabled";
 
 
 
@@ -2029,15 +2031,121 @@ icon.options.shadowSize = [0,0];
 
 
 
+let __latestLocationsSnap = null;
+let __latestUbahnSnap = null;
+let __ubahnListenerAttached = false;
+
+function renderFeedsFromLatest() {
+  // Combine locations and ubahn events and render into the same feed under the map
+  const feed = document.getElementById("locationFeed");
+  if (!feed) return;
+  feed.innerHTML = "";
+
+  // Locations
+  let locEntries = [];
+  try {
+    const data = __latestLocationsSnap?.val() || null;
+    locEntries = data ? Object.values(data).sort((a,b) => b.timestamp - a.timestamp) : [];
+  } catch {
+    locEntries = [];
+  }
+
+  // U-Bahn events
+  let ubahnEntries = [];
+  try {
+    const udata = __latestUbahnSnap?.val() || null;
+    ubahnEntries = udata ? Object.values(udata).sort((a,b) => b.timestamp - a.timestamp) : [];
+  } catch {
+    ubahnEntries = [];
+  }
+
+  // Merge by timestamp descending
+  const merged = [
+    ...locEntries.map(e => ({ kind: 'loc', data: e })),
+    ...ubahnEntries.map(e => ({ kind: 'ubahn', data: e }))
+  ].sort((A,B) => (B.data.timestamp || 0) - (A.data.timestamp || 0));
+
+  if (merged.length === 0) {
+    // nothing to show
+    return;
+  }
+
+  merged.forEach((item, index) => {
+    const div = document.createElement('div');
+    div.style.marginBottom = '1em';
+
+    if (item.kind === 'loc') {
+      const loc = item.data;
+      const entryTitle = loc.title ? loc.title : "Automatischer Standort";
+      const entryTime = loc.timestamp ? new Date(loc.timestamp).toLocaleTimeString() : "";
+      const photoHTML = loc.photoURL ? `<img src="${loc.photoURL}" alt="Foto" class="zoomable-photo" style="max-width: 100%; max-height: 60vh; border: 1px solid #ccc; margin-top: 5px; cursor: zoom-in;" data-index="${index}">` : "";
+      div.innerHTML = `
+        <strong class="location-title" data-lat="${loc.lat}" data-lon="${loc.lon}" style="cursor: pointer;">${entryTitle} (${entryTime})</strong><br>
+        ${loc.description ? `<em>📍 ${loc.description}</em><br>` : ""}
+        ${photoHTML}
+      `;
+    } else {
+      const ev = item.data;
+      const entryTime = ev.timestamp ? new Date(ev.timestamp).toLocaleTimeString() : '';
+      const msg = ev.message ? ev.message : 'U-Bahn-Ereignis';
+      div.innerHTML = `
+        <strong class="location-title ubahn-event" data-lat="" data-lon="" style="cursor: default;">🚇 ${escapeHtml(String(msg))} (${entryTime})</strong><br>
+      `;
+    }
+
+    feed.appendChild(div);
+  });
+
+  // Wire up click handlers for location titles that have lat/lon
+  document.querySelectorAll('.location-title').forEach(el => {
+    const lat = parseFloat(el.dataset.lat);
+    const lon = parseFloat(el.dataset.lon);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', () => {
+        if (map && !isNaN(lat) && !isNaN(lon)) {
+          map.setView([lat, lon], 17);
+        }
+      });
+    }
+  });
+
+  // Attach zoom behavior for photos (if any)
+  document.querySelectorAll('.zoomable-photo').forEach(img => {
+    img.addEventListener('click', () => {
+      const modal = document.createElement('div');
+      modal.style.position = 'fixed';
+      modal.style.top = '0';
+      modal.style.left = '0';
+      modal.style.width = '100vw';
+      modal.style.height = '100vh';
+      modal.style.backgroundColor = 'rgba(0,0,0,0.8)';
+      modal.style.display = 'flex';
+      modal.style.alignItems = 'center';
+      modal.style.justifyContent = 'center';
+      modal.style.zIndex = '9999';
+      modal.innerHTML = `<img src="${img.src}" style="max-width: 90%; max-height: 90%; border: 2px solid white;">`;
+
+      modal.addEventListener('click', () => {
+        document.body.removeChild(modal);
+      });
+
+      document.body.appendChild(modal);
+    });
+  });
+}
+
 function showLocationHistory() {
   onValue(ref(rtdb, "locations"), (snapshot) => {
+    __latestLocationsSnap = snapshot;
+
     const data = snapshot.val() || null;
     let entries = [];
     let validEntries = [];
     let no_locations = null;
 
     try {
-      entries = Object.values(data).sort((a,b) => b.timestamp - a.timestamp);
+      entries = data ? Object.values(data).sort((a,b) => b.timestamp - a.timestamp) : [];
       validEntries = entries.filter(e => e.lat != null && e.lon != null);
       no_locations = validEntries.length === 0;
     } catch { no_locations = true; }
@@ -2063,7 +2171,14 @@ function showLocationHistory() {
     // 3) Posten sicherstellen (NACH allen evtl. destruktiven Calls)
     ensurePostenLayer();
     renderPostenMarkersFromCache({ nonDestructive: true });
-    
+
+    // 4) Re-render the combined feed (locations + ubahn)
+    renderFeedsFromLatest();
+  });
+  
+  // Also attach the ubahn listener if not attached yet
+  if (!__ubahnListenerAttached) attachUbahnListener();
+}
 
     console.log('map id', map?._leaflet_id);
     console.log('postenPane exists?', !!map?.getPane('postenPane'));
@@ -2142,8 +2257,7 @@ function showLocationHistory() {
         document.body.appendChild(modal);
       });
     });
-  });
-}
+
 
 
 function startUserLocationTracking() {
@@ -3598,11 +3712,19 @@ async function switchView(view) {
 
   if (view === "misterx") {
     document.getElementById("misterxView").style.display = "block";
+    // Update visibility of U-Bahn-Button according to setting
+    get(ref(rtdb, UBAHN_SETTING_PATH)).then(snap => {
+      const enabled = snap.exists() ? !!snap.val() : false;
+      updateUbahnButtonVisibility(enabled);
+    }).catch(() => {});
   } else if (view === "agent") {
     document.getElementById("agentView").style.display = "block";
+    // make sure button is hidden when leaving misterx view
+    updateUbahnButtonVisibility(false);
   } else if (view === "settings") {
     document.getElementById("settingsView").style.display = "block";
     load_max_mister_x();
+    updateUbahnButtonVisibility(false);
   }
 
   localStorage.setItem("activeView", view);
@@ -4821,23 +4943,32 @@ function showButtons() {
 }
 
 async function deleteAllLocations() {
-  if (!confirm("Möchtest du wirklich alle gespeicherten Standorte löschen?")) return;
+  if (!confirm("Möchtest du wirklich alle gespeicherten Standorte und Einträge löschen?")) return;
 
   try {
     await remove(ref(rtdb, "locations"));
-    showToast("Alle Standorte wurden gelöscht.", { type: "info" });
+    // remove ubahn events as well
+    await remove(ref(rtdb, "events/ubahn"));
+
+    showToast("Alle Standorte und Einträge wurden gelöscht.", { type: "info" });
     historyMarkers = [];
 
     // Optional: Status zurücksetzen
     const statusEl = document.getElementById("status");
     if (statusEl) statusEl.innerText = "";
 
+    // clear local snapshots and UI
+    __latestUbahnSnap = null;
+    __latestLocationsSnap = null;
+    const feed = document.getElementById('locationFeed');
+    if (feed) feed.innerHTML = '';
+
     await resetPostenStatus(true); // active=true, visited=false
     // Nach Reset neu rendern
     renderPostenMarkersFromCache();
   } catch (err) {
     log(err);
-    showToast("Fehler beim Löschen der Standorte.", { type: "error" });
+    showToast("Fehler beim Löschen der Standorte und Einträge.", { type: "error" });
   }
 }
 
@@ -5146,6 +5277,77 @@ function setupMessageToggle() {
   });
 }
 
+// --- Einstellungen: Checkbox für U-Bahn-Einstieg ---
+function setupUbahnSetting() {
+  const cb = document.getElementById("uBahnEnabledCheckbox");
+  if (!cb) return;
+
+  // Initialwert aus RTDB laden
+  get(ref(rtdb, UBAHN_SETTING_PATH)).then(snap => {
+    const enabled = snap.exists() ? !!snap.val() : false;
+    cb.checked = enabled;
+    updateUbahnButtonVisibility(enabled);
+  }).catch(() => {});
+
+  cb.addEventListener("change", async () => {
+    const enabled = cb.checked;
+    await set(ref(rtdb, UBAHN_SETTING_PATH), enabled);
+    try { localStorage.setItem(LS_UBAHN_ENABLED, enabled ? "1" : "0"); } catch {}
+    updateUbahnButtonVisibility(enabled);
+  });
+}
+
+function updateUbahnButtonVisibility(enabled) {
+  const btn = document.getElementById("uBahnButton");
+  if (!btn) return;
+  // visible only when setting enabled AND misterx view is open
+  const inMisterXView = document.getElementById("misterxView")?.style?.display !== "none";
+  btn.style.display = (enabled && inMisterXView) ? "" : "none";
+}
+
+// Aktion: U-Bahn-Einstieg melden (mit Confirm)
+async function announceUBahn() {
+  const ok = confirm("Bist du sicher, dass du in eine U-Bahn eingestiegen bist? Dies wird an alle anderen Spieler gesendet.");
+  if (!ok) return;
+
+  const message = "Mister X ist in eine U-Bahn eingestiegen";
+  const payload = {
+    message,
+    timestamp: Date.now(),
+    device: deviceId || null
+  };
+
+  try {
+    // 1) Schreibe Event in RTDB (sichtbar in Feed)
+    await push(ref(rtdb, 'events/ubahn'), payload);
+  } catch (err) {
+    log('Fehler beim Schreiben des U-Bahn-Events:', err);
+  }
+
+  try {
+    // 2) Benachrichtigung an alle Nicht-Mister-X (ähnlich wie Show-Event)
+    // Wir schicken an roles: agent, settings, start
+    const title = "Mister X: U-Bahn";
+    const body = message;
+    await sendNotificationToRoles(title, body, ['agent','settings','start']);
+  } catch (err) {
+    log('Fehler beim Versenden der U-Bahn-Benachrichtigung:', err);
+  }
+
+  showToast(message, { type: 'info' });
+}
+
+// Listener: keep latest ubahn snapshot and re-render combined feed
+function attachUbahnListener() {
+  if (__ubahnListenerAttached) return;
+  const refPath = ref(rtdb, 'events/ubahn');
+  onValue(refPath, (snap) => {
+    __latestUbahnSnap = snap;
+    renderFeedsFromLatest();
+  });
+  __ubahnListenerAttached = true;
+}
+
 
 
 // Beim Laden prüfen / initialisieren
@@ -5274,6 +5476,8 @@ async function startScript() {
     fetchAndShowSwLogs().catch(() => {});
     setupAgentReqSetting();
     setupMessageToggle();
+    setupUbahnSetting();
+    attachUbahnListener();
 
 
 
@@ -5388,6 +5592,7 @@ window.createTeam = createTeam;
 window.joinTeam = joinTeam;
 window.triggerAgentLocationRequest = triggerAgentLocationRequest;
 window.resetAgentLocations = resetAgentLocations;
+window.announceUBahn = announceUBahn;
 function setSelectedPost(p) {window.mxState.selectedPost = p; }
 function getselectedPost() { return window.mxState.selectedPost; }
 document.addEventListener("DOMContentLoaded", startScript);

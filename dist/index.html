@@ -15,7 +15,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Mister X Spiel</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <script type="module" crossorigin src="/Mister-X/assets/index-C5-A3GjF.js"></script>
+  <script type="module" crossorigin src="/Mister-X/assets/index-DCscqosY.js"></script>
   <link rel="modulepreload" crossorigin href="/Mister-X/assets/vendor-Cj_BHRrm.js">
   <link rel="modulepreload" crossorigin href="/Mister-X/assets/vendor_leaflet-CAQ_TIzs.js">
   <link rel="modulepreload" crossorigin href="/Mister-X/assets/vendor_firebase-Drpl5kvo.js">
@@ -141,6 +141,7 @@
     <br>
     <button id="btnRequestAgents" class="small-button" onclick="triggerAgentLocationRequest()">Standort von Agenten anfragen</button>
     <button id="startTimerButton" onclick="startTimer()">▶️ Timer starten</button>
+    <button id="uBahnButton" class="small-button" style="display:none;" onclick="announceUBahn()">🚇 U-Bahn eingestiegen</button>
     <button onclick="goBack()">🔙 Zurück</button>
   </div>
 
@@ -178,6 +179,11 @@
   </label>
   <br>
   <label>
+    <input type="checkbox" id="uBahnEnabledCheckbox">
+    U-Bahn-Einstieg erlauben
+  </label>
+  <br>
+  <label>
     <input type="checkbox" id="messageToggle">
     Benachrichtigungen Hauptschalter
   </label>
@@ -211,6 +217,7 @@
   </label>
   <div id="locationFeed">
   </div>
+
   <div id="startView2">
     <br><br><br><br><br><br><br><br><br><br>
   <button class ="small-button" id="permissionButton2" onclick="removeNotificationSetup()" style="display: none;">Benachrichtigungen deaktivieren</button>
