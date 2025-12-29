@@ -3202,17 +3202,19 @@ async function shareTeamLocationForRequest(req) {
   try { localStorage.setItem(LS_LAST_PROMPTED_REQ, req.id); } catch (e) {}
 
   // Show a non-blocking confirm dialog that gathers location in background and returns only when user confirms/cancels
-  const confirmResult = await showConfirmLocationDialog('Dein Standort wird jetzt für Mister X freigegeben', req.id, { maxWaitMs: 10000, desiredAccuracy: 30 });
+  const confirmResult = await showConfirmLocationDialog('Dein Standort wird jetzt für Mister X freigegeben', req.id, { maxWaitMs: 10000, desiredAccuracy: 30, autoConfirmMs: 30000 });
 
   if (confirmResult === null) {
     // auto-closed (request removed/changed)
     log('shareTeamLocationForRequest: confirm dialog auto-closed');
     try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch (e) {}
+    try { localStorage.removeItem('pendingAgentResponse'); } catch (e) {}
     return;
   }
   if (confirmResult === 'cancel') {
     showToast('Standortfreigabe abgebrochen.', { type: 'info' });
     try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch (e) {}
+    try { localStorage.removeItem('pendingAgentResponse'); } catch (e) {}
     return;
   }
 
@@ -3274,6 +3276,7 @@ async function shareTeamLocationForRequest(req) {
 
   // Erfolgreich geantwortet
   try { localStorage.setItem(LS_LAST_RESPONDED_REQ, req.id); } catch {}
+  try { localStorage.removeItem('pendingAgentResponse'); } catch (e) {}
   log('Standortantwort erfolgreich gesetzt (agentLocationRequest.responses/' + currentTeamId + ')');
   } finally {
     // clear in-flight flag so subsequent requests (other ids) can proceed
@@ -3377,6 +3380,14 @@ function attachAgentReqListener() {
 
     // Wenn eine Anfrage aktiv ist und dieses Gerät NICHT der Ersteller ist → prüfe ob wir eine hängige (lokale) Antwort haben und sende oder prompten
     if (data && data.createdBy !== deviceId && currentTeamId) {
+      // If our team already has a response, do not prompt or auto-share
+      try {
+        if (data.responses && data.responses[currentTeamId]) {
+          // Team already answered — nothing to do
+          return;
+        }
+      } catch (e) {}
+
       // Versuche zunächst, eine zuvor persistierte Antwort zu liefern
       try { checkAndDeliverPendingResponse(data).catch(e => log('checkAndDeliverPendingResponse error', e)); } catch (e) {}
       // Normales Verhalten: Standort teilen (this may prompt the user if needed)
@@ -3386,6 +3397,16 @@ function attachAgentReqListener() {
 
   onValue(reqRef, cb);
   unsubscribeAgentReq = () => off(reqRef, 'value', cb);
+
+  // Try immediate pending delivery for currently active request (on startup)
+  (async () => {
+    try {
+      const s = await get(reqRef);
+      if (s && s.exists()) {
+        await checkAndDeliverPendingResponse(s.val());
+      }
+    } catch (e) {}
+  })();
 }
 
 
@@ -3959,7 +3980,7 @@ function updateCountdown(startTime, duration) {
 }
 
 // Non-blocking confirm-location dialog: gathers location in background and requires user confirmation
-async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000, desiredAccuracy = 30 } = {}) {
+async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000, desiredAccuracy = 30, autoConfirmMs = 30000 } = {}) {
   return new Promise((resolve) => {
     const modal = document.createElement("div");
     modal.style.position = "fixed";
@@ -3993,11 +4014,7 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
     teamNameEl.style.color = '#333';
     teamNameEl.style.marginBottom = '0.6em';
     const teamName = (teamsSnapshotCache?.[currentTeamId]?.name) || '';
-    teamNameEl.textContent = teamName;
-
-    const status = document.createElement('div');
-    status.style.marginBottom = '0.8em';
-    status.textContent = 'Standort wird ermittelt...';
+    teamNameEl.textContent = teamName ? ('Team: ' + teamName) : 'Team: -';
 
     const accuracyEl = document.createElement('div');
     // small corner accuracy
@@ -4008,11 +4025,7 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
     accuracyEl.style.color = '#666';
     accuracyEl.textContent = '± – m';
 
-    const hint = document.createElement('div');
-    hint.style.fontSize = '12px';
-    hint.style.color = '#666';
-    hint.style.marginBottom = '0.8em';
-    hint.textContent = 'Die Messung läuft im Hintergrund. Bestätige, um zu teilen.';
+
 
     const btnRow = document.createElement('div');
     btnRow.style.display = 'flex';
@@ -4028,30 +4041,44 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
 
     box.appendChild(title);
     box.appendChild(teamNameEl);
-    box.appendChild(status);
-    box.appendChild(hint);
     box.appendChild(btnRow);
     box.appendChild(accuracyEl);
+
+    // Make confirm button larger for better UX
+    confirmBtn.style.padding = '12px 22px';
+    confirmBtn.style.fontSize = '16px';
+    confirmBtn.style.minWidth = '200px';
+    confirmBtn.style.borderRadius = '8px';
     modal.appendChild(box);
     document.body.appendChild(modal);
 
     let bestPos = null;
     let watchId = null;
-    let timedOut = false;
     const timerRef = ref(rtdb, 'agentLocationRequest');
-    let timeoutId = null;
+    let autoConfirmTimeout = null;
 
     const onPageHide = async () => {
-      // Try a best-effort immediate send of the pending position when the page is being hidden/unloaded
       try {
-        const pend = localStorage.getItem('pendingAgentResponse');
-        if (!pend) return;
-        const parsed = JSON.parse(pend);
-        await sendPendingAgentResponse(parsed);
+        if (!bestPos) return;
+        const pos = bestPos;
+        const acc = typeof pos.coords.accuracy === 'number' ? Math.round(pos.coords.accuracy) : null;
+        const pending = {
+          reqId,
+          teamId: currentTeamId || null,
+          teamName: (teamsSnapshotCache?.[currentTeamId]?.name) || null,
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracy: acc,
+          timestamp: Date.now()
+        };
+        // Persist so it can be retried later
+        localStorage.setItem('pendingAgentResponse', JSON.stringify(pending));
+        // Try immediate send
+        await sendPendingAgentResponse(pending);
       } catch (e) {
         log('onPageHide: error trying to send pending response', e);
       }
-    };
+    }; 
 
     const onVisibilityChange = () => {
       if (document.hidden) onPageHide();
@@ -4065,12 +4092,12 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
       try { if (watchId != null) navigator.geolocation.clearWatch(watchId); } catch (e) {}
       try { off(timerRef, 'value', onTimerChange); } catch (e) {}
       try { if (modal && document.body.contains(modal)) document.body.removeChild(modal); } catch (e) {}
-      try { if (timeoutId) clearTimeout(timeoutId); } catch (e) {}
-      try { localStorage.removeItem('pendingAgentResponse'); } catch (e) {}
+      try { if (autoConfirmTimeout) clearTimeout(autoConfirmTimeout); } catch (e) {}
+      // keep pendingAgentResponse in storage so it can be attempted on pagehide or when app reopens
       try { window.removeEventListener('pagehide', onPageHide); } catch (e) {}
       try { window.removeEventListener('visibilitychange', onVisibilityChange); } catch (e) {}
       try { window.removeEventListener('beforeunload', onPageHide); } catch (e) {}
-    };
+    }; 
 
     const setBest = (pos) => {
       if (!pos) return;
@@ -4084,23 +4111,8 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
       if (!pos) return;
       const acc = typeof pos.coords.accuracy === 'number' ? Math.round(pos.coords.accuracy) : null;
       accuracyEl.textContent = acc != null ? `Genauigkeit: ±${acc} m` : 'Genauigkeit: -';
-      status.textContent = acc != null ? (acc <= desiredAccuracy ? 'Gute Genauigkeit erreicht' : 'Standort ermittelt — du kannst jetzt teilen') : 'Standort ermittelt';
       confirmBtn.disabled = false;
-
-      // Persist a pending response so it can be sent if the user leaves the app
-      try {
-        const pending = {
-          reqId,
-          teamId: currentTeamId || null,
-          teamName: (teamsSnapshotCache?.[currentTeamId]?.name) || null,
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-          accuracy: acc,
-          timestamp: Date.now()
-        };
-        localStorage.setItem('pendingAgentResponse', JSON.stringify(pending));
-      } catch (e) {}
-    };
+    }; 
 
     const onSuccess = (pos) => {
       setBest(pos);
@@ -4135,14 +4147,10 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
       return;
     }
 
-    // Stop watch after maxWaitMs but keep last best position
-    timeoutId = setTimeout(() => {
-      timedOut = true;
-      // enable confirm even if no measurement — no cancel allowed
-      try { confirmBtn.disabled = false; } catch (e) {}
-      try { if (watchId != null) navigator.geolocation.clearWatch(watchId); } catch (e) {}
-      watchId = null;
-    }, maxWaitMs);
+    // Auto-confirm after a fixed time if user doesn't act (uses best measurement available)
+    autoConfirmTimeout = setTimeout(() => {
+      try { finishAndResolveConfirm(); } catch (e) { log('autoConfirm error', e); }
+    }, autoConfirmMs);
 
     // Listen for request removal, replacement or a response for our team — close dialog if that happens
     const onTimerChange = (snap) => {
@@ -4154,7 +4162,7 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
           return;
         }
         // If another device already posted a response for our team, close dialog
-        if (d.responses && typeof teamId !== 'undefined' && d.responses[teamId]) {
+        if (d.responses && currentTeamId && d.responses[currentTeamId]) {
           cleanup();
           showToast('Standort wurde bereits von einem Gerät deines Teams geteilt.', { type: 'info' });
           resolve(null);
@@ -4165,6 +4173,7 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
     onValue(timerRef, onTimerChange);
 
     const finishAndResolveConfirm = () => {
+      try { if (autoConfirmTimeout) { clearTimeout(autoConfirmTimeout); autoConfirmTimeout = null; } } catch (e) {}
       cleanup();
       if (bestPos) return resolve({ action: 'confirm', position: bestPos });
       navigator.geolocation.getCurrentPosition((p) => resolve({ action: 'confirm', position: p }), (err) => { showToast('Kein Standort verfügbar.', { type: 'warn' }); resolve('cancel'); }, { enableHighAccuracy: true, timeout: 8000 });
