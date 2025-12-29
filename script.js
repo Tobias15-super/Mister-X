@@ -4195,7 +4195,7 @@ async function showConfirmLocationDialog(messageText, reqId, { maxWaitMs = 10000
           return;
         }
         // set team name if passed in options
-        if (typeof teamName !== 'undefined' && teamNameEl) teamNameEl.textContent = teamName;
+        if (typeof teamName !== 'undefined' && teamNameEl) teamNameEl.textContent = 'Team: ' + teamName;
       } catch (e) {}
     })();
   });
