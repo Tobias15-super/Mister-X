@@ -5311,11 +5311,20 @@ function membersEscHandler(e) { if (e.key === 'Escape') closeMembersManagement()
 async function loadAndRenderMembers() {
   _membersCache = {};
   try {
-    const snap = await get(ref(rtdb, 'roles'));
+    const [snap, tokensSnap] = await Promise.all([get(ref(rtdb, 'roles')), get(ref(rtdb, 'tokens'))]);
     const data = snap.exists() ? snap.val() : {};
+    const tokensData = tokensSnap.exists() ? tokensSnap.val() : {};
     for (const name of Object.keys(data || {})) {
       const entry = data[name] || {};
-      const last = entry.telUpdatedAt || entry.lastUpdated || entry.joinedAt || 0;
+      const last = entry.lastUpdated || entry.timestamp || entry.joinedAt || 0;
+      // determine if device has registered push tokens
+      let hasTokens = false;
+      try {
+        const tFor = tokensData[name] || {};
+        const norm = normalizeTokens(tFor);
+        hasTokens = Array.isArray(norm) && norm.length > 0;
+      } catch (e) { hasTokens = false; }
+
       _membersCache[name] = {
         id: name,
         name,
@@ -5326,6 +5335,7 @@ async function loadAndRenderMembers() {
         telPresent: !!entry.tel,
         lastActivity: last,
         hidden: !!entry.hidden,
+        tokensPresent: hasTokens,
         raw: entry
       };
     }
@@ -5387,6 +5397,11 @@ function renderMembersUI() {
     const instLabel = document.createElement('label'); instLabel.className = 'member-meta small-muted';
     instLabel.style.display = 'inline-flex'; instLabel.style.alignItems = 'center'; instLabel.style.gap = '6px';
     const instCb = document.createElement('input'); instCb.type = 'checkbox'; instCb.checked = !!m.instantSMS; instCb.className = 'member-toggle';
+    // visually mark when no phone number is present but keep toggle interactive
+    if (!m.telPresent) {
+      instLabel.classList.add('disabled');
+      instCb.title = 'Keine Telefonnummer hinterlegt – Instant-SMS funktioniert nicht.';
+    }
     instCb.addEventListener('change', () => updateRoleField(m.name, { instantSMS: instCb.checked }));
     instLabel.appendChild(instCb); instLabel.appendChild(document.createTextNode('Instant-SMS'));
     actions.appendChild(instLabel);
@@ -5395,6 +5410,11 @@ function renderMembersUI() {
     const nLabel = document.createElement('label'); nLabel.className = 'member-meta small-muted';
     nLabel.style.display = 'inline-flex'; nLabel.style.alignItems = 'center'; nLabel.style.gap = '6px';
     const nCb = document.createElement('input'); nCb.type = 'checkbox'; nCb.checked = !!m.notification; nCb.className = 'member-toggle';
+    // visually mark when there is no push token, but keep toggle interactive
+    if (!m.tokensPresent) {
+      nLabel.classList.add('disabled');
+      nCb.title = 'Kein Push-Token vorhanden – Push-Benachrichtigungen nicht möglich.';
+    }
     nCb.addEventListener('change', () => updateRoleField(m.name, { notification: nCb.checked }));
     nLabel.appendChild(nCb); nLabel.appendChild(document.createTextNode('Benachr.'));
     actions.appendChild(nLabel);
@@ -5496,7 +5516,7 @@ async function announceUBahn() {
   try {
     // 2) Benachrichtigung an alle Nicht-Mister-X (ähnlich wie Show-Event)
     // Wir schicken an roles: agent, settings, start
-    const title = "Mister X: U-Bahn";
+    const title = "Mister X ist in eine U-Bahn eingestiegen";
     const body = message;
     await sendNotificationToRoles(title, body, ['agent','settings','start']);
   } catch (err) {
