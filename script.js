@@ -17,6 +17,8 @@ let countdown;
 let timerListenerRegistered = false;
 let locationDialogOpen = false;
 let map;
+let scaleControl = null; // Leaflet scale control instance
+let scaleHideTimer = null; // Timeout id for hiding the scale
 let marker;
 let historyMarkers = [];
 let fotoHochgeladen = false;
@@ -1954,6 +1956,23 @@ function createOrReuseMap(lat, lon) {
     setTimeout(() => map.invalidateSize(),0);
     ensurePanes();
     ensureLayerGroups();
+
+    // --- Maßstab (erscheint kurz nach Zoomänderung, dann verblassen) ---
+    try {
+      scaleControl = L.control.scale({ position: 'bottomright', metric: true, imperial: false }).addTo(map);
+      // Start versteckt; CSS regelt Sichtbarkeit. Wir zeigen bei Zoom.
+      function _showScaleTemporary() {
+        const el = document.querySelector('.leaflet-control-scale');
+        if (!el) return;
+        el.classList.add('visible');
+        if (scaleHideTimer) clearTimeout(scaleHideTimer);
+        scaleHideTimer = setTimeout(() => { el.classList.remove('visible'); scaleHideTimer = null; }, 5000);
+      }
+      map.on('zoomend', () => {
+        try { scaleControl._update && scaleControl._update(); } catch (e) { /* ignore */ }
+        _showScaleTemporary();
+      });
+    } catch (e) { console.debug('Scale control setup failed', e); }
   } else {
     map.setView([lat, lon], 15);
     map.invalidateSize();

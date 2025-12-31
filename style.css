@@ -365,3 +365,23 @@ input[type="file"] {
 
 .recipient-chip.red .dot { background: #FF5252; }
 
+/* --- Leaflet scale: kurz zeigen und dann ausblenden (ähnlich Google Maps) --- */
+.leaflet-control-scale {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 340ms ease, transform 340ms ease;
+  pointer-events: none; /* verhindert Interaktion wenn versteckt */
+}
+.leaflet-control-scale.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+/* kleine optische Anpassung: leicht abgerundeter Hintergrund & Schatten */
+.leaflet-control-scale div {
+  background: rgba(255,255,255,0.96);
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  padding: 2px 6px;
+}
+
