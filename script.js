@@ -1080,6 +1080,7 @@ async function resolveRecipientsForRoles(roleOrRoles) {
 
   const tokensToSend = [];
   const deviceNamesToExpect = [];
+  const instantSMSDevices = [];
 
   for (const deviceName in tokensData) {
     if (!Object.prototype.hasOwnProperty.call(tokensData, deviceName)) continue;
@@ -1087,9 +1088,17 @@ async function resolveRecipientsForRoles(roleOrRoles) {
     const roleEntry = rolesData[deviceName] || {};
     const userRole = roleEntry.role;
     const notificationEnabled = (roleEntry.notification !== false); // default: true
+    const instantSMS = roleEntry.instantSMS === true;
 
     const matchesRole = sendToAll || (userRole && roles.includes(userRole));
     if (!matchesRole || !notificationEnabled) continue;
+
+    // If device requested instant SMS, schedule SMS and skip collecting push tokens
+    if (instantSMS) {
+      instantSMSDevices.push(deviceName);
+      deviceNamesToExpect.push(deviceName);
+      continue; // no push tokens for instant-SMS devices
+    }
 
     const devTokens = normalizeTokens(tokensData[deviceName]); // deine bestehende Helper-Funktion
     if (devTokens.length === 0) continue;
@@ -1101,6 +1110,7 @@ async function resolveRecipientsForRoles(roleOrRoles) {
   return {
     tokens: unique(tokensToSend),
     deviceNames: unique(deviceNamesToExpect),
+    instantSMSDevices: unique(instantSMSDevices),
   };
 }
 
@@ -1142,17 +1152,17 @@ async function resolveRecipientsForTeams(teamOrTeams) {
 
       if (!notificationEnabled) continue;
 
-      // Collect tokens
+      // 🚨 Instant-SMS overrides push: if instantSMS is true, schedule SMS and skip push tokens
+      if (instantSMS) {
+        instantSMSDevices.push(deviceName);
+        deviceNames.push(deviceName);
+        continue; // Instant-SMS recipients do not receive push tokens
+      }
+
+      // Collect tokens (only for non-instantSMS devices)
       const devTokens = normalizeTokens(tokensData[deviceName]);
       if (devTokens.length > 0) {
         tokens.push(...devTokens);
-        deviceNames.push(deviceName);
-        continue; // Push available -> prefer push
-      }
-
-      // No push tokens -> maybe instant SMS
-      if (instantSMS) {
-        instantSMSDevices.push(deviceName);
         deviceNames.push(deviceName);
       }
     }
@@ -3192,8 +3202,9 @@ async function triggerAgentLocationRequest() {
           });
         }
 
-        // Falls einige Geräte nur Instant-SMS möchten und keine Push-Tokens haben
-        if ((instantSMSDevices && instantSMSDevices.length > 0) && (!tokens || tokens.length === 0)) {
+        // Falls einige Geräte Instant-SMS wünschen → SMS direkt senden (sofort),
+        // auch wenn andere Empfänger Push-Tokens haben.
+        if (instantSMSDevices && instantSMSDevices.length > 0) {
           const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
           await triggerSmsDirectIfNeeded(createMessageId(), instantSMSDevices, smsText, { rtdbBase: RTDB_BASE });
         }
@@ -5617,6 +5628,8 @@ function closeCustomNotifModal() {
 function customNotifEscHandler(e) { if (e.key === 'Escape') closeCustomNotifModal(); }
 
 function canDeviceReceive(m) {
+  // device cannot receive if notifications are explicitly disabled
+  if (!m || m.notification === false) return false;
   // device can receive if it has tokens OR phone with instantSMS/SMS-fallback enabled
   return !!(m && (m.tokensPresent || (m.telPresent && (m.instantSMS === true || m.allowSmsFallback === true))));
 }
@@ -5674,26 +5687,38 @@ function renderNotifRecipients() {
 
       const label = document.createElement('label'); label.htmlFor = cb.id; label.textContent = m.name + (m.role ? ` (${m.role})` : '');
 
-      // style devices without tokens as greyed-out
-      if (!m.tokensPresent) {
+      // respect explicit notifications flag
+      if (m.notification === false) {
         label.style.color = '#999';
-        row.style.opacity = '0.7';
-      }
-      if (!receivable) {
+        row.style.opacity = '0.5';
         label.style.cursor = 'not-allowed';
-        label.title = 'Dieses Gerät kann keine Nachrichten empfangen.';
+        label.title = 'Benachrichtigungen für dieses Gerät sind deaktiviert.';
+      } else {
+        // style devices without tokens as greyed-out
+        if (!m.tokensPresent) {
+          label.style.color = '#999';
+          row.style.opacity = '0.7';
+        }
+        if (!receivable) {
+          label.style.cursor = 'not-allowed';
+          label.title = 'Dieses Gerät kann keine Nachrichten empfangen.';
+        }
       }
 
       const meta = document.createElement('span'); meta.style.color = '#666'; meta.style.fontSize = '0.9rem';
       const metaParts = [];
-      if (!m.tokensPresent) metaParts.push('(kein Token)');
+      if (m.notification === false) {
+        metaParts.push('(Benachrichtigungen deaktiviert)');
+      } else {
+        if (!m.tokensPresent) metaParts.push('(kein Token)');
 
-      // show only presence & flags for telephone — never the actual phone number
-      if (m.telPresent && (m.instantSMS === true || m.allowSmsFallback === true)) {
-        const flags = [];
-        if (m.instantSMS) flags.push('instant-SMS');
-        if (m.allowSmsFallback) flags.push('SMS-Fallback');
-        metaParts.push(`(Telefon${flags.length ? ' • ' + flags.join(', ') : ''})`);
+        // show only presence & flags for telephone — never the actual phone number
+        if (m.telPresent && (m.instantSMS === true || m.allowSmsFallback === true)) {
+          const flags = [];
+          if (m.instantSMS) flags.push('instant-SMS');
+          if (m.allowSmsFallback) flags.push('SMS-Fallback');
+          metaParts.push(`(Telefon${flags.length ? ' • ' + flags.join(', ') : ''})`);
+        }
       }
 
       meta.textContent = metaParts.join(' ');
@@ -5853,7 +5878,11 @@ async function sendCustomNotification() {
   if (!title) return showToast('Bitte Titel eingeben.', { type: 'warning' });
   if (!body) return showToast('Bitte Nachrichtentext eingeben.', { type: 'warning' });
   // Use persisted selection set for devices (keeps selection across searches)
-  const checkedDevices = Array.from(_selectedNotifRecipients);
+  // Defensive: ensure we only keep devices that can actually receive (respects notification:false)
+  const checkedDevices = Array.from(_selectedNotifRecipients).filter(name => {
+    const m = (_membersCache || {})[name];
+    return !!m && canDeviceReceive(m);
+  });
   // roles selected via buttons: find checked role buttons
   const checkedRoles = Array.from(document.querySelectorAll('#notifRolesList .notif-role-btn.active')).map(b => b.textContent);
   const allBtnActive = document.getElementById('notifRoleAllBtn')?.classList.contains('active');
@@ -5873,17 +5902,33 @@ async function sendCustomNotification() {
   // If roles selected, send via role-based API
   let rolesSent = false;
   try {
+    // Read global flag 'settings/messages' - if disabled, abort completely (no pushes, no SMS)
+    try {
+      const sSnap = await get(ref(rtdb, 'settings/messages'));
+      const messagesEnabled = !sSnap.exists() ? true : !!sSnap.val();
+      if (!messagesEnabled) {
+        showToast('Benachrichtigungen sind auf dem Server deaktiviert. Nachricht wurde nicht gesendet.', { type: 'warning' });
+        closeCustomNotifModal();
+        return;
+      }
+    } catch (e) { log('Konnte settings/messages nicht lesen, fahre fort:', e); }
+
+    // Immediately inform the user and close the modal; do sending in background
+    showToast('Benachrichtigung wird gesendet.', { type: 'info' });
+    closeCustomNotifModal();
+
+  const messageId = createMessageId();
+  const senderName = (typeof getDeviceId === 'function' ? getDeviceId() : null) || 'unknown';
+  const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
+
+  // Roles: fire-and-forget
+  try {
     if (checkedRoles.length > 0) {
-      // support 'all' string
       const rolesArg = checkedRoles.includes('all') ? ['all'] : checkedRoles;
-      await sendNotificationToRoles(title, body, rolesArg);
-      rolesSent = true;
-      showToast(`Nachricht an Rolle(n) ${rolesArg.join(', ')} gesendet.`, { type: 'success' });
+      sendNotificationToRoles(title, body, rolesArg, { messageId, rtdbBase: RTDB_BASE }).catch(err => { log('Fehler beim Senden an Rollen:', err); });
+      rolesSent = true; // optimistic
     }
-  } catch (err) {
-    log('Fehler beim Senden an Rollen:', err);
-    showToast('Fehler beim Senden an Rollen.', { type: 'error' });
-  }
+  } catch (err) { log('Fehler beim Senden an Rollen (sync check):', err); }
 
   // Build tokens from device selection, excluding devices that are part of selected roles to avoid duplicates.
   // If 'all' role is selected, skip explicit token sends entirely (roles cover everyone).
@@ -5902,12 +5947,17 @@ async function sendCustomNotification() {
   if (!skipExplicitSend) {
     for (const dev of checkedDevices) {
       if (excludeDevices.has(dev)) continue;
+      const member = _membersCache?.[dev];
+      // If member requested instant SMS -> only SMS (no push)
+      if (member?.instantSMS === true) {
+        instantSMSDevices.push(dev);
+        continue; // do not collect tokens or add to explicitDevicesToSend
+      }
       explicitDevicesToSend.push(dev);
       try {
         const t = normalizeTokens(tokensData[dev] || []);
         if (Array.isArray(t) && t.length) tokens.push(...t);
       } catch (e) { }
-      if ((_membersCache?.[dev]?.instantSMS) === true) instantSMSDevices.push(dev);
     }
   } else {
     // when 'all' selected, inform user if they selected individual devices as well
@@ -5917,22 +5967,51 @@ async function sendCustomNotification() {
   // deduplicate tokens
   const uniqueTokens = Array.from(new Set(tokens));
 
-  if (uniqueTokens.length > 0) {
-    try {
-      const res = await sendNotificationToTokens(title, body, uniqueTokens, { recipientDeviceNames: explicitDevicesToSend, instantSMSDevices });
-      log('sendCustomNotification tokens result', res);
-      showToast('Nachricht an ausgewählte Geräte gesendet.', { type: 'success' });
-    } catch (err) {
-      log('Fehler beim Senden der Nachricht:', err);
-      showToast('Fehler beim Senden der Nachricht an Geräte.', { type: 'error' });
-    }
-  } else if (!rolesSent) {
-    showToast('Keine Tokens für ausgewählte Geräte gefunden.', { type: 'warning' });
-  }
+  // Prepare recipients map that should be visible immediately in RTDB
+  const allExplicitRecipients = Array.from(new Set([...explicitDevicesToSend, ...instantSMSDevices]));
 
-  if (rolesSent || uniqueTokens.length > 0) {
-    closeCustomNotifModal();
-  }
+  // Background worker to write initial notification (so recipients appear quickly) and to trigger sends
+  (async () => {
+    const now = Date.now();
+    if (allExplicitRecipients.length > 0) {
+      try {
+        const notif = {
+          sender: senderName,
+          title,
+          body,
+          recipients: {},
+          timestamp: now,
+          attempts: { 1: { at: now, count: uniqueTokens.length } },
+          lastAttemptAt: now,
+        };
+        for (const n of allExplicitRecipients) {
+          notif.recipients[sanitizeKey(n)] = false;
+        }
+        await set(ref(rtdb, `notifications/${messageId}`), notif);
+      } catch (err) { log('Warn: could not write initial notification to RTDB:', err); }
+    }
+
+    if (uniqueTokens.length > 0) {
+      try {
+        // include instantSMS recipients so server is aware and can trigger SMS and write recipients
+        const recipientDeviceNames = Array.from(new Set([...explicitDevicesToSend, ...instantSMSDevices]));
+        await sendNotificationToTokens(title, body, uniqueTokens, { recipientDeviceNames, instantSMSDevices, messageId, rtdbBase: RTDB_BASE });
+        log('sendCustomNotification tokens result (bg)');
+      } catch (err) { log('Fehler beim Senden der Nachricht (bg):', err); }
+    } else {
+      // No push tokens: maybe instant-SMS-only
+      if (instantSMSDevices.length > 0) {
+        try {
+          await triggerSmsDirectIfNeeded(messageId, instantSMSDevices, smsText, { rtdbBase: RTDB_BASE });
+          log('SMS an Instant-SMS-Geräte gesendet (bg)');
+        } catch (err) { log('Fehler beim direkten SMS-Versand (bg):', err); }
+      } else if (!rolesSent) {
+        // neither tokens nor instant SMS nor roles
+        showToast('Keine Tokens für ausgewählte Geräte gefunden.', { type: 'warning' });
+      }
+    }
+  })();
+} catch (err) { log('sendCustomNotification preparation error', err); }
 }
 
 // expose to global (used by inline onclicks in HTML)
