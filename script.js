@@ -936,7 +936,7 @@ async function sendNotificationToTokens(
         sendEndpoint, rtdbBase, messageId
       }).catch(log);
     }, 10_000);
-  } else if (attempt >= maxAttempts) {
+  } else if (attempt >= maxAttempts >= 2) {
     log('⏱️ Max. Anzahl an Versuchen erreicht.');
   } else {
     log('✅ Alle Benachrichtigungen verarbeitet.');
@@ -5269,6 +5269,8 @@ function updateUbahnButtonVisibility(enabled) {
 // --- Mitgliederverwaltung ---
 let _membersCache = null;
 let _membersShowHidden = false;
+// Selected recipients for the custom notification modal (persist across searches in the modal)
+let _selectedNotifRecipients = new Set();
 
 function toggleShowHidden() {
   _membersShowHidden = !_membersShowHidden;
@@ -5284,7 +5286,7 @@ async function setMemberHidden(deviceName, hidden) {
     await update(ref(rtdb, `roles/${safe}`), { hidden: !!hidden });
     showToast(hidden ? 'Spieler ausgeblendet' : 'Spieler wieder eingeblendet', { timeout: 1500, type: 'info' });
     await loadAndRenderMembers();
-  } catch (err) { console.error('setMemberHidden err', err); showToast('Fehler beim Aktualisieren'); }
+  } catch (err) { log('setMemberHidden err', err); showToast('Fehler beim Aktualisieren'); }
 }
 
 async function unhideAllMembers() {
@@ -5303,7 +5305,7 @@ async function unhideAllMembers() {
       showToast('Alle ausgeblendeten Spieler wieder sichtbar', { timeout: 1500, type: 'info' });
     }
     await loadAndRenderMembers();
-  } catch (err) { console.error(err); showToast('Fehler beim Rückgängig machen'); }
+  } catch (err) { log(err); showToast('Fehler beim Rückgängig machen'); }
 }
 
 function openMembersManagement() {
@@ -5365,7 +5367,7 @@ async function loadAndRenderMembers() {
       };
     }
   } catch (err) {
-    console.error('Fehler beim Laden der Rollen:', err);
+    log('Fehler beim Laden der Rollen:', err);
     showToast('Fehler beim Laden der Mitglieder.');
   }
   renderMembersUI();
@@ -5488,7 +5490,7 @@ async function updateRoleField(deviceName, updates) {
     await update(ref(rtdb, `roles/${safe}`), updates);
     showToast('Änderung gespeichert', { timeout: 1500, type: 'info' });
     loadAndRenderMembers();
-  } catch (err) { console.error(err); showToast('Fehler beim Speichern'); }
+  } catch (err) { log(err); showToast('Fehler beim Speichern'); }
 }
 
 async function deleteMember(deviceName) {
@@ -5498,7 +5500,7 @@ async function deleteMember(deviceName) {
     await remove(ref(rtdb, `roles/${sanitizeKey(deviceName)}`));
     showToast('Spieler gelöscht', { timeout:2000, type:'info' });
     loadAndRenderMembers();
-  } catch (err) { console.error(err); showToast('Fehler beim Löschen'); }
+  } catch (err) { log(err); showToast('Fehler beim Löschen'); }
 }
 
 async function removeTel(deviceName) {
@@ -5508,7 +5510,7 @@ async function removeTel(deviceName) {
     await update(ref(rtdb, `roles/${sanitizeKey(deviceName)}`), { tel: null, allowSmsFallback: false });
     showToast('Nummer entfernt', { timeout:1500, type:'info' });
     loadAndRenderMembers();
-  } catch (err) { console.error(err); showToast('Fehler beim Entfernen'); }
+  } catch (err) { log(err); showToast('Fehler beim Entfernen'); }
 }
 
 // Note: actual unhide implementation (writes to RTDB) is defined earlier as async function unhideAllMembers() { /* no-op placeholder removed */ }
@@ -5563,6 +5565,380 @@ function attachUbahnListener() {
 }
 
 
+
+// Custom notification modal handlers
+
+async function openCustomNotifModal() {
+  const modal = document.getElementById('customNotifModal');
+  if (!modal) return;
+  // ensure members are loaded so we can render recipient list
+  try {
+    await loadAndRenderMembers();
+  } catch (e) {
+    log('Fehler beim Laden der Mitglieder:', e);
+  }
+
+  // render roles + recipients
+  renderNotifRoles();
+  renderNotifRecipients();
+
+  // Attach search/select-all listeners only once
+  if (!window.__customNotifListenersAdded) {
+    document.getElementById('customNotifSearch')?.addEventListener('input', () => renderNotifRecipients());
+
+    document.getElementById('customNotifSelectAll')?.addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      const list = document.querySelectorAll('#notifRecipientsList input[type="checkbox"][data-name]');
+      list.forEach(ch => {
+        if (ch.disabled) return; // don't change disabled checkboxes
+        ch.checked = checked;
+        const name = ch.dataset.name;
+        if (checked) _selectedNotifRecipients.add(name);
+        else _selectedNotifRecipients.delete(name);
+      });
+      updateAllRoleButtonStates();
+      updateSelectedCount();
+    });
+
+    window.__customNotifListenersAdded = true;
+  }
+
+  modal.style.display = 'flex';
+  document.addEventListener('keydown', customNotifEscHandler);
+}
+
+function closeCustomNotifModal() {
+  const modal = document.getElementById('customNotifModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+  document.removeEventListener('keydown', customNotifEscHandler);
+}
+
+function customNotifEscHandler(e) { if (e.key === 'Escape') closeCustomNotifModal(); }
+
+function canDeviceReceive(m) {
+  // device can receive if it has tokens OR phone with instantSMS/SMS-fallback enabled
+  return !!(m && (m.tokensPresent || (m.telPresent && (m.instantSMS === true || m.allowSmsFallback === true))));
+}
+
+function cleanSelectedRecipients() {
+  // Remove any selected recipients that cannot receive
+  const removed = [];
+  for (const name of Array.from(_selectedNotifRecipients)) {
+    const m = (_membersCache || {})[name];
+    if (!m || !canDeviceReceive(m)) {
+      _selectedNotifRecipients.delete(name);
+      removed.push(name);
+    }
+  }
+  if (removed.length > 0) {
+    showToast(`${removed.length} Gerät(e) wurden entfernt, da sie nicht empfangsfähig sind.`, { type: 'warning' });
+  }
+}
+
+function renderNotifRecipients() {
+  const container = document.getElementById('notifRecipientsList');
+  if (!container) return;
+  const q = (document.getElementById('customNotifSearch')?.value || '').trim().toLowerCase();
+  container.innerHTML = '';
+  const arr = Object.values(_membersCache || {});
+  const filtered = arr.filter(m => m.name.toLowerCase().includes(q) || (m.role||'').toLowerCase().includes(q));
+  filtered.sort((a,b) => a.name.localeCompare(b.name));
+
+  // split into non-hidden and hidden (hidden shown below with separator)
+  const visibleNonHidden = filtered.filter(m => !m.hidden);
+  const visibleHidden = filtered.filter(m => !!m.hidden);
+
+  const renderList = (list) => {
+    for (const m of list) {
+      const row = document.createElement('div');
+      row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.justifyContent = 'space-between'; row.style.padding = '.25rem 0';
+      const left = document.createElement('div'); left.style.display = 'flex'; left.style.alignItems = 'center'; left.style.gap = '8px';
+
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.dataset.name = m.name; cb.id = `notif-rec-${m.name}`;
+      // If device cannot receive, make checkbox disabled and ensure not selected
+      const receivable = canDeviceReceive(m);
+      cb.disabled = !receivable;
+      if (!receivable) cb.checked = false;
+
+      // restore checked state from persistent selection
+      if (receivable) cb.checked = _selectedNotifRecipients.has(m.name);
+
+      cb.addEventListener('change', (e) => {
+        if (e.target.checked) _selectedNotifRecipients.add(m.name);
+        else _selectedNotifRecipients.delete(m.name);
+        // reflect selection in role buttons
+        updateAllRoleButtonStates();
+        updateSelectedCount();
+      });
+
+      const label = document.createElement('label'); label.htmlFor = cb.id; label.textContent = m.name + (m.role ? ` (${m.role})` : '');
+
+      // style devices without tokens as greyed-out
+      if (!m.tokensPresent) {
+        label.style.color = '#999';
+        row.style.opacity = '0.7';
+      }
+      if (!receivable) {
+        label.style.cursor = 'not-allowed';
+        label.title = 'Dieses Gerät kann keine Nachrichten empfangen.';
+      }
+
+      const meta = document.createElement('span'); meta.style.color = '#666'; meta.style.fontSize = '0.9rem';
+      const metaParts = [];
+      if (!m.tokensPresent) metaParts.push('(kein Token)');
+
+      // show only presence & flags for telephone — never the actual phone number
+      if (m.telPresent && (m.instantSMS === true || m.allowSmsFallback === true)) {
+        const flags = [];
+        if (m.instantSMS) flags.push('instant-SMS');
+        if (m.allowSmsFallback) flags.push('SMS-Fallback');
+        metaParts.push(`(Telefon${flags.length ? ' • ' + flags.join(', ') : ''})`);
+      }
+
+      meta.textContent = metaParts.join(' ');
+
+      left.appendChild(cb); left.appendChild(label);
+      row.appendChild(left);
+      row.appendChild(meta);
+      container.appendChild(row);
+    }
+  };
+
+  renderList(visibleNonHidden);
+
+  if (visibleHidden.length > 0) {
+    const sep = document.createElement('div');
+    sep.style.borderTop = '1px dashed #ddd';
+    sep.style.margin = '8px 0';
+    sep.textContent = 'Ausgeblendete Geräte';
+    sep.style.color = '#666';
+    sep.style.fontSize = '0.9rem';
+    sep.style.paddingTop = '6px';
+    container.appendChild(sep);
+    renderList(visibleHidden);
+  }
+
+  // update 'select all' checkbox to reflect visible selection
+  const selAll = document.getElementById('customNotifSelectAll');
+  if (selAll) {
+    const visibleCheckboxes = Array.from(document.querySelectorAll('#notifRecipientsList input[type="checkbox"][data-name]'));
+    const allSelected = visibleCheckboxes.length > 0 && visibleCheckboxes.every(ch => _selectedNotifRecipients.has(ch.dataset.name) || ch.disabled);
+    selAll.checked = allSelected;
+  }
+
+  // update role button states
+  updateAllRoleButtonStates();
+  updateSelectedCount();
+}
+
+// Toggle select/unselect all devices of a role
+function toggleSelectRole(role) {
+  // only consider receivable devices (tokens or SMS-capable)
+  const names = Object.values(_membersCache || {}).filter(m => m.role === role && canDeviceReceive(m)).map(m => m.name);
+  if (!names.length) {
+    showToast(`Keine empfangsfähigen Geräte mit Rolle ${role} gefunden.`, { type: 'warning' });
+    return;
+  }
+  const allSelected = names.every(n => _selectedNotifRecipients.has(n));
+  if (allSelected) names.forEach(n => _selectedNotifRecipients.delete(n));
+  else names.forEach(n => _selectedNotifRecipients.add(n));
+  updateRecipientCheckboxes();
+  updateAllRoleButtonStates();
+  updateSelectedCount();
+}
+
+function toggleSelectAllDevices() {
+  // toggle all receivable devices only
+  const names = Object.values(_membersCache || {}).filter(m => canDeviceReceive(m)).map(m => m.name);
+  if (!names.length) return;
+  const allSelected = names.every(n => _selectedNotifRecipients.has(n));
+  if (allSelected) names.forEach(n => _selectedNotifRecipients.delete(n));
+  else names.forEach(n => _selectedNotifRecipients.add(n));
+  updateRecipientCheckboxes();
+  updateAllRoleButtonStates();
+  updateSelectedCount();
+}
+
+function updateRecipientCheckboxes() {
+  // clean selection first
+  cleanSelectedRecipients();
+  const chs = Array.from(document.querySelectorAll('#notifRecipientsList input[type="checkbox"][data-name]'));
+  chs.forEach(cb => { cb.checked = _selectedNotifRecipients.has(cb.dataset.name); });
+  // update select-all visible checkbox
+  const selAll = document.getElementById('customNotifSelectAll');
+  if (selAll) {
+    const visibleCheckboxes = chs;
+    selAll.checked = visibleCheckboxes.length > 0 && visibleCheckboxes.every(ch => _selectedNotifRecipients.has(ch.dataset.name) || ch.disabled);
+  }
+  updateSelectedCount();
+}
+
+function updateSelectedCount() {
+  // ensure no non-receivable remain
+  cleanSelectedRecipients();
+  const count = _selectedNotifRecipients.size;
+  const el = document.getElementById('notifSelectedCount');
+  if (el) {
+    el.textContent = `${count} ausgewählt`;
+    el.setAttribute('title', `${count} Gerät(e) ausgewählt`);
+  }
+}
+
+function updateAllRoleButtonStates() {
+  const roles = ['misterx','agent','settings','start'];
+  for (const r of roles) {
+    const btn = document.getElementById(`notif-role-btn-${escapeAttr(r)}`);
+    if (!btn) continue;
+    const names = Object.values(_membersCache || {}).filter(m => m.role === r && canDeviceReceive(m)).map(m => m.name);
+    const allSelected = names.length > 0 && names.every(n => _selectedNotifRecipients.has(n));
+    if (allSelected) {
+      btn.classList.add('active');
+      btn.style.backgroundColor = '#e0f0ff';
+    } else {
+      btn.classList.remove('active');
+      btn.style.backgroundColor = '';
+    }
+  }
+  // update 'Alle' button
+  const allBtn = document.getElementById('notifRoleAllBtn');
+  if (allBtn) {
+    const allNames = Object.values(_membersCache || {}).filter(m => canDeviceReceive(m)).map(m => m.name);
+    const allSelected = allNames.length > 0 && allNames.every(n => _selectedNotifRecipients.has(n));
+    if (allSelected) {
+      allBtn.classList.add('active');
+      allBtn.style.backgroundColor = '#e0f0ff';
+    } else {
+      allBtn.classList.remove('active');
+      allBtn.style.backgroundColor = '';
+    }
+  }
+}
+
+function renderNotifRoles() {
+  const container = document.getElementById('notifRolesList');
+  if (!container) return;
+  container.innerHTML = '';
+  const roles = ['misterx','agent','settings','start'];
+
+  for (const r of roles) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = `notif-role-btn-${escapeAttr(r)}`;
+    btn.className = 'small-button notif-role-btn';
+    btn.style.marginRight = '8px';
+    btn.textContent = r;
+    btn.addEventListener('click', () => {
+      toggleSelectRole(r);
+    });
+    container.appendChild(btn);
+  }
+
+  // 'Alle' button (toggles all devices)
+  const allBtn = document.getElementById('notifRoleAllBtn');
+  if (allBtn && !window.__notifRoleAllListenerAdded) {
+    allBtn.addEventListener('click', () => {
+      toggleSelectAllDevices();
+    });
+    window.__notifRoleAllListenerAdded = true;
+  }
+
+  // Reflect current selection state on buttons
+  updateAllRoleButtonStates();
+}
+
+async function sendCustomNotification() {
+  const title = (document.getElementById('customNotifTitle')?.value || '').trim();
+  const body = (document.getElementById('customNotifBody')?.value || '').trim();
+  if (!title) return showToast('Bitte Titel eingeben.', { type: 'warning' });
+  if (!body) return showToast('Bitte Nachrichtentext eingeben.', { type: 'warning' });
+  // Use persisted selection set for devices (keeps selection across searches)
+  const checkedDevices = Array.from(_selectedNotifRecipients);
+  // roles selected via buttons: find checked role buttons
+  const checkedRoles = Array.from(document.querySelectorAll('#notifRolesList .notif-role-btn.active')).map(b => b.textContent);
+  const allBtnActive = document.getElementById('notifRoleAllBtn')?.classList.contains('active');
+  if (allBtnActive) checkedRoles.push('all');
+
+  if (checkedDevices.length === 0 && checkedRoles.length === 0) return showToast('Bitte mindestens ein Gerät oder eine Rolle auswählen.', { type: 'warning' });
+
+  // read tokens for selected devices
+  let tokensData = {};
+  try {
+    const snap = await get(ref(rtdb, 'tokens'));
+    tokensData = snap.exists() ? snap.val() : {};
+  } catch (err) {
+    log('Fehler beim Laden der Tokens:', err);
+  }
+
+  // If roles selected, send via role-based API
+  let rolesSent = false;
+  try {
+    if (checkedRoles.length > 0) {
+      // support 'all' string
+      const rolesArg = checkedRoles.includes('all') ? ['all'] : checkedRoles;
+      await sendNotificationToRoles(title, body, rolesArg);
+      rolesSent = true;
+      showToast(`Nachricht an Rolle(n) ${rolesArg.join(', ')} gesendet.`, { type: 'success' });
+    }
+  } catch (err) {
+    log('Fehler beim Senden an Rollen:', err);
+    showToast('Fehler beim Senden an Rollen.', { type: 'error' });
+  }
+
+  // Build tokens from device selection, excluding devices that are part of selected roles to avoid duplicates.
+  // If 'all' role is selected, skip explicit token sends entirely (roles cover everyone).
+  const excludeDevices = new Set();
+  if (checkedRoles.length > 0 && !checkedRoles.includes('all')) {
+    for (const m of Object.values(_membersCache || {})) {
+      if (m.role && checkedRoles.includes(m.role)) excludeDevices.add(m.name);
+    }
+  }
+
+  const tokens = [];
+  const instantSMSDevices = [];
+  const explicitDevicesToSend = [];
+  const skipExplicitSend = checkedRoles.includes('all');
+
+  if (!skipExplicitSend) {
+    for (const dev of checkedDevices) {
+      if (excludeDevices.has(dev)) continue;
+      explicitDevicesToSend.push(dev);
+      try {
+        const t = normalizeTokens(tokensData[dev] || []);
+        if (Array.isArray(t) && t.length) tokens.push(...t);
+      } catch (e) { }
+      if ((_membersCache?.[dev]?.instantSMS) === true) instantSMSDevices.push(dev);
+    }
+  } else {
+    // when 'all' selected, inform user if they selected individual devices as well
+    if (checkedDevices.length > 0) showToast('Hinweis: „Alle“ ausgewählt — individuelle Geräte werden nicht zusätzlich adressiert.', { type: 'info' });
+  }
+
+  // deduplicate tokens
+  const uniqueTokens = Array.from(new Set(tokens));
+
+  if (uniqueTokens.length > 0) {
+    try {
+      const res = await sendNotificationToTokens(title, body, uniqueTokens, { recipientDeviceNames: explicitDevicesToSend, instantSMSDevices });
+      log('sendCustomNotification tokens result', res);
+      showToast('Nachricht an ausgewählte Geräte gesendet.', { type: 'success' });
+    } catch (err) {
+      log('Fehler beim Senden der Nachricht:', err);
+      showToast('Fehler beim Senden der Nachricht an Geräte.', { type: 'error' });
+    }
+  } else if (!rolesSent) {
+    showToast('Keine Tokens für ausgewählte Geräte gefunden.', { type: 'warning' });
+  }
+
+  if (rolesSent || uniqueTokens.length > 0) {
+    closeCustomNotifModal();
+  }
+}
+
+// expose to global (used by inline onclicks in HTML)
+window.openCustomNotifModal = openCustomNotifModal;
+window.closeCustomNotifModal = closeCustomNotifModal;
+window.sendCustomNotification = sendCustomNotification;
 
 // Beim Laden prüfen / initialisieren
 
