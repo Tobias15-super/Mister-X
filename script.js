@@ -1972,7 +1972,7 @@ function createOrReuseMap(lat, lon) {
         try { scaleControl._update && scaleControl._update(); } catch (e) { /* ignore */ }
         _showScaleTemporary();
       });
-    } catch (e) { console.debug('Scale control setup failed', e); }
+    } catch (e) { log('Scale control setup failed', e); }
   } else {
     map.setView([lat, lon], 15);
     map.invalidateSize();
@@ -2022,6 +2022,12 @@ function ensureLayerGroups() {
     if (!map.hasLayer(postenLayer)) postenLayer.addTo(map);
     if (!map.hasLayer(historyLayer)) historyLayer.addTo(map);
     if (!map.hasLayer(userLayer)) userLayer.addTo(map);
+
+    // Ensure the mask polygon (outer veil with inner spielbereich hole) is present
+    // and placed on the 'maskPane' so it sits above base tiles but below markers.
+    try {
+      if (typeof mask !== 'undefined' && !map.hasLayer(mask)) mask.addTo(map);
+    } catch (e) { /* ignore if mask undefined during early init */ }
   }
 }
 
