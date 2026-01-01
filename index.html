@@ -15,7 +15,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Mister X Spiel</title>
   <link rel="icon" href="favicon.ico" type="image/x-icon">
-  <script type="module" crossorigin src="/Mister-X/assets/index-oOleiLd0.js"></script>
+  <script type="module" crossorigin src="/Mister-X/assets/index-NShFAMII.js"></script>
   <link rel="modulepreload" crossorigin href="/Mister-X/assets/vendor-Cj_BHRrm.js">
   <link rel="modulepreload" crossorigin href="/Mister-X/assets/vendor_leaflet-CAQ_TIzs.js">
   <link rel="modulepreload" crossorigin href="/Mister-X/assets/vendor_firebase-Drpl5kvo.js">
@@ -237,6 +237,39 @@
         <div id="membersHiddenInner"></div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- Custom notification modal -->
+  <div id="customNotifModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:2147483647;align-items:center;justify-content:center;padding:20px">
+    <div style="max-width:700px;width:100%;background:#fff;border-radius:10px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.3);text-align:left;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+        <h3 style="margin:0">📣 Nachricht senden</h3>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="small-button" onclick="closeCustomNotifModal()">✕ Schließen</button>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px">
+        <input id="customNotifTitle" type="text" placeholder="Titel" style="padding:.5rem;border:1px solid #ddd;border-radius:6px;">
+        <textarea id="customNotifBody" placeholder="Nachrichtentext" style="min-height:100px;padding:.5rem;border:1px solid #ddd;border-radius:6px;"></textarea>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="customNotifSelectAll" type="checkbox" />
+          <label for="customNotifSelectAll">Alle auswählen</label>
+          <input id="customNotifSearch" type="search" placeholder="Suche Geräte…" style="flex:1;padding:.5rem;border:1px solid #ddd;border-radius:6px;">
+        </div>
+        <div style="margin-top:6px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <strong>Rollen:</strong>
+            <label style="margin-left:8px"><input id="customNotifSelectAllRoles" type="checkbox" /> Alle</label>
+          </div>
+          <div id="notifRolesList" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"></div>
+        </div>
+        <div id="notifRecipientsList" style="max-height:240px;overflow:auto;border:1px solid #eee;padding:8px;border-radius:6px;margin-top:8px"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+          <button class="small-button" onclick="closeCustomNotifModal()">Abbrechen</button>
+          <button id="sendCustomNotifBtn" class="small-button" onclick="sendCustomNotification()">Senden</button>
+        </div>
+      </div>
     </div>
   </div>
 
