@@ -227,37 +227,6 @@ const supabaseClient = supabase.createClient(
 );
 
 
-// Token speichern
-async function saveTokenToSupabase(token) {
-  const role = localStorage.getItem("role") || "start";
-  try {
-    // Optional: stattdessen direkt upsert mit onConflict, dann brauchst du kein delete
-    const { error: delErr } = await supabaseClient
-      .from('fcm_tokens')
-      .delete()
-      .eq('device_name', deviceId);
-
-    if (delErr) {
-      log("❌ Fehler beim Löschen aus Supabase:", delErr);
-    } else {
-      log("✅ Alter Token aus Supabase gelöscht.");
-    }
-
-    const { error: upsertErr } = await supabaseClient
-      .from('fcm_tokens')
-      .upsert({ token, device_name: deviceId, role });
-
-    if (upsertErr) {
-      log("❌ Fehler beim Speichern des Tokens:", upsertErr);
-    } else {
-      log("✅ Token erfolgreich gespeichert.");
-    }
-  } catch (e) {
-    log("❌ Supabase Exception:", e);
-  }
-}
-
-
 function getDeviceId() {
   let id = localStorage.getItem("deviceId");
   while (!id || id.trim() === "") {
@@ -326,7 +295,6 @@ async function requestPermission() {
     log('Token:', currentToken);
     await set(ref(rtdb, `tokens/${deviceId}`), currentToken);
     await update(ref(rtdb, `roles/${deviceId}`), {role: 'start'})
-    await saveTokenToSupabase(currentToken);
 
     // 6) UI aktualisieren
     localStorage.setItem('nachrichtAktiv', 'true');
@@ -454,20 +422,7 @@ async function refreshTokenIfPermitted(options = {}) {
 
       // RTDB: strukturierter Eintrag
       await set(ref(rtdb, "tokens/" + deviceId), newToken);
-
-      // Supabase: upsert by device_name (ohne vorheriges Delete)
-      try {
-        const { error } = await supabaseClient
-          .from('fcm_tokens')
-          .upsert({ token: newToken, device_name: deviceId }, { onConflict: 'device_name' }); // erfordert UNIQUE(device_name)
-        if (error) {
-          log("❌ Fehler beim Upsert in Supabase:", error);
-        } else {
-          log("✅ Token in Supabase upserted.");
-        }
-      } catch (e) {
-        log("❌ Supabase Upsert Exception:", e);
-      }
+      log("✅ Token in RTDB gesetzt für", deviceId);
 
       localStorage.setItem("fcmToken", newToken);
       localStorage.setItem("nachrichtAktiv", "true");
@@ -638,18 +593,7 @@ async function removeNotificationSetup() {
       log('⚠️ RTDB-Remove fehlgeschlagen:', e);
     }
 
-    try {
-      // nach device_name ODER token löschen, damit nichts liegen bleibt
-      const { error } = await supabaseClient
-        .from('fcm_tokens')
-        .delete()
-        .or(`device_name.eq.${deviceId}${oldToken ? `,token.eq.${oldToken}` : ''}`);
-      if (error) log('⚠️ Supabase-Delete Fehler:', error);
-      else log('✅ Supabase-Einträge entfernt');
-    } catch (e) {
-      log('⚠️ Supabase-Delete (catch):', e);
-    }
-
+    // Supabase-Einträge wurden entfernt (tabelle wird zukünftig nicht mehr verwendet).
     // 3) Push-Subscription kündigen & SW-Registrierungen abmelden
     if ('serviceWorker' in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -1897,6 +1841,7 @@ function createOrReuseMap(lat, lon) {
       },
       maxBounds: [[-90, -180], [90, 180]],
       doubleTouchDragZoom: true,
+      doubleTouchDragZoomScaleFactor: 150,
     }).setView([lat, lon], 15);
 
     // Debug: check fullscreen factory presence; if missing, try to add control programmatically
@@ -3705,12 +3650,7 @@ async function switchView(view) {
       role: view,
       timestamp: Date.now(),
     });
-    const role = view
-    await supabaseClient
-    .from("fcm_tokens")
-    .update({ role })
-    .eq("device_name", deviceId);
-
+    const role = view; // Role is stored in RTDB at roles/{deviceId} (no Supabase update) 
   //firebase.database().ref("timer").once("value").then(snapshot => {
   get(ref(rtdb, "timer")).then(snapshot => {
     const data = snapshot.val();
@@ -3738,12 +3678,7 @@ async function goBack() {
     role: "start",
     timestamp: Date.now(),
   });
-  const role = "start"
-  await supabaseClient
-  .from("fcm_tokens")
-  .update({ role })
-  .eq("device_name", deviceId);
-};
+}
 
 
 async function startTimer(duration_for_function) {

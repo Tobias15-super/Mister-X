@@ -81,15 +81,18 @@ function sanitizeKey(key: string) {
 
 async function fetchNamesForTokens(tokens: string[]): Promise<Record<string, string>> {
   if (!tokens.length) return {};
-  const url = `${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name&token=in.(${tokens.map(encodeURIComponent).join(",")})`;
-  const res = await fetch(url, { headers: { apikey: supabaseKey } });
-  if (!res.ok) throw new Error(`Token fetch failed: ${res.status} ${await res.text()}`);
-  const rows = (await res.json()) as Array<{ token: string; device_name: string | null }>;
-  const map: Record<string, string> = {};
-  for (const r of rows) {
-    if (r.token && r.device_name) map[r.token] = r.device_name;
+  // Read token -> deviceName mapping from RTDB and invert
+  const rtdbToken = await getAccessToken(OAUTH_SCOPES.RTDB);
+  const url = `${RTDB_BASE_FALLBACK}/tokens.json`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${rtdbToken}`, "Cache-Control": "no-store" } });
+  if (!res.ok) throw new Error(`RTDB token fetch failed: ${res.status} ${await res.text()}`);
+  const map = (await res.json()) as Record<string, string> | null;
+  const out: Record<string, string> = {};
+  if (!map) return out;
+  for (const [device, token] of Object.entries(map)) {
+    if (token && tokens.includes(String(token))) out[String(token)] = device;
   }
-  return map;
+  return out;
 }
 
 /**
@@ -289,39 +292,28 @@ serve(async (req) => {
       tokenList = [...new Set(providedTokens)].filter(Boolean);
     } else if (resolveRecipientsAtSendTime && rolesRequested) {
       // Holen Tokens für die angegebenen Rollen ermitteln (dynamisch zur Versandzeit)
-      const roleParam = providedRoles.map(r => encodeURIComponent(String(r))).join(',');
-      const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name&role=in.(${roleParam})`, {
-        headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
-      });
-      if (!tokensRes.ok) throw new Error(`Token fetch by role failed: ${tokensRes.status} ${await tokensRes.text().catch(() => '')}`);
-      const rows = (await tokensRes.json()) as Array<{ token: string; device_name?: string | null }>;
-      tokenList = [...new Set(rows.map((r) => r.token).filter(Boolean))];
-      // Optional: recipientDeviceNames (z. B. für RTDB recipients-Map/debug)
-      recipientDeviceNames = rows.map(r => r.device_name).filter(Boolean) as string[];
+      // 1) Resolve roles -> device names from RTDB
+      const rolesRes = await fetch(`${rtdbBase}/roles.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
+      if (!rolesRes.ok) throw new Error(`RTDB roles fetch failed: ${rolesRes.status} ${await rolesRes.text().catch(() => '')}`);
+      const rolesMap = await rolesRes.json() || {};
+      const deviceNames: string[] = [];
+      const instantSmsCandidates: string[] = [];
+      for (const dev of Object.keys(rolesMap)) {
+        const r = rolesMap[dev];
+        if (r && r.role && providedRoles.includes(r.role)) {
+          deviceNames.push(dev);
+          if (r.instantSMS === true) instantSmsCandidates.push(dev);
+        }
+      }
+
+      // 2) Collect tokens for those device names from RTDB
+      const tokensRes = await fetch(`${rtdbBase}/tokens.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
+      const tokensMap = tokensRes.ok ? await tokensRes.json() : {};
+      tokenList = [...new Set(deviceNames.map(d => tokensMap?.[d]).filter(Boolean))];
+      recipientDeviceNames = deviceNames.filter(Boolean) as string[];
 
       // Wenn KEINE passende Tokens und KEINE Instant-SMS-Empfänger → NICHTS senden
       if (tokenList.length === 0) {
-        // Prüfen, ob Rollen-Einträger Instant-SMS markiert haben (RTDB roles)
-        let instantSmsCandidates: string[] = [];
-        try {
-          const rolesRes = await fetch(`${rtdbBase}/roles.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
-          if (rolesRes.ok) {
-            const rolesMap = await rolesRes.json().catch(() => null);
-            if (rolesMap && typeof rolesMap === "object") {
-              for (const dev in rolesMap) {
-                const r = rolesMap[dev];
-                if (r && r.role && providedRoles.includes(r.role) && r.instantSMS === true) {
-                  instantSmsCandidates.push(dev);
-                }
-              }
-            }
-          } else {
-            console.warn("[send-to-all] Could not fetch RTDB roles to check instantSMS:", rolesRes.status);
-          }
-        } catch (err) {
-          console.warn("[send-to-all] Checking RTDB roles for instantSMS failed:", err);
-        }
-
         if (instantSmsCandidates.length === 0) {
           // Keine Targets gefunden: trotzdem Notification in RTDB anlegen (recipients: {})
           const now = Date.now();
@@ -356,13 +348,10 @@ serve(async (req) => {
         }
       }
     } else {
-      // fallback: hole alle Tokens (wie bisher) — nur wenn kein resolveRecipientsAtSendTime flag gesetzt
-      const tokensRes = await fetch(`${supabaseUrl}/rest/v1/fcm_tokens?select=token,device_name`, {
-        headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
-      });
-      if (!tokensRes.ok) throw new Error(`Token fetch failed: ${tokensRes.status} ${await tokensRes.text()}`);
-      const rows = (await tokensRes.json()) as Array<{ token: string; device_name?: string | null }>;
-      tokenList = [...new Set(rows.map((r) => r.token).filter(Boolean))];
+      // fallback: hole alle Tokens aus RTDB
+      const tokensRes = await fetch(`${rtdbBase}/tokens.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
+      const tokensMap = tokensRes.ok ? await tokensRes.json() : {};
+      tokenList = [...new Set(Object.values(tokensMap || {}).filter(Boolean))];
     }
 
 
