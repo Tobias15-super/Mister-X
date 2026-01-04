@@ -500,52 +500,81 @@ async function askForDeviceIdAndPhone() {
   let tel   = telPrefs.tel || null;
   let noTel = !!telPrefs.noTel;
 
-  // --- 3) Serverzustand abrufen (async background) ---
-  // Start a background check so startup isn't blocked by a slow network.
-  fetchRemoteSmsPrefs(id).then(async (remote) => {
-    try {
-      log('[askForDeviceIdAndPhone] remote prefs', remote);
-      // Decide whether to ask based on authoritative server-side allowSmsFallback
-      let mustAsk = false;
-      if (remote.allowSmsFallback === null) {
-        // server has no preference -> ask to resolve
-        mustAsk = true;
-      } else if (remote.allowSmsFallback === false) {
-        mustAsk = false;
-      } else if (remote.allowSmsFallback === true && remote.exists === false) {
-        // server wants SMS fallback enabled but no tel present -> ask (override local opt-out)
-        mustAsk = true;
-      }
+// --- 3) Serverzustand abrufen (synchronous for this flow, non-blocking for overall startup) ---
+  // We await the Supabase response here inside this function and show the inline input
+  // if the server requires or requests it. The caller (startup) should NOT await this
+  // function so other unrelated startup tasks continue immediately.
+  try {
+    const remote = await fetchRemoteSmsPrefs(id);
+    log('[askForDeviceIdAndPhone] remote prefs', remote);
 
-      // If server indicates allowSmsFallback=true and tel exists, sync local pref
-      if (remote.allowSmsFallback === true && remote.exists === true) {
-        saveSmsPrefs({ allowSmsFallback: true, noTel: false });
-      }
-
-      if (mustAsk) {
-        // If we already have a local number, push it to server now
-        if (tel && isValidAtE164(tel)) {
-          const allow = !!tel;
-          saveSmsPrefs({ tel, allowSmsFallback: allow, noTel: false });
-          await saveTelToRTDB(id, tel, allow);
-          return;
-        }
-
-        // Otherwise prompt the user (background, non-blocking to startup)
-        {
-          // showPhoneEntryModal returns a normalized tel string or null (user skipped)
-          const userTel = await showPhoneEntryModal();
-          tel = userTel;
-          noTel = (tel === null);
-          const allow = !!tel;
-          saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
-          await saveTelToRTDB(id, tel, allow);
-        }
-      }
-    } catch (err) {
-      log('[askForDeviceIdAndPhone] background handler error', err);
+    // Decide whether to ask based on authoritative server-side allowSmsFallback
+    let mustAsk = false;
+    if (remote.allowSmsFallback === null) {
+      mustAsk = true;
+    } else if (remote.allowSmsFallback === false) {
+      mustAsk = false;
+    } else if (remote.allowSmsFallback === true && remote.exists === false) {
+      mustAsk = true;
     }
-  }).catch(e => log('[askForDeviceIdAndPhone] could not fetch remote prefs', e));
+
+    // If server indicates allowSmsFallback=true and tel exists, sync local pref
+    if (remote.allowSmsFallback === true && remote.exists === true) {
+      saveSmsPrefs({ allowSmsFallback: true, noTel: false });
+    }
+
+    if (mustAsk) {
+      // If we already have a local number, push it to server now
+      if (tel && isValidAtE164(tel)) {
+        const allow = !!tel;
+        saveSmsPrefs({ tel, allowSmsFallback: allow, noTel: false });
+        await saveTelToRTDB(id, tel, allow);
+      } else if (!noTel || remote.allowSmsFallback === true || remote.allowSmsFallback === null) {
+        // Server explicitly requests SMS fallback OR server has no preference -> override local noTel if necessary and ask
+        if (noTel && (remote.allowSmsFallback === true || remote.allowSmsFallback === null)) {
+        }
+
+        try {
+          // --- 5) Nur fragen, wenn notwendig und nicht schon bewusst abgelehnt (außer bei Reset) ---
+          if ((mustAsk && !noTel) || (mustAsk && remote.allowSmsFallback === null) || (mustAsk && remote.allowSmsFallback === true)) {
+            while (!tel || !isValidAtE164(tel)) {
+              let input;
+              try { input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest."); }
+              catch (err) { input = null; }
+              if (input === null || input.trim() === "") { tel = null; noTel = true; break; }
+              tel = normalizeAtPhoneNumber(input.trim());
+              if (!tel) alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
+            }
+          }
+        } catch (err) {
+          log('[askForDeviceIdAndPhone] prompt loop failed (server-determined)', err);
+          tel = tel || null;
+                  // If prompt was blocked or didn't yield a number and server wants SMS, fallback to inline input
+        if ((!tel || !isValidAtE164(tel)) && (remote.allowSmsFallback === true || remote.allowSmsFallback === null)) {
+          log('[askForDeviceIdAndPhone] prompt produced no value or was blocked - falling back to inline input');
+          try {
+            const userTel = await showPhoneEntryModal();
+            tel = userTel;
+            noTel = (tel === null);
+          } catch (e) {
+            log('[askForDeviceIdAndPhone] inline fallback failed (server-determined)', e);
+            tel = tel || null;
+          }
+        }
+        }
+
+
+
+        const allow = !!tel;
+        saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
+        await saveTelToRTDB(id, tel, allow);
+      }
+    }
+  } catch (e) {
+    // If the server fetch fails, fall back to local decision to ask now
+    log('[askForDeviceIdAndPhone] could not fetch remote prefs, falling back to local prefs', e);
+    // localMustAsk will be handled below (the function will await inline input there if needed)
+  }
 
   // --- 4) Lokale Entscheidungslogik für sofortiges Fragen ---
   // This avoids blocking startup but still asks immediately if local state suggests so.
@@ -555,10 +584,33 @@ async function askForDeviceIdAndPhone() {
   else if (telPrefs.allowSmsFallback === true && !tel) { localMustAsk = true; }
 
   if (localMustAsk && !noTel) {
-    // Use the in-page modal so browsers won't block the prompt when not triggered by a user gesture
-    const userTel = await showPhoneEntryModal();
-    tel = userTel;
-    noTel = (tel === null);
+    try {
+      // Prefer native prompt() blocking loop (as requested). Fallback to inline input if prompt() is blocked or yields no value.
+      while (!tel || !isValidAtE164(tel)) {
+        let input;
+        try { input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest."); }
+        catch (err) { input = null; }
+        if (input === null || input.trim() === "") { tel = null; noTel = true; break; }
+        tel = normalizeAtPhoneNumber(input.trim());
+        if (!tel) alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
+      }
+    } catch (err) {
+      log('[askForDeviceIdAndPhone] prompt loop failed (local branch)', err);
+      tel = tel || null;
+    }
+
+    if ((!tel || !isValidAtE164(tel))) {
+      log('[askForDeviceIdAndPhone] prompt produced no value or was blocked - falling back to inline input (local branch)');
+      try {
+        const userTel = await showPhoneEntryModal();
+        tel = userTel;
+        noTel = (tel === null);
+      } catch (e) {
+        log('[askForDeviceIdAndPhone] inline fallback failed (local branch)', e);
+        tel = tel || null;
+      }
+    }
+
     const allow = !!tel;
     saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
     await saveTelToRTDB(id, tel, allow);
@@ -575,46 +627,65 @@ function isValidFirebaseKey(key) {
   );
 }
 
-// In-page phone entry modal to avoid browser blocking of prompt() when invoked out-of-gesture
+// In-page phone entry using a small input field (non-modal, blocks script until answered)
 function showPhoneEntryModal() {
   return new Promise((resolve) => {
-    // De-dup: don't show multiple modals
-    if (document.getElementById('phone-entry-modal')) return resolve(null);
+    // De-dup: if an existing wrapper is already present, re-use it and attach a listener
+    const existing = document.getElementById('phone-entry-input-wrapper');
+    if (existing) {
+      log('[showPhoneEntryModal] re-using existing inline input');
+      // focus input and wait for user interaction
+      const inputEl = existing.querySelector('#phone-entry-input');
+      const saveBtn = existing.querySelector('#phone-entry-save');
+      const skipBtn = existing.querySelector('#phone-entry-skip');
+      if (inputEl) inputEl.focus();
 
-    const modal = document.createElement('div');
-    modal.id = 'phone-entry-modal';
-    modal.style.position = 'fixed';
-    modal.style.top = '0';
-    modal.style.left = '0';
-    modal.style.width = '100vw';
-    modal.style.height = '100vh';
-    modal.style.backgroundColor = 'rgba(0,0,0,0.4)';
-    modal.style.display = 'flex';
-    modal.style.alignItems = 'center';
-    modal.style.justifyContent = 'center';
-    modal.style.zIndex = '99999';
+      const handleSave = () => {
+        const v = inputEl.value.trim();
+        if (v === '') { return resolve(null); }
+        const norm = normalizeAtPhoneNumber(v);
+        if (!norm) {
+          const errEl = existing.querySelector('#phone-entry-error');
+          if (errEl) { errEl.textContent = 'Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.'; errEl.style.display = 'block'; }
+          return; // stay open
+        }
+        resolve(norm);
+      };
 
-    const box = document.createElement('div');
-    box.style.background = '#fff';
-    box.style.padding = '16px';
-    box.style.borderRadius = '8px';
-    box.style.maxWidth = '420px';
-    box.style.width = '90%';
-    box.style.boxShadow = '0 6px 18px rgba(0,0,0,0.2)';
+      const handleSkip = () => { resolve(null); };
 
-    box.innerHTML = `
-      <div style="font-weight:700;margin-bottom:8px">Telefonnummer für SMS-Fallback</div>
-      <div style="margin-bottom:8px">Bitte gib deine Telefonnummer ein (+43… oder 0664…). Du kannst das Feld leer lassen, wenn du keine SMS möchtest.</div>
-      <input id="phone-entry-input" type="tel" placeholder="+43..." style="width:100%;padding:8px;margin-bottom:8px;border:1px solid #ccc;border-radius:4px">
-      <div id="phone-entry-error" style="color:#900;display:none;margin-bottom:8px;font-size:0.9rem"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button id="phone-entry-skip" class="ghost">Leer lassen</button>
-        <button id="phone-entry-save">Speichern</button>
-      </div>
+      saveBtn && saveBtn.addEventListener('click', handleSave, { once: true });
+      skipBtn && skipBtn.addEventListener('click', handleSkip, { once: true });
+      inputEl && inputEl.addEventListener('keydown', function onKey(e) { if (e.key === 'Enter') { handleSave(); } if (e.key === 'Escape') { handleSkip(); } }, { once: false });
+      return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'phone-entry-input-wrapper';
+    wrapper.style.position = 'fixed';
+    wrapper.style.top = '8px';
+    wrapper.style.left = '50%';
+    wrapper.style.transform = 'translateX(-50%)';
+    wrapper.style.background = '#fff';
+    wrapper.style.padding = '8px';
+    wrapper.style.borderRadius = '6px';
+    wrapper.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+    wrapper.style.zIndex = '99999';
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.gap = '8px';
+
+    wrapper.innerHTML = `
+      <input id="phone-entry-input" type="tel" placeholder="+43..." style="width:220px;padding:6px;border:1px solid #ccc;border-radius:4px">
+      <button id="phone-entry-save">Speichern</button>
+      <button id="phone-entry-skip" class="ghost">Leer lassen</button>
+      <div id="phone-entry-error" style="color:#900;display:none;margin-left:8px;font-size:0.9rem"></div>
     `;
 
-    modal.appendChild(box);
-    document.body.appendChild(modal);
+    // make wrapper visually obvious for debugging and append
+    wrapper.style.border = '2px solid #007AFF';
+    document.body.appendChild(wrapper);
+    log('[showPhoneEntryModal] appended inline input to DOM');
 
     const inputEl = document.getElementById('phone-entry-input');
     const errEl = document.getElementById('phone-entry-error');
@@ -622,15 +693,18 @@ function showPhoneEntryModal() {
     const skipBtn = document.getElementById('phone-entry-skip');
 
     inputEl.focus();
+    log('[showPhoneEntryModal] input focused; wrapper visible=', !!document.getElementById('phone-entry-input-wrapper'));
 
     function cleanup() {
       saveBtn.removeEventListener('click', onSave);
       skipBtn.removeEventListener('click', onSkip);
-      modal.remove();
+      inputEl.removeEventListener('keydown', onKeydown);
+      wrapper.remove();
     }
 
     function onSave() {
       const v = inputEl.value.trim();
+      log('[showPhoneEntryModal] onSave clicked, value=', v);
       if (v === '') {
         cleanup();
         return resolve(null);
@@ -642,6 +716,7 @@ function showPhoneEntryModal() {
         return;
       }
       cleanup();
+      log('[showPhoneEntryModal] resolved normalized value=', norm);
       return resolve(norm);
     }
 
@@ -650,13 +725,14 @@ function showPhoneEntryModal() {
       return resolve(null);
     }
 
+    function onKeydown(e) {
+      if (e.key === 'Enter') onSave();
+      if (e.key === 'Escape') onSkip();
+    }
+
     saveBtn.addEventListener('click', onSave);
     skipBtn.addEventListener('click', onSkip);
-
-    // Allow Enter to submit
-    inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') onSave();
-    });
+    inputEl.addEventListener('keydown', onKeydown);
   });
 }
 
@@ -1497,7 +1573,7 @@ async function checkDevicesTelPresence(deviceIds = []) {
 
 
 // Versucht Nutzerinput -> E.164 AT (+43…)
-export function normalizeAtPhoneNumber(input) {
+function normalizeAtPhoneNumber(input) {
   if (!input) return null;
   let s = stripPhone(input);
 
