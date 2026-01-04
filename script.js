@@ -500,59 +500,69 @@ async function askForDeviceIdAndPhone() {
   let tel   = telPrefs.tel || null;
   let noTel = !!telPrefs.noTel;
 
-  // --- 3) Serverzustand abrufen ---
-  let remote;
-  try {
-    remote = await fetchRemoteSmsPrefs(id);
-  } catch (e) {
-    log("[askForDeviceIdAndPhone] Konnte Remote-Status nicht laden:", e);
-    remote = { exists: false, allowSmsFallback: null, tel: null };
-  }
-
-  // --- 4) Entscheidungslogik, ob neu gefragt werden soll ---
-
-  // Fälle, die ein Neufragen auslösen:
-  // A) allowSmsFallback wurde serverseitig GELÖSCHT (null/undefined)
-  // B) allowSmsFallback ist serverseitig false
-  // C) allowSmsFallback ist true, aber KEINE Tel am Server
-  let mustAskTel = false;
-
-  if (remote.allowSmsFallback === null) {
-    mustAskTel = true;
-    noTel = false;
-  } else if (remote.allowSmsFallback === false) {
-    mustAskTel = false;
-  } else if (remote.allowSmsFallback === true && !remote.tel) {
-    mustAskTel = true;
-  }
-
-  // Wenn der Server bereits eine gültige Nummer hat, synchronisiere lokal & fertig
-  if (remote.allowSmsFallback === true && remote.tel) {
-    saveSmsPrefs({ tel: remote.tel, allowSmsFallback: true, noTel: false });
-    await saveTelToRTDB(id, remote.tel, true);
-    return;
-  }
-
-  // --- 5) Nur fragen, wenn notwendig und nicht schon bewusst abgelehnt (außer bei Reset) ---
-  if ((mustAskTel && !noTel) || (mustAskTel && remote.allowSmsFallback === null)) {
-    while (!tel || !isValidAtE164(tel)) {
-      let input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest.");
-      if (input === null || input.trim() === "") {
-        tel = null;
-        noTel = true;
-        break;
+  // --- 3) Serverzustand abrufen (async background) ---
+  // Start a background check so startup isn't blocked by a slow network.
+  fetchRemoteSmsPrefs(id).then(async (remote) => {
+    try {
+      log('[askForDeviceIdAndPhone] remote prefs', remote);
+      // Decide whether to ask based on authoritative server-side allowSmsFallback
+      let mustAsk = false;
+      if (remote.allowSmsFallback === null) {
+        // server has no preference -> ask to resolve
+        mustAsk = true;
+      } else if (remote.allowSmsFallback === false) {
+        mustAsk = false;
+      } else if (remote.allowSmsFallback === true && remote.exists === false) {
+        // server wants SMS fallback enabled but no tel present -> ask (override local opt-out)
+        mustAsk = true;
       }
-      tel = normalizeAtPhoneNumber(input.trim());
-      if (!tel) {
-        alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
+
+      // If server indicates allowSmsFallback=true and tel exists, sync local pref
+      if (remote.allowSmsFallback === true && remote.exists === true) {
+        saveSmsPrefs({ allowSmsFallback: true, noTel: false });
       }
+
+      if (mustAsk) {
+        // If we already have a local number, push it to server now
+        if (tel && isValidAtE164(tel)) {
+          const allow = !!tel;
+          saveSmsPrefs({ tel, allowSmsFallback: allow, noTel: false });
+          await saveTelToRTDB(id, tel, allow);
+          return;
+        }
+
+        // Otherwise prompt the user (background, non-blocking to startup)
+        {
+          // showPhoneEntryModal returns a normalized tel string or null (user skipped)
+          const userTel = await showPhoneEntryModal();
+          tel = userTel;
+          noTel = (tel === null);
+          const allow = !!tel;
+          saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
+          await saveTelToRTDB(id, tel, allow);
+        }
+      }
+    } catch (err) {
+      log('[askForDeviceIdAndPhone] background handler error', err);
     }
-  }
+  }).catch(e => log('[askForDeviceIdAndPhone] could not fetch remote prefs', e));
 
-  // --- 6) Speichern (lokal + Server) ---
-  const allow = !!tel;
-  saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
-  await saveTelToRTDB(id, tel, allow);
+  // --- 4) Lokale Entscheidungslogik für sofortiges Fragen ---
+  // This avoids blocking startup but still asks immediately if local state suggests so.
+  let localMustAsk = false;
+  if (telPrefs.allowSmsFallback === null) { localMustAsk = true; noTel = false; }
+  else if (telPrefs.allowSmsFallback === false) { localMustAsk = false; }
+  else if (telPrefs.allowSmsFallback === true && !tel) { localMustAsk = true; }
+
+  if (localMustAsk && !noTel) {
+    // Use the in-page modal so browsers won't block the prompt when not triggered by a user gesture
+    const userTel = await showPhoneEntryModal();
+    tel = userTel;
+    noTel = (tel === null);
+    const allow = !!tel;
+    saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
+    await saveTelToRTDB(id, tel, allow);
+  }
 }
 
 // Hilfsfunktion: Firebase-Key-Validierung
@@ -563,6 +573,91 @@ function isValidFirebaseKey(key) {
     key.length >= 2 &&
     !/[.#$/\[\]/]/.test(key)
   );
+}
+
+// In-page phone entry modal to avoid browser blocking of prompt() when invoked out-of-gesture
+function showPhoneEntryModal() {
+  return new Promise((resolve) => {
+    // De-dup: don't show multiple modals
+    if (document.getElementById('phone-entry-modal')) return resolve(null);
+
+    const modal = document.createElement('div');
+    modal.id = 'phone-entry-modal';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.backgroundColor = 'rgba(0,0,0,0.4)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '99999';
+
+    const box = document.createElement('div');
+    box.style.background = '#fff';
+    box.style.padding = '16px';
+    box.style.borderRadius = '8px';
+    box.style.maxWidth = '420px';
+    box.style.width = '90%';
+    box.style.boxShadow = '0 6px 18px rgba(0,0,0,0.2)';
+
+    box.innerHTML = `
+      <div style="font-weight:700;margin-bottom:8px">Telefonnummer für SMS-Fallback</div>
+      <div style="margin-bottom:8px">Bitte gib deine Telefonnummer ein (+43… oder 0664…). Du kannst das Feld leer lassen, wenn du keine SMS möchtest.</div>
+      <input id="phone-entry-input" type="tel" placeholder="+43..." style="width:100%;padding:8px;margin-bottom:8px;border:1px solid #ccc;border-radius:4px">
+      <div id="phone-entry-error" style="color:#900;display:none;margin-bottom:8px;font-size:0.9rem"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="phone-entry-skip" class="ghost">Leer lassen</button>
+        <button id="phone-entry-save">Speichern</button>
+      </div>
+    `;
+
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+
+    const inputEl = document.getElementById('phone-entry-input');
+    const errEl = document.getElementById('phone-entry-error');
+    const saveBtn = document.getElementById('phone-entry-save');
+    const skipBtn = document.getElementById('phone-entry-skip');
+
+    inputEl.focus();
+
+    function cleanup() {
+      saveBtn.removeEventListener('click', onSave);
+      skipBtn.removeEventListener('click', onSkip);
+      modal.remove();
+    }
+
+    function onSave() {
+      const v = inputEl.value.trim();
+      if (v === '') {
+        cleanup();
+        return resolve(null);
+      }
+      const norm = normalizeAtPhoneNumber(v);
+      if (!norm) {
+        errEl.textContent = 'Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.';
+        errEl.style.display = 'block';
+        return;
+      }
+      cleanup();
+      return resolve(norm);
+    }
+
+    function onSkip() {
+      cleanup();
+      return resolve(null);
+    }
+
+    saveBtn.addEventListener('click', onSave);
+    skipBtn.addEventListener('click', onSkip);
+
+    // Allow Enter to submit
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') onSave();
+    });
+  });
 }
 
 
@@ -1366,15 +1461,37 @@ function saveSmsPrefs(next) {
 
 
 async function fetchRemoteSmsPrefs(deviceId) {
-  const key = sanitizeKey(deviceId);
-  const snap = await get(ref(rtdb, `roles/${key}`));
-  if (!snap.exists()) return { exists: false, allowSmsFallback: null, tel: null };
-  const data = snap.val() || {};
-  return {
-    exists: true,
-    allowSmsFallback: (data.allowSmsFallback !== undefined) ? !!data.allowSmsFallback : null,
-    tel: data.tel ?? null
-  };
+  // Query the Supabase function which returns whether a tel exists and the allowSmsFallback flag (no number)
+  try {
+    const resp = await supabaseClient.functions.invoke('ask-tel', { body: { deviceIds: [deviceId] } });
+    if (resp.error) throw resp.error;
+    const results = resp.data?.results || {};
+    const key = sanitizeKey(deviceId);
+    const r = results[key] || { exists: false, allowSmsFallback: null };
+    return { exists: !!r.exists, allowSmsFallback: (r.allowSmsFallback === null ? null : !!r.allowSmsFallback) };
+  } catch (e) {
+    log('[fetchRemoteSmsPrefs] Edge call failed', e);
+    return { exists: false, allowSmsFallback: null };
+  }
+}
+
+async function checkDevicesTelPresence(deviceIds = []) {
+  if (!Array.isArray(deviceIds) || deviceIds.length === 0) return {};
+  try {
+    const resp = await supabaseClient.functions.invoke('ask-tel', { body: { deviceIds } });
+    if (resp.error) throw resp.error;
+    // Normalize results to ensure consistent shape per id
+    const raw = resp.data?.results || {};
+    const out = {};
+    for (const id of deviceIds) {
+      const r = raw[id] || raw[sanitizeKey(id)] || { exists: false, allowSmsFallback: null };
+      out[id] = { exists: !!r.exists, allowSmsFallback: (r.allowSmsFallback === null ? null : !!r.allowSmsFallback) };
+    }
+    return out;
+  } catch (e) {
+    log('[checkDevicesTelPresence] Edge call failed', e);
+    return Object.fromEntries(deviceIds.map(id => [id, { exists: false, allowSmsFallback: null }]));
+  }
 }
 
 
@@ -5302,10 +5419,10 @@ async function loadAndRenderMembers() {
         id: name,
         name,
         role: entry.role || '-',
-        allowSmsFallback: !!entry.allowSmsFallback,
+        allowSmsFallback: entry.allowSmsFallback === undefined ? null : !!entry.allowSmsFallback, // initial value; will be refreshed
         instantSMS: entry.instantSMS === true,
         notification: entry.notification === false ? false : true,
-        telPresent: !!entry.tel,
+        telPresent: null, // null = unknown / loading; will be resolved via Supabase batch call in background
         lastActivity: last,
         hidden: !!entry.hidden,
         tokensPresent: hasTokens,
@@ -5316,7 +5433,27 @@ async function loadAndRenderMembers() {
     log('Fehler beim Laden der Rollen:', err);
     showToast('Fehler beim Laden der Mitglieder.');
   }
+
+  // Render immediately so modal opens without waiting for remote checks
   renderMembersUI();
+
+  // Run tel-presence check in the background and update UI when done
+  (async () => {
+    try {
+      const ids = Object.keys(_membersCache || {});
+      if (ids.length === 0) return;
+      const res = await checkDevicesTelPresence(ids);
+      for (const id of ids) {
+        _membersCache[id].telPresent = !!(res[id]?.exists);
+        if (res[id] && res[id].allowSmsFallback !== null) {
+          _membersCache[id].allowSmsFallback = !!res[id].allowSmsFallback;
+        }
+      }
+      renderMembersUI();
+    } catch (e) {
+      log('[loadAndRenderMembers] background checkDevicesTelPresence failed', e);
+    }
+  })();
 }
 
 function renderMembersUI() {
@@ -5353,7 +5490,8 @@ function renderMembersUI() {
     const name = document.createElement('div'); name.className = 'member-name'; name.innerHTML = escapeHtml(m.name);
     const meta = document.createElement('div'); meta.className = 'member-meta';
     const dt = m.lastActivity ? formatDatetime(normalizeTimestamp(m.lastActivity)) : '—';
-    meta.innerHTML = `${escapeHtml(m.role)} · ${dt} · ${m.telPresent ? 'Tel ✓' : '—'}`;
+    const telText = (m.telPresent === true) ? 'Tel ✓' : (m.telPresent === null ? 'Tel …' : '—');
+    meta.innerHTML = `${escapeHtml(m.role)} · ${dt} · ${telText}`;
     left.appendChild(name); left.appendChild(meta);
 
     const actions = document.createElement('div'); actions.className = 'member-actions';
