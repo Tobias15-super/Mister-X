@@ -352,16 +352,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // 1) Rollen/Telefonnummern laden
+    // 1) Rollen/Telefonnummern laden (tel in /tels, consent in roles)
     const lookups = recipientDeviceNames.map(async (dn) => {
       const roleUrl = `${baseUrl}${rolesPath}/${encodeURIComponent(dn)}.json`;
+      const telUrl = `${baseUrl}tels/${encodeURIComponent(dn)}.json`;
       try {
-        const data = (await rtdbGetJson<TelRole>(
+        const roleData = (await rtdbGetJson<TelRole>(
           bearer ? roleUrl : appendAuthQuery(roleUrl, rtdbAuth),
           bearer,
         )) ?? {};
-        const tel = data.tel;
-        const consentOk = requireConsent ? !!data.allowSmsFallback : true;
+        const telData = (await rtdbGetJson<{ tel?: string } | null>(
+          bearer ? telUrl : appendAuthQuery(telUrl, rtdbAuth),
+          bearer,
+        )) ?? {};
+        const tel = telData?.tel ?? null;
+        const consentOk = requireConsent ? !!roleData.allowSmsFallback : true;
         if (!isValidE164(tel)) return { deviceName: dn, tel: null, reason: "no_or_invalid_e164" as const };
         if (!consentOk) return { deviceName: dn, tel: null, reason: "no_consent" as const };
         return { deviceName: dn, tel, reason: null as null };

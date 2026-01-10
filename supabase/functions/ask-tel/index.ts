@@ -90,22 +90,21 @@ Deno.serve(async (req) => {
     const results = {};
     for (const rawId of deviceIds) {
       const id = sanitizeKey(rawId);
-      const url = `${rtdbBase}/roles/${encodeURIComponent(id)}.json`;
-      const res = await fetch(url, { headers });
-      if (!res.ok) {
-        results[id] = { exists: false, allowSmsFallback: null };
-        continue;
-      }
-      const data = await res.json();
-      if (!data) {
-        results[id] = { exists: false, allowSmsFallback: null };
-      } else {
-        // Return whether a tel exists and the current allowSmsFallback flag (no phone numbers).
-        results[id] = {
-          exists: !!data.tel,
-          allowSmsFallback: (data.allowSmsFallback !== undefined) ? !!data.allowSmsFallback : null,
-        };
-      }
+      const roleUrl = `${rtdbBase}/roles/${encodeURIComponent(id)}.json`;
+      const telUrl = `${rtdbBase}/tels/${encodeURIComponent(id)}.json`;
+
+      // Read consent from roles (allowSmsFallback) and phone presence from /tels
+      const roleRes = await fetch(roleUrl, { headers });
+      const roleData = roleRes.ok ? await roleRes.json() : null;
+
+      const telRes = await fetch(telUrl, { headers });
+      const telData = telRes.ok ? await telRes.json() : null;
+
+      const exists = !!(telData && (typeof telData === 'string' ? telData : telData.tel));
+      results[id] = {
+        exists,
+        allowSmsFallback: (roleData && roleData.allowSmsFallback !== undefined) ? !!roleData.allowSmsFallback : null,
+      };
     }
 
     return new Response(JSON.stringify({ results }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });

@@ -418,15 +418,20 @@ Deno.serve(async (req) => {
       return jsonWithCors(req, { ok: true, skipped: "all_delivered" });
     }
 
-    // 8) Telefonnummern aus roles/<deviceName> holen (liefert device + tel)
+    // 8) Telefonnummern aus /tels/<deviceName> holen; consent (allowSmsFallback) bleibt in roles
     const deviceTelPromises = pendingDevices.map(async (dn) => {
       const roleUrl = `${baseUrl}/${rolesPath}/${encodeURIComponent(dn)}.json`;
+      const telUrl = `${baseUrl}/tels/${encodeURIComponent(dn)}.json`;
       try {
-        const data =
+        const roleData =
           (bearer
             ? await rtdbGetJson<TelRole | null>(roleUrl, bearer)
             : await rtdbGetJson<TelRole | null>(appendAuthQuery(roleUrl, rtdbAuth))) || {};
-        const tel = data.allowSmsFallback && isValidE164(data.tel) ? data.tel! : null;
+        const telData =
+          (bearer
+            ? await rtdbGetJson<{ tel?: string } | null>(telUrl, bearer)
+            : await rtdbGetJson<{ tel?: string } | null>(appendAuthQuery(telUrl, rtdbAuth))) || {};
+        const tel = roleData.allowSmsFallback && isValidE164(telData?.tel) ? telData!.tel! : null;
         return { deviceName: dn, tel };
       } catch {
         return { deviceName: dn, tel: null };

@@ -1603,13 +1603,16 @@ function normalizeAtPhoneNumber(input) {
 async function saveTelToRTDB(deviceId, tel, allowSmsFallback) {
   const safeId = sanitizeKey(deviceId);
   const db = getDatabase(app);
-  const updates = {
-    tel: tel ?? null,
+  // Keep consent flag in roles (no phone number stored there)
+  const roleUpdates = {
     allowSmsFallback: !!allowSmsFallback,
-    ...(tel ? { telUpdatedAt: Date.now() } : {}),
   };
-  await update(ref(rtdb, `roles/${safeId}`), updates);
-}
+  await update(ref(rtdb, `roles/${safeId}`), roleUpdates);
+
+  // Store the actual phone number under /tels/<device> (service/backends may read, clients should not)
+  const telPayload = tel ? { tel: tel, telUpdatedAt: Date.now() } : null;
+  await set(ref(rtdb, `tels/${safeId}`), telPayload);
+} 
 
 
 //=======Funktionen für Teams =======
@@ -5657,7 +5660,9 @@ async function deleteMember(deviceName) {
   const ok = confirm(`Spieler ${deviceName} wirklich löschen? Diese Aktion entfernt alle Rollen-/Tel-Daten.`);
   if (!ok) return;
   try {
-    await remove(ref(rtdb, `roles/${sanitizeKey(deviceName)}`));
+    const safe = sanitizeKey(deviceName);
+    await remove(ref(rtdb, `roles/${safe}`));
+    await remove(ref(rtdb, `tels/${safe}`));
     showToast('Spieler gelöscht', { timeout:2000, type:'info' });
     loadAndRenderMembers();
   } catch (err) { log(err); showToast('Fehler beim Löschen'); }
@@ -5667,7 +5672,9 @@ async function removeTel(deviceName) {
   const ok = confirm(`Nummer von ${deviceName} wirklich löschen?`);
   if (!ok) return;
   try {
-    await update(ref(rtdb, `roles/${sanitizeKey(deviceName)}`), { tel: null, allowSmsFallback: false });
+    const safe = sanitizeKey(deviceName);
+    await update(ref(rtdb, `roles/${safe}`), { allowSmsFallback: false });
+    await remove(ref(rtdb, `tels/${safe}`));
     showToast('Nummer entfernt', { timeout:1500, type:'info' });
     loadAndRenderMembers();
   } catch (err) { log(err); showToast('Fehler beim Entfernen'); }
