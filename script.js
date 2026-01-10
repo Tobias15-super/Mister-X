@@ -1166,6 +1166,31 @@ async function sendNotificationToRoles(title, body, roles, opts = {}) {
 
   // 🟩 Fall B: Es gibt KEINE Tokens, aber Instant-SMS-Empfänger -> nur SMS-Direkt
   if (uniqueInstantSMS.length > 0) {
+    // Schreibe Benachrichtigung zu Firebase, bevor SMS gesendet wird
+    const now = Date.now();
+    const recipientsMap = {};
+    uniqueInstantSMS.forEach(deviceName => {
+      recipientsMap[deviceName] = false; // Markiere als Instant-SMS-Empfänger
+    });
+
+    const notif = {
+      title: String(title ?? ''),
+      body: String(body ?? ''),
+      link: opts.link || '/Mister-X/',
+      sender: senderName,
+      timestamp: now,
+      recipients: recipientsMap,
+      attempts: { 1: { at: now, count: 0 } },
+      lastAttemptAt: now,
+    };
+
+    try {
+      await set(ref(rtdb, `notifications/${messageId}`), notif);
+      log(`[sendNotificationToRoles] Notification for instant SMS recorded: ${messageId}`);
+    } catch (err) {
+      log(`[sendNotificationToRoles] Failed to write notification: ${err.message}`);
+    }
+
     // Du willst delivered markieren, daher sms-direct direkt triggern:
     await triggerSmsDirectIfNeeded(messageId, uniqueInstantSMS, smsText, {
       rtdbBase,
@@ -5652,7 +5677,14 @@ async function updateRoleField(deviceName, updates) {
     const safe = sanitizeKey(deviceName);
     await update(ref(rtdb, `roles/${safe}`), updates);
     showToast('Änderung gespeichert', { timeout: 1500, type: 'info' });
-    loadAndRenderMembers();
+    // Update local cache & re-render UI instead of reloading members (which triggers tel presence checks)
+    if (typeof _membersCache !== 'undefined' && _membersCache && _membersCache[deviceName]) {
+      Object.assign(_membersCache[deviceName], updates);
+      renderMembersUI();
+    } else {
+      // Rare fallback: reload members
+      loadAndRenderMembers();
+    }
   } catch (err) { log(err); showToast('Fehler beim Speichern'); }
 }
 
@@ -5664,7 +5696,12 @@ async function deleteMember(deviceName) {
     await remove(ref(rtdb, `roles/${safe}`));
     await remove(ref(rtdb, `tels/${safe}`));
     showToast('Spieler gelöscht', { timeout:2000, type:'info' });
-    loadAndRenderMembers();
+    if (typeof _membersCache !== 'undefined' && _membersCache && _membersCache[deviceName]) {
+      delete _membersCache[deviceName];
+      renderMembersUI();
+    } else {
+      loadAndRenderMembers();
+    }
   } catch (err) { log(err); showToast('Fehler beim Löschen'); }
 }
 
@@ -5676,7 +5713,13 @@ async function removeTel(deviceName) {
     await update(ref(rtdb, `roles/${safe}`), { allowSmsFallback: false });
     await remove(ref(rtdb, `tels/${safe}`));
     showToast('Nummer entfernt', { timeout:1500, type:'info' });
-    loadAndRenderMembers();
+    if (typeof _membersCache !== 'undefined' && _membersCache && _membersCache[deviceName]) {
+      _membersCache[deviceName].telPresent = false;
+      _membersCache[deviceName].allowSmsFallback = false;
+      renderMembersUI();
+    } else {
+      loadAndRenderMembers();
+    }
   } catch (err) { log(err); showToast('Fehler beim Entfernen'); }
 }
 
