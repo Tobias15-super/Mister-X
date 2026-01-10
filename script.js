@@ -5569,7 +5569,7 @@ function renderMembersUI() {
     const name = document.createElement('div'); name.className = 'member-name'; name.innerHTML = escapeHtml(m.name);
     const meta = document.createElement('div'); meta.className = 'member-meta';
     const dt = m.lastActivity ? formatDatetime(normalizeTimestamp(m.lastActivity)) : '—';
-    const telText = (m.telPresent === true) ? 'Tel ✓' : (m.telPresent === null ? 'Tel …' : '—');
+    const telText = (m.telPresent === true) ? 'Tel ✓' : (m.telPresent === null ? 'Tel …' : 'Tel x');
     meta.innerHTML = `${escapeHtml(m.role)} · ${dt} · ${telText}`;
     left.appendChild(name); left.appendChild(meta);
 
