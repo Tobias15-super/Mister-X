@@ -6106,7 +6106,28 @@ async function sendCustomNotification() {
       const sSnap = await get(ref(rtdb, 'settings/messages'));
       const messagesEnabled = !sSnap.exists() ? true : !!sSnap.val();
       if (!messagesEnabled) {
-        showToast('Benachrichtigungen sind auf dem Server deaktiviert. Nachricht wurde nicht gesendet.', { type: 'warning' });
+        // Write a notification entry so it is recorded even when global messages are disabled
+        const messageId = createMessageId();
+        const senderName = (typeof getDeviceId === 'function' ? getDeviceId() : null) || 'unknown';
+        const now = Date.now();
+        const notif = {
+          sender: senderName,
+          title,
+          body,
+          link: '/Mister-X/',
+          timestamp: now,
+          messageId,
+          recipients: {},
+          attempts: { 1: { at: now, count: 0 } },
+          lastAttemptAt: now,
+        };
+        try {
+          await set(ref(rtdb, `notifications/${messageId}`), notif);
+          showToast('Benachrichtigungen sind deaktiviert. Nachricht wurde in Firebase protokolliert.', { type: 'info' });
+        } catch (writeErr) {
+          log('[sendCustomNotification] Failed to write notification when messages disabled:', writeErr);
+          showToast('Fehler beim Protokollieren der Nachricht.', { type: 'error' });
+        }
         closeCustomNotifModal();
         return;
       }

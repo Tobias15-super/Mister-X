@@ -4,6 +4,8 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!; // oder SERVICE_ROLE_KEY falls nötig
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+const SMS_FALLBACK_SECRET = Deno.env.get("SMS_FALLBACK_SECRET") ?? Deno.env.get("SMS_SECRET") ?? "";
 
 // const fcmKey = Deno.env.get("FCM_SERVER_KEY")!; // (legacy, nicht mehr benötigt für HTTP v1)
 const corsHeaders = {
@@ -286,6 +288,7 @@ serve(async (req) => {
 
     // 1) Tokenliste holen (falls nicht geliefert oder "resolveRecipientsAtSendTime" gesetzt)
     let tokenList: string[] = [];
+    let instantSmsCandidates: string[] = []; // NEU: Track instant SMS devices globally
     const rolesRequested = Array.isArray(providedRoles) && providedRoles.length > 0;
 
     if (!resolveRecipientsAtSendTime && Array.isArray(providedTokens) && providedTokens.length > 0) {
@@ -296,56 +299,63 @@ serve(async (req) => {
       const rolesRes = await fetch(`${rtdbBase}/roles.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
       if (!rolesRes.ok) throw new Error(`RTDB roles fetch failed: ${rolesRes.status} ${await rolesRes.text().catch(() => '')}`);
       const rolesMap = await rolesRes.json() || {};
-      const deviceNames: string[] = [];
-      const instantSmsCandidates: string[] = [];
+      const deviceNamesForPush: string[] = [];
+      
       for (const dev of Object.keys(rolesMap)) {
         const r = rolesMap[dev];
+        
+        // 🚨 WICHTIG: notification:false → komplett ignorieren
+        if (r?.notification === false) {
+          // skip devices that disabled notifications
+          continue;
+        }
+        
+        // Nur wenn Rolle matcht
         if (r && r.role && providedRoles.includes(r.role)) {
-          deviceNames.push(dev);
-          if (r.instantSMS === true) instantSmsCandidates.push(dev);
+          // 🟨 InstantSMS? → zur instantSmsCandidates, NICHT zu Push
+          if (r.instantSMS === true) {
+            instantSmsCandidates.push(dev);
+          } else {
+            // 🟦 Push-Kandidat (es sei denn, notification:false, was wir oben schon prüfen)
+            deviceNamesForPush.push(dev);
+          }
         }
       }
 
-      // 2) Collect tokens for those device names from RTDB
+      // 2) Collect tokens NUR für Push-Kandidaten (instantSMS ausgeschlossen!)
       const tokensRes = await fetch(`${rtdbBase}/tokens.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
       const tokensMap = tokensRes.ok ? await tokensRes.json() : {};
-      tokenList = [...new Set(deviceNames.map(d => tokensMap?.[d]).filter(Boolean))];
-      recipientDeviceNames = deviceNames.filter(Boolean) as string[];
+      tokenList = [...new Set(deviceNamesForPush.map(d => tokensMap?.[d]).filter(Boolean))];
+      recipientDeviceNames = deviceNamesForPush.filter(Boolean) as string[];
 
-      // Wenn KEINE passende Tokens und KEINE Instant-SMS-Empfänger → NICHTS senden
-      if (tokenList.length === 0) {
-        if (instantSmsCandidates.length === 0) {
-          // Keine Targets gefunden: trotzdem Notification in RTDB anlegen (recipients: {})
-          const now = Date.now();
-          const notif = {
-            sender: senderName ?? "Unbekannt",
-            title,
-            body,
-            recipients: {}, // KEINE Empfänger
-            timestamp: now,
-            attempts: { [attempt]: { at: now, count: 0 } },
-            lastAttemptAt: now,
-          };
-          const putRes = await fetch(`${rtdbBase}/notifications/${messageId}.json`, {
-            method: "PUT",
-            headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
-            body: JSON.stringify(notif),
-          });
+      // Wenn KEINE Tokens und KEINE InstantSMS → Notification ohne Empfänger anlegen + return
+      if (tokenList.length === 0 && instantSmsCandidates.length === 0) {
+        const now = Date.now();
+        const notif = {
+          sender: senderName ?? "Unbekannt",
+          title,
+          body,
+          recipients: {}, // KEINE Empfänger
+          timestamp: now,
+          attempts: { [attempt]: { at: now, count: 0 } },
+          lastAttemptAt: now,
+        };
+        const putRes = await fetch(`${rtdbBase}/notifications/${messageId}.json`, {
+          method: "PUT",
+          headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify(notif),
+        });
 
-          if (!putRes.ok) {
-            console.error("[send-to-all] Could not write notif while roles resolved to no recipients:", await putRes.text().catch(() => ""));
-          } else {
-            console.log("[send-to-all] roles resolved to no recipients -> notification written without recipients", { messageId, providedRoles });
-          }
-
-          return new Response(JSON.stringify({ ok: true, skipped: "no_recipients_for_roles", messageId }), {
-            status: 200,
-            headers: corsHeaders,
-          });
+        if (!putRes.ok) {
+          console.error("[send-to-all] Could not write notif while roles resolved to no recipients:", await putRes.text().catch(() => ""));
         } else {
-          // Es gab Instant-SMS-only Empfänger -> wir proceed mit SMS-only flow weiter unten
-          recipientDeviceNames = recipientDeviceNames.concat(instantSmsCandidates);
+          console.log("[send-to-all] roles resolved to no recipients -> notification written without recipients", { messageId, providedRoles });
         }
+
+        return new Response(JSON.stringify({ ok: true, skipped: "no_recipients_for_roles", messageId }), {
+          status: 200,
+          headers: corsHeaders,
+        });
       }
     } else {
       // fallback: hole alle Tokens aus RTDB
@@ -404,14 +414,22 @@ serve(async (req) => {
     if (setRecipientsMode === "set_once") {
 
       const names = new Set<string>();
+      
+      // 1) Push-Empfänger aus recipientDeviceNames
       for (const n of Array.isArray(recipientDeviceNames) ? recipientDeviceNames : []) {
         const safe = sanitizeKey(n);
         if (safe) names.add(safe);
       }
+      
+      // 2) Fallback: aus tokens Namen ableiten, falls recipientDeviceNames leer
       if (names.size === 0) {
         const map = await fetchNamesForTokens(tokenList);
         Object.values(map).forEach((n) => { if (n) names.add(sanitizeKey(n)); });
       }
+      
+      // 3) WICHTIG: InstantSMS-Geräte IMMER hinzufügen (getrennte Empfängerkategorie)
+      instantSmsCandidates.forEach((n) => { if (n) names.add(sanitizeKey(n)); });
+      
       recipientsMap = {};
       names.forEach((n) => { (recipientsMap as any)[n] = false; });
     }
@@ -432,6 +450,7 @@ serve(async (req) => {
           ...notifBase,
           recipients: recipientsMap ?? {},
           timestamp: now,
+          // Count basierend auf tokenList (Push-Versuche), InstantSMS wird separat getrackt
           attempts: { [attempt]: { at: now, count: Array.isArray(tokenList) ? tokenList.length : 0 } },
           lastAttemptAt: now,
         };
@@ -463,6 +482,156 @@ serve(async (req) => {
     // 5) Senden
     const { ok, successTokens, failedTokens, unregistered, errorsByToken } =
       await sendFcmToTokens(title, body, link, tokenList, messageId);
+
+    // 5a) SMS-Fallback triggern - prefer sending only to devices whose push failed
+    // Reduce latency by only scheduling fallback for failed push recipients (shorter wait when possible)
+    if (recipientDeviceNames.length > 0) {
+      const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
+
+      // Map failed tokens back to device names (if possible)
+      let fallbackRecipients = recipientDeviceNames;
+      try {
+        const failedDeviceMap = await fetchNamesForTokens(failedTokens);
+        const mapped = Object.values(failedDeviceMap || {});
+        if (mapped && mapped.length > 0) {
+          // Only send fallback to genuinely failed devices
+          fallbackRecipients = [...new Set(mapped)];
+        }
+      } catch (e) {
+        console.warn('[send-to-all] Could not map failed tokens to device names, falling back to all push recipients:', e);
+      }
+
+      // Wait shorter if we already know which devices actually failed
+      const waitSec = (Array.isArray(fallbackRecipients) && fallbackRecipients.length > 0 && fallbackRecipients.length < recipientDeviceNames.length) ? 10 : 15;
+
+      const smsFallbackPayload = {
+        messageId,
+        recipientDeviceNames: fallbackRecipients, // Push failed recipients (or all if mapping failed)
+        smsText,
+        waitSec,
+        rtdbBase,
+        rolesPath: "roles",
+        recipientsPath: "notifications",
+      };
+
+      try {
+        const smsHeaders: Record<string,string> = { "Content-Type": "application/json" };
+        if (SERVICE_KEY) {
+          smsHeaders['Authorization'] = `Bearer ${SERVICE_KEY}`;
+          smsHeaders['apikey'] = SERVICE_KEY;
+        }
+        if (SMS_FALLBACK_SECRET) smsHeaders['x-sms-secret'] = SMS_FALLBACK_SECRET;
+
+        const fallbackRes = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-fallback", {
+          method: "POST",
+          headers: smsHeaders,
+          body: JSON.stringify(smsFallbackPayload),
+        });
+
+        if (!fallbackRes.ok) {
+          const fbText = await fallbackRes.text().catch(() => "");
+          console.error("[send-to-all] sms-fallback for push recipients failed:", { status: fallbackRes.status, text: fbText.slice(0, 200) });
+        } else {
+          const fbData = await fallbackRes.json().catch(() => ({}));
+          console.log("[send-to-all] sms-fallback scheduled for push recipients:", { recipients: fallbackRecipients, waitSec, fbData });
+        }
+      } catch (err) {
+        console.error("[send-to-all] sms-fallback invoke failed:", err);
+      }
+    }
+
+    // 5b) NEU: Instant-SMS senden falls vorhanden
+    if (instantSmsCandidates.length > 0) {
+      const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
+      
+      const smsDirectPayload = {
+        messageId,
+        recipientDeviceNames: instantSmsCandidates,
+        smsText,
+        rtdbBase,
+        rolesPath: "roles",
+        recipientsPath: "notifications",
+        requireConsent: true,
+        writeDeliveredTimestamp: true,
+      };
+
+      // Ensure a notification entry exists that includes instant-SMS recipients
+      try {
+        const notifUrl = `${rtdbBase}/notifications/${messageId}.json`;
+        const getNotifRes = await fetch(notifUrl, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
+        const existingNotif = getNotifRes.ok ? await getNotifRes.json() : null;
+
+        if (!existingNotif) {
+          const recipientsMap: Record<string, boolean> = {};
+          instantSmsCandidates.forEach(d => { const k = sanitizeKey(d); if (k) recipientsMap[k] = false; });
+          const notif = {
+            sender: senderName ?? "Unbekannt",
+            title,
+            body,
+            recipients: recipientsMap,
+            timestamp: Date.now(),
+            attempts: { [attempt]: { at: Date.now(), count: Array.isArray(tokenList) ? tokenList.length : 0 } },
+            lastAttemptAt: Date.now(),
+          };
+          const putRes = await fetch(notifUrl, {
+            method: "PUT",
+            headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
+            body: JSON.stringify(notif),
+          });
+          if (!putRes.ok) console.error("[send-to-all] RTDB write for instant-sms notification failed:", await putRes.text().catch(() => ""));
+        } else {
+          const patch: any = {};
+          instantSmsCandidates.forEach(d => {
+            const k = sanitizeKey(d);
+            if (k && existingNotif?.recipients?.[k] === undefined) patch[`recipients/${k}`] = false;
+          });
+          if (Object.keys(patch).length > 0) {
+            const patchRes = await fetch(notifUrl, {
+              method: "PATCH",
+              headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
+              body: JSON.stringify(patch),
+            });
+            if (!patchRes.ok) console.error("[send-to-all] RTDB patch for instant-sms recipients failed:", await patchRes.text().catch(() => ""));
+          }
+        }
+      } catch (err) {
+        console.warn("[send-to-all] Could not ensure notification entry for instant-sms:", err);
+      }
+
+      try {
+        const smsHeaders: Record<string,string> = { "Content-Type": "application/json" };
+        if (SERVICE_KEY) {
+          smsHeaders['Authorization'] = `Bearer ${SERVICE_KEY}`;
+          smsHeaders['apikey'] = SERVICE_KEY;
+        }
+        if (SMS_FALLBACK_SECRET) smsHeaders['x-sms-secret'] = SMS_FALLBACK_SECRET;
+
+        const smsRes = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-direct", {
+          method: "POST",
+          headers: smsHeaders,
+          body: JSON.stringify(smsDirectPayload),
+        });
+        
+        if (!smsRes.ok) {
+          const smsText = await smsRes.text().catch(() => "");
+          console.error("[send-to-all] sms-direct failed:", { status: smsRes.status, text: smsText.slice(0, 200) });
+        } else {
+          const smsData = await smsRes.json().catch(() => ({}));
+          console.log("[send-to-all] sms-direct sent:", { sent: smsData?.sent, rejected: smsData?.rejectedDevices });
+        }
+      } catch (err) {
+        console.error("[send-to-all] sms-direct invoke failed:", err);
+      }
+
+      // 5c) NEU: Falls KEINE Tokens, aber Instant-SMS -> früh returnen
+      if (tokenList.length === 0) {
+        console.log("[send-to-all] Only instant SMS recipients - returning early");
+        return new Response(
+          JSON.stringify({ ok: true, messageId, smsSent: instantSmsCandidates.length, note: "instant_sms_only" }),
+          { status: 200, headers: corsHeaders },
+        );
+      }
+    }
 
     // 6) Ergebnis protokollieren
     const resultPatch: any = {

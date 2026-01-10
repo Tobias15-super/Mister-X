@@ -158,8 +158,11 @@ async function handleJob(job: any) {
   }
 
   // --- 2) SMS immer senden, wenn es Empfänger gibt (idempotent via claim_sms_once) ---
+  // ABER: Wenn resolve_recipients_at_send_time true ist, überlassen wir SMS dem send-to-all!
   const recipients: string[] = recipient_device_names ?? [];
-  if (recipients.length > 0) {
+  const shouldSkipSmsInCron = !!(resolve_recipients_at_send_time && Array.isArray(roles) && roles.length > 0);
+  
+  if (recipients.length > 0 && !shouldSkipSmsInCron) {
     // Idempotenz-Guard: nur ERSTER gewinnt
     try {
       const { data: canSend, error: claimErr } = await supa.rpc("claim_sms_once", {
@@ -232,6 +235,10 @@ Diese Nachricht wurde automatisch gesendet.`.slice(0, 280);
       console.error("SMS fetch threw:", e);
       return { ok: false, result: { stage: "sms", error: String(e), retryable: true } };
     }
+  } else if (shouldSkipSmsInCron) {
+    // SMS wird von send-to-all gehandhabt, wenn Rollen dynamisch aufgelöst werden
+    console.log("[timer-tick] SMS-Fallback wird von send-to-all gehandhabt (resolve_recipients_at_send_time=true)");
+    return { ok: pushOk, result: { stage: "push_with_sms_from_send_to_all", pushOk, pushBody } };
   }
 
   // --- 3) Keine Empfänger: nur Push-Ergebnis zurückgeben ---

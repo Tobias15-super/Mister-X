@@ -106,6 +106,7 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const RTDB_BASE_ENV = (Deno.env.get("RTDB_BASE") ?? "").replace(/\/+$/, "") + "/";
 const GCP_SA_JSON = Deno.env.get("GCP_SA_JSON") ?? "";
 const ALLOW_ANON_INVOKE = (Deno.env.get("ALLOW_ANON_INVOKE") ?? "").toLowerCase() === "true";
+const SMS_SECRET = Deno.env.get("SMS_FALLBACK_SECRET") ?? Deno.env.get("SMS_SECRET") ?? "";
 
 const supabaseUserClientFromAuthHeader = (authHeader?: string) =>
   SUPABASE_URL && ANON_KEY && authHeader
@@ -207,6 +208,9 @@ async function sendSmsViaTextBee(
 /* ------------------------------ Auth ---------------------------------- */
 
 async function isAuthorized(req: Request): Promise<boolean> {
+  // Allow x-sms-secret (used for internal server-to-server calls)
+  if (SMS_SECRET && req.headers.get('x-sms-secret') === SMS_SECRET) return true;
+
   // Service‑Role via Authorization/apikey?
   const bearerToken = getHeaderToken(req, "authorization");
   const apikeyToken = getHeaderToken(req, "apikey");
