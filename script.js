@@ -495,20 +495,12 @@ async function askForDeviceIdAndPhone() {
   localStorage.setItem("deviceId", id);
   deviceId = id;
 
-  // --- 2) Lokale Präferenzen lesen ---
-  let telPrefs = loadSmsPrefs();
-  let tel   = telPrefs.tel || null;
-  let noTel = !!telPrefs.noTel;
-
-// --- 3) Serverzustand abrufen (synchronous for this flow, non-blocking for overall startup) ---
-  // We await the Supabase response here inside this function and show the inline input
-  // if the server requires or requests it. The caller (startup) should NOT await this
-  // function so other unrelated startup tasks continue immediately.
+  // --- Server-Zustand abrufen und ggf. Nutzer nach Telefonnummer fragen ---
   try {
     const remote = await fetchRemoteSmsPrefs(id);
     log('[askForDeviceIdAndPhone] remote prefs', remote);
 
-    // Decide whether to ask based on authoritative server-side allowSmsFallback
+    // Entscheidung basiert ausschließlich auf Server-Zustand
     let mustAsk = false;
     if (remote.allowSmsFallback === null) {
       mustAsk = true;
@@ -518,102 +510,48 @@ async function askForDeviceIdAndPhone() {
       mustAsk = true;
     }
 
-    // If server indicates allowSmsFallback=true and tel exists, sync local pref
-    if (remote.allowSmsFallback === true && remote.exists === true) {
-      saveSmsPrefs({ allowSmsFallback: true, noTel: false });
-    }
-
     if (mustAsk) {
-      // If we already have a local number, push it to server now
-      if (tel && isValidAtE164(tel)) {
-        const allow = !!tel;
-        saveSmsPrefs({ tel, allowSmsFallback: allow, noTel: false });
-        await saveTelToRTDB(id, tel, allow);
-      } else if (!noTel || remote.allowSmsFallback === true || remote.allowSmsFallback === null) {
-        // Server explicitly requests SMS fallback OR server has no preference -> override local noTel if necessary and ask
-        if (noTel && (remote.allowSmsFallback === true || remote.allowSmsFallback === null)) {
-        }
-
-        try {
-          // --- 5) Nur fragen, wenn notwendig und nicht schon bewusst abgelehnt (außer bei Reset) ---
-          if ((mustAsk && !noTel) || (mustAsk && remote.allowSmsFallback === null) || (mustAsk && remote.allowSmsFallback === true)) {
-            while (!tel || !isValidAtE164(tel)) {
-              let input;
-              try { input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest."); }
-              catch (err) { input = null; }
-              if (input === null || input.trim() === "") { tel = null; noTel = true; break; }
-              tel = normalizeAtPhoneNumber(input.trim());
-              if (!tel) alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
-            }
+      let tel = null;
+      try {
+        // Nutzer nach Telefonnummer fragen
+        while (!tel || !isValidAtE164(tel)) {
+          let input;
+          try { 
+            input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest."); 
+          } catch (err) { 
+            input = null; 
+            log('[askForDeviceIdAndPhone] prompt blocked, falling back', err); 
           }
-        } catch (err) {
-          log('[askForDeviceIdAndPhone] prompt loop failed (server-determined)', err);
-          tel = tel || null;
-                  // If prompt was blocked or didn't yield a number and server wants SMS, fallback to inline input
-        if ((!tel || !isValidAtE164(tel)) && (remote.allowSmsFallback === true || remote.allowSmsFallback === null)) {
-          log('[askForDeviceIdAndPhone] prompt produced no value or was blocked - falling back to inline input');
-          try {
-            const userTel = await showPhoneEntryModal();
-            tel = userTel;
-            noTel = (tel === null);
-          } catch (e) {
-            log('[askForDeviceIdAndPhone] inline fallback failed (server-determined)', e);
-            tel = tel || null;
+          if (input === null || input.trim() === "") { 
+            tel = null; 
+            break; 
           }
+          tel = normalizeAtPhoneNumber(input.trim());
+          if (!tel) alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
         }
-        }
-
-
-
-        const allow = !!tel;
-        saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
-        await saveTelToRTDB(id, tel, allow);
+      } catch (err) {
+        log('[askForDeviceIdAndPhone] prompt loop failed', err);
+        tel = null;
       }
+
+      // Fallback auf inline input wenn prompt fehlschlägt
+      if (!tel || !isValidAtE164(tel)) {
+        log('[askForDeviceIdAndPhone] prompt produced no value or was blocked - falling back to inline input');
+        try {
+          const userTel = await showPhoneEntryModal();
+          tel = userTel;
+        } catch (e) {
+          log('[askForDeviceIdAndPhone] inline fallback failed', e);
+          tel = null;
+        }
+      }
+
+      // Nummer zu Firebase hochladen (oder null, wenn keine angegeben)
+      const allow = !!tel;
+      await saveTelToRTDB(id, tel, allow);
     }
   } catch (e) {
-    // If the server fetch fails, fall back to local decision to ask now
-    log('[askForDeviceIdAndPhone] could not fetch remote prefs, falling back to local prefs', e);
-    // localMustAsk will be handled below (the function will await inline input there if needed)
-  }
-
-  // --- 4) Lokale Entscheidungslogik für sofortiges Fragen ---
-  // This avoids blocking startup but still asks immediately if local state suggests so.
-  let localMustAsk = false;
-  if (telPrefs.allowSmsFallback === null) { localMustAsk = true; noTel = false; }
-  else if (telPrefs.allowSmsFallback === false) { localMustAsk = false; }
-  else if (telPrefs.allowSmsFallback === true && !tel) { localMustAsk = true; }
-
-  if (localMustAsk && !noTel) {
-    try {
-      // Prefer native prompt() blocking loop (as requested). Fallback to inline input if prompt() is blocked or yields no value.
-      while (!tel || !isValidAtE164(tel)) {
-        let input;
-        try { input = prompt("Bitte gib deine Telefonnummer für SMS-Fallback ein (+43… oder 0664…)\nDu kannst auch leer lassen, wenn du keine SMS möchtest."); }
-        catch (err) { input = null; }
-        if (input === null || input.trim() === "") { tel = null; noTel = true; break; }
-        tel = normalizeAtPhoneNumber(input.trim());
-        if (!tel) alert("Ungültige Nummer. Bitte im Format +43… oder 0664… eingeben.");
-      }
-    } catch (err) {
-      log('[askForDeviceIdAndPhone] prompt loop failed (local branch)', err);
-      tel = tel || null;
-    }
-
-    if ((!tel || !isValidAtE164(tel))) {
-      log('[askForDeviceIdAndPhone] prompt produced no value or was blocked - falling back to inline input (local branch)');
-      try {
-        const userTel = await showPhoneEntryModal();
-        tel = userTel;
-        noTel = (tel === null);
-      } catch (e) {
-        log('[askForDeviceIdAndPhone] inline fallback failed (local branch)', e);
-        tel = tel || null;
-      }
-    }
-
-    const allow = !!tel;
-    saveSmsPrefs({ tel, allowSmsFallback: allow, noTel });
-    await saveTelToRTDB(id, tel, allow);
+    log('[askForDeviceIdAndPhone] could not fetch remote prefs', e);
   }
 }
 
@@ -1530,35 +1468,7 @@ function stripPhone(raw) {
 }
 
 
-function loadSmsPrefs() {
-  try {
-    return JSON.parse(localStorage.getItem("mrx_sms_prefs_v1")) ?? {
-      allowSmsFallback: false,
-      tel: null,
-      noTel: false,
-      lastUpdated: 0
-    };
-  } catch {
-    return {
-      allowSmsFallback: false,
-      tel: null,
-      noTel: false,
-      lastUpdated: 0
-    };
-  }
-}
-
-function saveSmsPrefs(next) {
-  const cur = loadSmsPrefs();
-  const merged = {
-    allowSmsFallback: !!(next.allowSmsFallback ?? cur.allowSmsFallback),
-    tel: next.tel === undefined ? cur.tel : next.tel,
-    noTel: next.noTel === undefined ? cur.noTel : next.noTel,
-    lastUpdated: Date.now()
-  };
-  localStorage.setItem("mrx_sms_prefs_v1", JSON.stringify(merged));
-  return merged;
-}
+// Lokale Speicherung entfernt - nur noch Server-Zustand (Firebase) ist relevant
 
 
 async function fetchRemoteSmsPrefs(deviceId) {
