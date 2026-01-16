@@ -289,6 +289,9 @@ async function markDeliveredForDevices(params: {
 /* ------------------------------ Handler -------------------------------- */
 
 Deno.serve(async (req) => {
+  const requestStartTime = Date.now();
+  console.log(`[sms-direct] Request received at ${new Date(requestStartTime).toISOString()}`);
+  
   // Preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: buildCorsHeaders(req) });
@@ -302,13 +305,21 @@ Deno.serve(async (req) => {
 
   // Auth
   if (!(await isAuthorized(req))) {
+    const elapsed = Date.now() - requestStartTime;
+    console.log(`[sms-direct] Unauthorized request rejected after ${elapsed}ms`);
     return jsonWithCors(req, { ok: false, error: "Unauthorized" }, { status: 401 });
   }
+  const authElapsed = Date.now() - requestStartTime;
+  console.log(`[sms-direct] Auth successful after ${authElapsed}ms`);
 
   // Payload
   let payload: DirectRequest;
   try {
     payload = (await req.json()) as DirectRequest;
+    console.log(`[sms-direct] Payload parsed after ${Date.now() - requestStartTime}ms:`, { 
+      messageId: payload.messageId, 
+      recipientCount: payload.recipientDeviceNames?.length 
+    });
   } catch {
     return jsonWithCors(req, { ok: false, error: "Invalid JSON" }, { status: 400 });
   }
@@ -399,6 +410,8 @@ Deno.serve(async (req) => {
     }
 
     // 2) SMS senden (Chunking optional)
+    const beforeSmsSend = Date.now();
+    console.log(`[sms-direct] Starting SMS send after ${beforeSmsSend - requestStartTime}ms - ${numbersDedup.length} unique numbers`);
     const chunks: string[][] = [];
     const limit = Math.max(1, Math.min(Number(maxRecipientsPerCall || numbersDedup.length), numbersDedup.length));
     for (let i = 0; i < numbersDedup.length; i += limit) chunks.push(numbersDedup.slice(i, i + limit));
@@ -412,6 +425,8 @@ Deno.serve(async (req) => {
       lastProvider = { status, bodyText };
       totalSent += chunk.length;
     }
+    const afterSmsSend = Date.now();
+    console.log(`[sms-direct] SMS sent after ${afterSmsSend - requestStartTime}ms (send took ${afterSmsSend - beforeSmsSend}ms)`);
 
     // 3) delivered=true in RTDB für ALLE Geräte, denen wir eine SMS geschickt haben
     //    (auch wenn wegen Dedup die gleiche Nummer mehrfach vorkam – wir markieren alle Geräte)
@@ -426,6 +441,9 @@ Deno.serve(async (req) => {
       writeTimestamp: writeDeliveredTimestamp,
     });
 
+    const totalElapsed = Date.now() - requestStartTime;
+    console.log(`[sms-direct] Completed after ${totalElapsed}ms - sent: ${totalSent}, marked: ${deliveredMarked}`);
+    
     const response: SendResult = {
       ok: true,
       sent: totalSent,

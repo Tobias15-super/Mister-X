@@ -500,11 +500,25 @@ serve(async (req) => {
       } catch (e) {
         console.warn('[send-to-all] Could not map failed tokens to device names, falling back to all push recipients:', e);
       }
+      
+      // 🚨 WICHTIG: Exkludiere instantSmsCandidates aus Fallback (sonst Doppel-SMS!)
+      if (instantSmsCandidates.length > 0) {
+        const instantSet = new Set(instantSmsCandidates);
+        fallbackRecipients = fallbackRecipients.filter(d => !instantSet.has(d));
+        console.log('[send-to-all] Excluded instant-SMS candidates from fallback:', { 
+          excluded: instantSmsCandidates.length, 
+          fallbackRemaining: fallbackRecipients.length 
+        });
+      }
 
-      // Wait shorter if we already know which devices actually failed
-      const waitSec = (Array.isArray(fallbackRecipients) && fallbackRecipients.length > 0 && fallbackRecipients.length < recipientDeviceNames.length) ? 10 : 15;
+      // Überspringe Fallback wenn keine Empfänger (z.B. alle sind instant-SMS)
+      if (fallbackRecipients.length === 0) {
+        console.log('[send-to-all] No fallback recipients after excluding instant-SMS - skipping fallback');
+      } else {
+        // Wait shorter if we already know which devices actually failed
+        const waitSec = (Array.isArray(fallbackRecipients) && fallbackRecipients.length > 0 && fallbackRecipients.length < recipientDeviceNames.length) ? 10 : 15;
 
-      const smsFallbackPayload = {
+        const smsFallbackPayload = {
         messageId,
         recipientDeviceNames: fallbackRecipients, // Push failed recipients (or all if mapping failed)
         smsText,
@@ -538,10 +552,13 @@ serve(async (req) => {
       } catch (err) {
         console.error("[send-to-all] sms-fallback invoke failed:", err);
       }
+      }
     }
 
     // 5b) NEU: Instant-SMS senden falls vorhanden
     if (instantSmsCandidates.length > 0) {
+      const instantSmsStartTime = Date.now();
+      console.log(`[send-to-all] Starting instant-SMS for ${instantSmsCandidates.length} recipients at ${new Date(instantSmsStartTime).toISOString()}`);
       const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
       
       const smsDirectPayload = {
@@ -612,15 +629,16 @@ serve(async (req) => {
           body: JSON.stringify(smsDirectPayload),
         });
         
+        const instantSmsElapsed = Date.now() - instantSmsStartTime;
         if (!smsRes.ok) {
           const smsText = await smsRes.text().catch(() => "");
-          console.error("[send-to-all] sms-direct failed:", { status: smsRes.status, text: smsText.slice(0, 200) });
+          console.error("[send-to-all] sms-direct failed:", { status: smsRes.status, text: smsText.slice(0, 200), elapsed: instantSmsElapsed });
         } else {
           const smsData = await smsRes.json().catch(() => ({}));
-          console.log("[send-to-all] sms-direct sent:", { sent: smsData?.sent, rejected: smsData?.rejectedDevices });
+          console.log("[send-to-all] sms-direct sent:", { sent: smsData?.sent, rejected: smsData?.rejectedDevices, elapsed: instantSmsElapsed });
         }
       } catch (err) {
-        console.error("[send-to-all] sms-direct invoke failed:", err);
+        console.error("[send-to-all] sms-direct invoke failed:", err, { elapsed: Date.now() - instantSmsStartTime });
       }
 
       // 5c) NEU: Falls KEINE Tokens, aber Instant-SMS -> früh returnen
