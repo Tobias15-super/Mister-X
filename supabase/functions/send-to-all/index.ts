@@ -242,6 +242,36 @@ function pemToPkcs8(pem: string): ArrayBuffer {
   return buf.buffer;
 }
 
+function buildTimingSummary(timings: Record<string, number>) {
+  const phases = [
+    { key: 'payloadParsed', label: '📥 Payload parsed' },
+    { key: 'rtdbTokenObtained', label: '🔑 RTDB token obtained' },
+    { key: 'rolesResolved', label: '👥 Roles resolved (parallel)' },
+    { key: 'allTokensFetched', label: '📲 All tokens fetched' },
+    { key: 'settingsChecked', label: '⚙️  Settings checked' },
+    { key: 'recipientsMapBuilt', label: '📋 Recipients map built' },
+    { key: 'notificationWritten', label: '💾 Notification written' },
+    { key: 'fcmSent', label: '🔔 FCM sent' },
+    { key: 'fallbackScheduled', label: '📤 SMS fallback scheduled' },
+    { key: 'instantSmsSent', label: '⚡ Instant SMS sent' },
+    { key: 'resultAndCleanup', label: '🧹 Result patch + cleanup (parallel)' },
+    { key: 'end', label: '✅ Done' }
+  ];
+
+  const summary: Record<string, string> = {};
+  let prev = timings.start;
+
+  phases.forEach(({ key, label }) => {
+    if (timings[key]) {
+      const delta = timings[key] - prev;
+      summary[label] = `+${delta}ms`;
+      prev = timings[key];
+    }
+  });
+
+  return summary;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -250,9 +280,12 @@ serve(async (req) => {
     return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
   }
 
+  const timings: Record<string, number> = { start: Date.now() };
+
   try {
     // --- parse payload ---
     const payload = await req.json();
+    timings.payloadParsed = Date.now();
 
     const {
       title,
@@ -285,6 +318,7 @@ serve(async (req) => {
     // RTDB-Access-Token vorab holen und Header zusammenstellen
     const rtdbAccessToken = await getAccessToken(OAUTH_SCOPES.RTDB);
     const rtdbAuthHeaders = { Authorization: `Bearer ${rtdbAccessToken}` };
+    timings.rtdbTokenObtained = Date.now();
 
     // 1) Tokenliste holen (falls nicht geliefert oder "resolveRecipientsAtSendTime" gesetzt)
     let tokenList: string[] = [];
@@ -295,10 +329,19 @@ serve(async (req) => {
       tokenList = [...new Set(providedTokens)].filter(Boolean);
     } else if (resolveRecipientsAtSendTime && rolesRequested) {
       // Holen Tokens für die angegebenen Rollen ermitteln (dynamisch zur Versandzeit)
-      // 1) Resolve roles -> device names from RTDB
-      const rolesRes = await fetch(`${rtdbBase}/roles.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
+      // 1) Parallel fetch roles + tokens from RTDB
+      const [rolesRes, tokensRes] = await Promise.all([
+        fetch(`${rtdbBase}/roles.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } }),
+        fetch(`${rtdbBase}/tokens.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } })
+      ]);
+      
       if (!rolesRes.ok) throw new Error(`RTDB roles fetch failed: ${rolesRes.status} ${await rolesRes.text().catch(() => '')}`);
-      const rolesMap = await rolesRes.json() || {};
+      
+      const [rolesMap, tokensMap] = await Promise.all([
+        rolesRes.json().then(r => r || {}),
+        tokensRes.ok ? tokensRes.json().then(r => r || {}) : Promise.resolve({})
+      ]);
+      
       const deviceNamesForPush: string[] = [];
       
       for (const dev of Object.keys(rolesMap)) {
@@ -323,9 +366,8 @@ serve(async (req) => {
       }
 
       // 2) Collect tokens NUR für Push-Kandidaten (instantSMS ausgeschlossen!)
-      const tokensRes = await fetch(`${rtdbBase}/tokens.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
-      const tokensMap = tokensRes.ok ? await tokensRes.json() : {};
       tokenList = [...new Set(deviceNamesForPush.map(d => tokensMap?.[d]).filter(Boolean))];
+      timings.rolesResolved = Date.now();
       recipientDeviceNames = deviceNamesForPush.filter(Boolean) as string[];
 
       // Wenn KEINE Tokens und KEINE InstantSMS → Notification ohne Empfänger anlegen + return
@@ -361,7 +403,8 @@ serve(async (req) => {
       // fallback: hole alle Tokens aus RTDB
       const tokensRes = await fetch(`${rtdbBase}/tokens.json`, { headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" } });
       const tokensMap = tokensRes.ok ? await tokensRes.json() : {};
-      tokenList = [...new Set(Object.values(tokensMap || {}).filter(Boolean))];
+      tokenList = [...new Set((Object.values(tokensMap || {}) as string[]).filter(Boolean))];
+      timings.allTokensFetched = Date.now();
     }
 
 
@@ -407,10 +450,17 @@ serve(async (req) => {
     } catch (err) {
       // If something goes wrong during read, continue with sending (fail-open)
       console.warn("[send-to-all] Could not read settings/messages - proceeding with send:", err);
+    timings.settingsChecked = Date.now();
     }
 
     // 3) recipientsMap nur beim 1. Versuch setzen
     let recipientsMap: Record<string, boolean> | null = null;
+    
+    // 4) Notification-Check und FCM-Send können vorbereitet werden, während recipientsMap erstellt wird
+    const notifCheckPromise = fetch(`${rtdbBase}/notifications/${messageId}.json`, {
+      headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" },
+    });
+
     if (setRecipientsMode === "set_once") {
 
       const names = new Set<string>();
@@ -432,17 +482,16 @@ serve(async (req) => {
       
       recipientsMap = {};
       names.forEach((n) => { (recipientsMap as any)[n] = false; });
+    timings.recipientsMapBuilt = Date.now();
     }
 
-    // 4) Notification-Dokument erstellen oder patchen
+    // 5) Notification-Dokument erstellen oder patchen
     const notifBase = { sender: senderName ?? "Unbekannt", title, body };
     const now = Date.now();
 
-    // a) existiert?
+    // a) existiert? (nutze vorbereiteten Request)
     {
-      const getRes = await fetch(`${rtdbBase}/notifications/${messageId}.json`, {
-        headers: { ...rtdbAuthHeaders, "Cache-Control": "no-store" },
-      });
+      const getRes = await notifCheckPromise;
       const existing = getRes.ok ? await getRes.json() : null;
 
       if (!existing) {
@@ -476,10 +525,12 @@ serve(async (req) => {
           body: JSON.stringify(patch),
         });
         if (!patchRes.ok) console.error("RTDB patch failed:", await patchRes.text());
+    timings.notificationWritten = Date.now();
       }
     }
 
     // 5) Senden
+    timings.fcmSent = Date.now();
     const { ok, successTokens, failedTokens, unregistered, errorsByToken } =
       await sendFcmToTokens(title, body, link, tokenList, messageId);
 
@@ -551,6 +602,7 @@ serve(async (req) => {
         }
       } catch (err) {
         console.error("[send-to-all] sms-fallback invoke failed:", err);
+    timings.fallbackScheduled = Date.now();
       }
       }
     }
@@ -623,35 +675,44 @@ serve(async (req) => {
         }
         if (SMS_FALLBACK_SECRET) smsHeaders['x-sms-secret'] = SMS_FALLBACK_SECRET;
 
-        const smsRes = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-direct", {
+        // Fire-and-forget: sms-direct asynchron ausführen, um Response nicht zu blockieren
+        fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-direct", {
           method: "POST",
           headers: smsHeaders,
           body: JSON.stringify(smsDirectPayload),
+        }).then(async (smsRes) => {
+          const instantSmsElapsed = Date.now() - instantSmsStartTime;
+          if (!smsRes.ok) {
+            const smsText = await smsRes.text().catch(() => "");
+            console.error("[send-to-all] sms-direct failed:", { status: smsRes.status, text: smsText.slice(0, 200), elapsed: instantSmsElapsed });
+          } else {
+            const smsData = await smsRes.json().catch(() => ({}));
+            console.log("[send-to-all] sms-direct completed:", { sent: smsData?.sent, rejected: smsData?.rejectedDevices, elapsed: instantSmsElapsed });
+          }
+        }).catch((err) => {
+          console.error("[send-to-all] sms-direct invoke failed:", err, { elapsed: Date.now() - instantSmsStartTime });
         });
         
-        const instantSmsElapsed = Date.now() - instantSmsStartTime;
-        if (!smsRes.ok) {
-          const smsText = await smsRes.text().catch(() => "");
-          console.error("[send-to-all] sms-direct failed:", { status: smsRes.status, text: smsText.slice(0, 200), elapsed: instantSmsElapsed });
-        } else {
-          const smsData = await smsRes.json().catch(() => ({}));
-          console.log("[send-to-all] sms-direct sent:", { sent: smsData?.sent, rejected: smsData?.rejectedDevices, elapsed: instantSmsElapsed });
-        }
+        console.log("[send-to-all] sms-direct triggered in background for", instantSmsCandidates.length, "recipients");
       } catch (err) {
-        console.error("[send-to-all] sms-direct invoke failed:", err, { elapsed: Date.now() - instantSmsStartTime });
+        console.error("[send-to-all] sms-direct setup failed:", err);
       }
 
       // 5c) NEU: Falls KEINE Tokens, aber Instant-SMS -> früh returnen
       if (tokenList.length === 0) {
+        timings.end = Date.now();
+        const duration = timings.end - timings.start;
         console.log("[send-to-all] Only instant SMS recipients - returning early");
+        console.log(`[send-to-all] ⏱️ TIMING SUMMARY (total: ${duration}ms):`, buildTimingSummary(timings));
         return new Response(
           JSON.stringify({ ok: true, messageId, smsSent: instantSmsCandidates.length, note: "instant_sms_only" }),
           { status: 200, headers: corsHeaders },
         );
       }
     }
+    timings.instantSmsSent = Date.now();
 
-    // 6) Ergebnis protokollieren
+    // 6) Ergebnis protokollieren & Cleanup parallel starten
     const resultPatch: any = {
       lastAttemptAt: now,
       [`attempts/${attempt}/success`]: successTokens.length,
@@ -659,21 +720,39 @@ serve(async (req) => {
     };
     if (failedTokens.length) resultPatch[`attempts/${attempt}/failedTokens`] = failedTokens.slice(0, 50);
 
-    const patchRes2 = await fetch(`${rtdbBase}/notifications/${messageId}.json`, {
-      method: "PATCH",
-      headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
-      body: JSON.stringify(resultPatch),
-    });
-    if (!patchRes2.ok) console.error("RTDB attempt result patch failed:", await patchRes2.text());
+    // Parallel: Result patchen & Cleanup
+    const [patchRes2, cleanupResult] = await Promise.allSettled([
+      fetch(`${rtdbBase}/notifications/${messageId}.json`, {
+        method: "PATCH",
+        headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify(resultPatch),
+      }),
+      (async () => {
+        try {
+          const cutoff = Date.now() - FIVE_MIN;
+          const deleted = await deleteOldNotifications({ rtdbBase, cutoffMs: cutoff, keep: [messageId] });
+          if (deleted > 0) console.log(`Cleanup: ${deleted} alte Notification(s) gelöscht (<= ${new Date(cutoff).toISOString()})`);
+          return deleted;
+        } catch (e) {
+          console.warn("Cleanup fehlgeschlagen:", e);
+          return 0;
+        }
+      })()
+    ]);
 
-    // 7) Aufräumen
-    try {
-      const cutoff = Date.now() - FIVE_MIN;
-      const deleted = await deleteOldNotifications({ rtdbBase, cutoffMs: cutoff, keep: [messageId] });
-      if (deleted > 0) console.log(`Cleanup: ${deleted} alte Notification(s) gelöscht (<= ${new Date(cutoff).toISOString()})`);
-    } catch (e) {
-      console.warn("Cleanup fehlgeschlagen:", e);
+    if (patchRes2.status === 'fulfilled' && !patchRes2.value.ok) {
+      console.error("RTDB attempt result patch failed:", await patchRes2.value.text());
     }
+    timings.resultAndCleanup = Date.now();
+
+    // 7) Aufräumen (bereits oben parallel durchgeführt, entfernt den separaten Block)
+
+    timings.end = Date.now();
+    const totalDuration = timings.end - timings.start;
+    
+    // Detailliertes Timing-Log
+    const timingSummary = buildTimingSummary(timings);
+    console.log(`[send-to-all] ⏱️ TIMING SUMMARY (total: ${totalDuration}ms):`, timingSummary);
 
     return new Response(
       JSON.stringify({ ok, messageId, successTokens, failedTokens, unregistered, errorsByToken }),

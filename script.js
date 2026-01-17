@@ -946,6 +946,8 @@ async function sendNotificationToTokens(
     attempt,
   };
 
+  log(`📤 Sende an send-to-all: ${tokens.length} tokens, attempt ${attempt}`);
+  const fetchStartTime = Date.now();
 
   const res = await fetch(sendEndpoint, {
     method: 'POST',
@@ -953,9 +955,10 @@ async function sendNotificationToTokens(
     body: JSON.stringify(payload),
   });
 
+  const fetchDuration = Date.now() - fetchStartTime;
   let result = {};
   try { result = await res.json(); } catch {}
-  log(`📦 Versuch ${attempt}: status=${res.status}`, result);
+  log(`📦 Versuch ${attempt}: status=${res.status}, fetch took ${fetchDuration}ms`, result);
 
   const smsText = `${title}: ${body}\nDiese Nachricht wurde automatisch gesendet`.slice(0, 280);
 
