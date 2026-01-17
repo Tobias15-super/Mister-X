@@ -40,6 +40,12 @@ let userMarker = null;
 let userAccuracyCircle = null;
 let followMe = false;  // optional: Karte folgt der Position
 
+// ====== Standort-Vorwärmung (Prefetch/Warm-up) ======
+let prefetchWatchId = null;    // Watch-ID für kontinuierliche Standort-Abfrage
+let prefetchTimeoutId = null;  // Timer für Ablauf der Vorwärmung (30 Sekunden)
+const PREFETCH_WARM_UP_DURATION_MS = 30000; // 30 Sekunden GPS "warmhalten"
+let warmupLatestPosition = null; // Letzte Position aus dem Warm-Up (flüchtig)
+
 const LS_SHOW_HEADER = "showNotifHeader";
 const LS_KEY = "currentTeamId"
 
@@ -1304,23 +1310,59 @@ async function sendLocationWithPhoto() {
     // GPS-Variante
     if (navigator.geolocation) {
       try {
-        const position = await getCurrentPositionPromise();
+        log("sendLocationWithPhoto: Starte Standortabfrage...");
+        const position = await getCurrentPositionPromise({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 5000 // Erlaube maximal 5 Sekunden alte Position (vom Warmup)
+        });
         const { latitude, longitude, accuracy } = position.coords;
+        log(`sendLocationWithPhoto: Standort erhalten - lat: ${latitude}, lon: ${longitude}, accuracy: ${accuracy}m`);
+        
         if (accuracy > 100) {
           statusEl.innerText = `⚠️ Standort ungenau (±${Math.round(accuracy)} m). Bitte erneut versuchen oder Standortbeschreibung eingeben.`;
           manualContainer.style.display = "block";
+          log("sendLocationWithPhoto: Standort zu ungenau, abgebrochen");
           return;
         }
         coords = { lat: latitude, lon: longitude, accuracy };
+        log("sendLocationWithPhoto: Standort akzeptiert");
       } catch (error) {
-        showError?.(error);
-        manualContainer.style.display = "block";
-        // Wir lassen coords null -> wird als manueller Fall behandelt
+        log("sendLocationWithPhoto: Fehler bei Standortabfrage (Versuch 1):", error);
+        
+        // Fallback: Zweiter Versuch über eine kurzlebige Watch (nutzt gleiche Berechtigung wie Warm-Up)
+        try {
+          log("sendLocationWithPhoto: Starte zweiten Versuch (Watch-Once)...");
+          const position = await getPositionViaWatchOnce({
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0
+          });
+          const { latitude, longitude, accuracy } = position.coords;
+          log(`sendLocationWithPhoto: Standort erhalten (Versuch 2) - lat: ${latitude}, lon: ${longitude}, accuracy: ${accuracy}m`);
+          
+          if (accuracy > 100) {
+            statusEl.innerText = `⚠️ Standort ungenau (±${Math.round(accuracy)} m). Bitte erneut versuchen oder Standortbeschreibung eingeben.`;
+            manualContainer.style.display = "block";
+            log("sendLocationWithPhoto: Standort zu ungenau (Versuch 2), abgebrochen");
+            return;
+          }
+          coords = { lat: latitude, lon: longitude, accuracy };
+          log("sendLocationWithPhoto: Standort akzeptiert (Versuch 2)");
+        } catch (retryError) {
+          log("sendLocationWithPhoto: Fehler bei Standortabfrage (Versuch 2):", retryError);
+          showError?.(retryError);
+          manualContainer.style.display = "block";
+          return; // Abbrechen nach 2 Versuchen
+        }
       }
     } else {
+      log("sendLocationWithPhoto: Geolocation nicht unterstützt");
       statusEl.innerText = "Geolocation wird nicht unterstützt.";
       manualContainer.style.display = "block";
     }
+  } else {
+    log("sendLocationWithPhoto: Manuelle Beschreibung wird verwendet");
   }
 
   const { color, postId, title } = selectedPost;
@@ -1369,6 +1411,8 @@ async function sendLocationWithPhoto() {
     lon: coords.lon
   };
 
+  log("sendLocationWithPhoto: Schreibe Location-Daten:", locationData);
+
   // locations/ pushen
   const locRef = push(ref(rtdb, "locations"), locationData);
 
@@ -1401,6 +1445,9 @@ async function sendLocationWithPhoto() {
   manualContainer.style.display = "none";
   document.getElementById("postenSearch").value = "";
   setSelectedPost(null);
+
+  // Beende das GPS-Warmup am Ende, wenn alles erfolgreich war
+  stopLocationWarmUp();
 
   statusEl.innerText = "🔄️ Posten/Farbe gemeldet & Foto wird hochgeladen.";
   startTimer?.();
@@ -2839,6 +2886,42 @@ function getCurrentPositionPromise(options = { enableHighAccuracy:true, timeout:
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("Geolocation nicht unterstützt"));
     navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
+// Watch-Once: Liefert die erste Positions-Antwort und beendet die Watch sofort
+function getPositionViaWatchOnce(options = { enableHighAccuracy:true, timeout:15000, maximumAge:0 }) {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("Geolocation nicht unterstützt"));
+    let cleared = false;
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (!cleared) {
+          navigator.geolocation.clearWatch(id);
+          cleared = true;
+        }
+        resolve(pos);
+      },
+      (err) => {
+        if (!cleared) {
+          navigator.geolocation.clearWatch(id);
+          cleared = true;
+        }
+        reject(err);
+      },
+      options
+    );
+    if (options?.timeout) {
+      setTimeout(() => {
+        if (!cleared) {
+          try { navigator.geolocation.clearWatch(id); } catch {}
+          cleared = true;
+          const timeoutErr = new Error("Timeout");
+          timeoutErr.code = 3; // TIMEOUT
+          reject(timeoutErr);
+        }
+      }, options.timeout);
+    }
   });
 }
 
@@ -4698,6 +4781,103 @@ document.head.appendChild(style);
 
 // Standort abrufen
 
+// ====== Standort-Vorwärmungs-Funktionen ======
+
+/**
+ * Startet eine kontinuierliche Standort-Abfrage für 30 Sekunden.
+ * Der GPS-Chip wird damit "aufgewärmt" und stellt die Genauigkeit her.
+ * Die abgerufenen Standorte werden NICHT gespeichert oder cached.
+ * Die Watch wird nach 30 Sekunden automatisch beendet.
+ * Funktioniert nur, wenn bereits Berechtigung vorhanden ist.
+ */
+async function warmUpLocationTracking() {
+  // Starte Warm-Up nur, wenn Geolocation-Berechtigung bereits erteilt ist
+  try {
+    if (!navigator.permissions) {
+      log("Standort-Vorwärmung: Permissions API nicht verfügbar, übersprungen.");
+      return;
+    }
+    const perm = await navigator.permissions.query({ name: 'geolocation' });
+    if (perm.state !== 'granted') {
+      log("Standort-Vorwärmung: Geolocation nicht freigegeben, Warm-Up übersprungen.");
+      return;
+    }
+  } catch (e) {
+    log("Standort-Vorwärmung: Berechtigungsprüfung fehlgeschlagen, Warm-Up übersprungen.");
+    return;
+  }
+
+  // Wenn bereits eine Vorwärmung läuft, erneuere nur den Timer
+  if (prefetchWatchId !== null) {
+    clearTimeout(prefetchTimeoutId);
+    log("Standort-Vorwärmung: Erneuert (GPS läuft bereits)");
+    setPrefetchTimeout();
+    return;
+  }
+
+  log("Standort-Vorwärmung: Startet (30 Sekunden GPS kontinuierlich aufwärmen)...");
+
+  if (!navigator.geolocation) {
+    log("Standort-Vorwärmung: Geolocation nicht verfügbar.");
+    return;
+  }
+
+  const options = {
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: 15000,
+  };
+
+  try {
+    // Starte kontinuierliche Watch-Position (wie Karte-folgt-mir)
+    prefetchWatchId = navigator.geolocation.watchPosition(
+      (position) => {
+        // Nur protokollieren, keine Speicherung/Weiterverwendung
+        const accuracy = position.coords.accuracy;
+        log(`Standort-Vorwärmung: GPS aktiv (Genauigkeit: ±${Math.round(accuracy)} m)`);
+      },
+      (error) => {
+        log(`Standort-Vorwärmung: GPS-Fehler - ${error.message}`);
+      },
+      options
+    );
+
+    setPrefetchTimeout();
+  } catch (error) {
+    log("Standort-Vorwärmung: Fehler beim Starten -", error.message);
+  }
+}
+
+/**
+ * Setzt den Timeout für die Beendigung der Standort-Vorwärmung (30 Sekunden)
+ */
+function setPrefetchTimeout() {
+  if (prefetchTimeoutId) {
+    clearTimeout(prefetchTimeoutId);
+  }
+
+  prefetchTimeoutId = setTimeout(() => {
+    log("Standort-Vorwärmung: 30 Sekunden abgelaufen, Tracking beendet");
+    stopLocationWarmUp();
+  }, PREFETCH_WARM_UP_DURATION_MS);
+}
+
+/**
+ * Beendet die kontinuierliche Standort-Vorwärmung sofort
+ * (z.B. nach dem Teilen des Standorts)
+ */
+function stopLocationWarmUp() {
+  if (prefetchTimeoutId) {
+    clearTimeout(prefetchTimeoutId);
+    prefetchTimeoutId = null;
+  }
+
+  if (prefetchWatchId !== null) {
+    navigator.geolocation.clearWatch(prefetchWatchId);
+    prefetchWatchId = null;
+    log("Standort-Vorwärmung: Tracking beendet");
+  }
+}
 
 // --- Helper: Timer lesen + prüfen ---
 async function readTimer() {
@@ -6320,12 +6500,47 @@ async function startScript() {
     // Foto-Upload Listener
     const photoInput = document.getElementById('photoInput');
     if (photoInput) {
-      photoInput.addEventListener('change', function () {
+      photoInput.addEventListener('change', async function () {
         const file = this.files?.[0];
         if (file) {
           window.fotoHochgeladen = true;
           const el = document.getElementById('status');
           if (el) el.innerText = '📸 Foto ausgewählt!';
+          
+          // GPS für 30 Sekunden aufwärmen, aber nur wenn Berechtigung bereits erteilt
+          try {
+            if (navigator.permissions) {
+              const result = await navigator.permissions.query({ name: 'geolocation' });
+              if (result.state === 'granted') {
+                warmUpLocationTracking().catch(e => log('Fehler beim GPS-Warmup:', e));
+              }
+            }
+          } catch (e) {
+            // Permissions API nicht verfügbar oder Fehler - kein Warmup
+            log('Permissions API nicht verfügbar, überspringe GPS-Warmup');
+          }
+        }
+      });
+    }
+
+    // Postensuche Listener für GPS-Warmup
+    const postenSearch = document.getElementById('postenSearch');
+    if (postenSearch) {
+      postenSearch.addEventListener('input', async function () {
+        const value = this.value.trim();
+        // GPS-Warmup nur wenn Text eingegeben wird UND Berechtigung bereits erteilt
+        if (value.length > 0) {
+          try {
+            if (navigator.permissions) {
+              const result = await navigator.permissions.query({ name: 'geolocation' });
+              if (result.state === 'granted') {
+                warmUpLocationTracking().catch(e => log('Fehler beim GPS-Warmup:', e));
+              }
+            }
+          } catch (e) {
+            // Permissions API nicht verfügbar oder Fehler - kein Warmup
+            log('Permissions API nicht verfügbar, überspringe GPS-Warmup');
+          }
         }
       });
     }
@@ -6383,6 +6598,8 @@ window.save_timer_duration2 = save_timer_duration2;
 window.save_max_mister_x = save_max_mister_x;
 window.resetTimer = resetTimer;
 window.deleteAllLocations = deleteAllLocations;
+window.warmUpLocationTracking = warmUpLocationTracking;
+window.stopLocationWarmUp = stopLocationWarmUp;
 window.resetAllMisterXRollen = resetAllMisterXRollen;
 window.removeNotificationSetup = removeNotificationSetup;
 window.mxState = window.mxState || {};
