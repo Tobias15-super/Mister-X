@@ -254,7 +254,8 @@ function buildTimingSummary(timings: Record<string, number>) {
     { key: 'fcmSent', label: '🔔 FCM sent' },
     { key: 'fallbackScheduled', label: '📤 SMS fallback scheduled' },
     { key: 'instantSmsSent', label: '⚡ Instant SMS sent' },
-    { key: 'resultAndCleanup', label: '🧹 Result patch + cleanup (parallel)' },
+    { key: 'resultPatchStarted', label: '📝 Result patch (bg)' },
+    { key: 'backgroundTasksStarted', label: '🧹 Background tasks started' },
     { key: 'end', label: '✅ Done' }
   ];
 
@@ -587,22 +588,33 @@ serve(async (req) => {
         }
         if (SMS_FALLBACK_SECRET) smsHeaders['x-sms-secret'] = SMS_FALLBACK_SECRET;
 
-        const fallbackRes = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-fallback", {
+        // Fire-and-forget: sms-fallback asynchron triggern (nicht blockieren!)
+        const fallbackPromise = fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-fallback", {
           method: "POST",
           headers: smsHeaders,
           body: JSON.stringify(smsFallbackPayload),
         });
 
-        if (!fallbackRes.ok) {
-          const fbText = await fallbackRes.text().catch(() => "");
-          console.error("[send-to-all] sms-fallback for push recipients failed:", { status: fallbackRes.status, text: fbText.slice(0, 200) });
-        } else {
-          const fbData = await fallbackRes.json().catch(() => ({}));
-          console.log("[send-to-all] sms-fallback scheduled for push recipients:", { recipients: fallbackRecipients, waitSec, fbData });
-        }
+        // SOFORT Timing setzen!
+        timings.fallbackScheduled = Date.now();
+        console.log("[send-to-all] sms-fallback triggered in background for", fallbackRecipients.length, "recipients");
+
+        // Promise-Handling entkoppelt
+        fallbackPromise.then(async (fallbackRes) => {
+          if (!fallbackRes.ok) {
+            const fbText = await fallbackRes.text().catch(() => "");
+            console.error("[send-to-all] sms-fallback for push recipients failed:", { status: fallbackRes.status, text: fbText.slice(0, 200) });
+          } else {
+            const fbData = await fallbackRes.json().catch(() => ({}));
+            console.log("[send-to-all] sms-fallback scheduled for push recipients:", { recipients: fallbackRecipients, waitSec, fbData });
+          }
+        }).catch((err) => {
+          console.error("[send-to-all] sms-fallback invoke failed:", err);
+        });
+
       } catch (err) {
-        console.error("[send-to-all] sms-fallback invoke failed:", err);
-    timings.fallbackScheduled = Date.now();
+        console.error("[send-to-all] sms-fallback setup failed:", err);
+        timings.fallbackScheduled = Date.now();
       }
       }
     }
@@ -675,34 +687,34 @@ serve(async (req) => {
         }
         if (SMS_FALLBACK_SECRET) smsHeaders['x-sms-secret'] = SMS_FALLBACK_SECRET;
 
-        // Fire-and-forget: sms-direct asynchron ausführen, um Response nicht zu blockieren
-        fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-direct", {
+        // WICHTIG: Await sms-direct Response (nicht die Verarbeitung) bevor wir success zurückgeben
+        const smsRes = await fetch("https://axirbthvnznvhfagduyj.supabase.co/functions/v1/sms-direct", {
           method: "POST",
           headers: smsHeaders,
           body: JSON.stringify(smsDirectPayload),
-        }).then(async (smsRes) => {
-          const instantSmsElapsed = Date.now() - instantSmsStartTime;
-          if (!smsRes.ok) {
-            const smsText = await smsRes.text().catch(() => "");
-            console.error("[send-to-all] sms-direct failed:", { status: smsRes.status, text: smsText.slice(0, 200), elapsed: instantSmsElapsed });
-          } else {
-            const smsData = await smsRes.json().catch(() => ({}));
-            console.log("[send-to-all] sms-direct completed:", { sent: smsData?.sent, rejected: smsData?.rejectedDevices, elapsed: instantSmsElapsed });
-          }
-        }).catch((err) => {
-          console.error("[send-to-all] sms-direct invoke failed:", err, { elapsed: Date.now() - instantSmsStartTime });
         });
         
-        console.log("[send-to-all] sms-direct triggered in background for", instantSmsCandidates.length, "recipients");
+        const instantSmsElapsed = Date.now() - instantSmsStartTime;
+        timings.instantSmsSent = Date.now();
+        
+        if (!smsRes.ok) {
+          const smsText = await smsRes.text().catch(() => "");
+          console.error("[send-to-all] sms-direct failed:", { status: smsRes.status, text: smsText.slice(0, 200), elapsed: instantSmsElapsed });
+        } else {
+          const smsData = await smsRes.json().catch(() => ({}));
+          console.log("[send-to-all] sms-direct completed:", { sent: smsData?.sent, rejected: smsData?.rejectedDevices, elapsed: instantSmsElapsed });
+        }
+        
       } catch (err) {
-        console.error("[send-to-all] sms-direct setup failed:", err);
+        console.error("[send-to-all] sms-direct invoke failed:", err);
+        timings.instantSmsSent = Date.now();
       }
 
       // 5c) NEU: Falls KEINE Tokens, aber Instant-SMS -> früh returnen
       if (tokenList.length === 0) {
         timings.end = Date.now();
         const duration = timings.end - timings.start;
-        console.log("[send-to-all] Only instant SMS recipients - returning early");
+        console.log("[send-to-all] Only instant SMS recipients - returning after sms-direct response");
         console.log(`[send-to-all] ⏱️ TIMING SUMMARY (total: ${duration}ms):`, buildTimingSummary(timings));
         return new Response(
           JSON.stringify({ ok: true, messageId, smsSent: instantSmsCandidates.length, note: "instant_sms_only" }),
@@ -710,40 +722,58 @@ serve(async (req) => {
         );
       }
     }
-    timings.instantSmsSent = Date.now();
 
-    // 6) Ergebnis protokollieren & Cleanup parallel starten
-    const resultPatch: any = {
-      lastAttemptAt: now,
-      [`attempts/${attempt}/success`]: successTokens.length,
-      [`attempts/${attempt}/failed`]: failedTokens.length,
-    };
-    if (failedTokens.length) resultPatch[`attempts/${attempt}/failedTokens`] = failedTokens.slice(0, 50);
-
-    // Parallel: Result patchen & Cleanup
-    const [patchRes2, cleanupResult] = await Promise.allSettled([
-      fetch(`${rtdbBase}/notifications/${messageId}.json`, {
+    // 6) Ergebnis protokollieren & Cleanup - beide fire-and-forget!
+    
+    // SOFORT Timing setzen (nichts mehr blockieren!)
+    timings.resultPatchStarted = Date.now();
+    
+    // Result patch komplett async (inkl. Serialisierung)
+    const resultPatchAsync = (async () => {
+      const resultPatch: any = {
+        lastAttemptAt: now,
+        [`attempts/${attempt}/success`]: successTokens.length,
+        [`attempts/${attempt}/failed`]: failedTokens.length,
+      };
+      if (failedTokens.length) resultPatch[`attempts/${attempt}/failedTokens`] = failedTokens.slice(0, 50);
+      
+      const patchRes2 = await fetch(`${rtdbBase}/notifications/${messageId}.json`, {
         method: "PATCH",
         headers: { ...rtdbAuthHeaders, "Content-Type": "application/json" },
         body: JSON.stringify(resultPatch),
-      }),
-      (async () => {
-        try {
-          const cutoff = Date.now() - FIVE_MIN;
-          const deleted = await deleteOldNotifications({ rtdbBase, cutoffMs: cutoff, keep: [messageId] });
-          if (deleted > 0) console.log(`Cleanup: ${deleted} alte Notification(s) gelöscht (<= ${new Date(cutoff).toISOString()})`);
-          return deleted;
-        } catch (e) {
-          console.warn("Cleanup fehlgeschlagen:", e);
-          return 0;
-        }
-      })()
-    ]);
+      });
+      
+      if (!patchRes2.ok) {
+        console.error("[send-to-all] RTDB attempt result patch failed:", await patchRes2.text().catch(() => ""));
+      } else {
+        console.log("[send-to-all] Background result patch completed");
+      }
+    })();
+    
+    // Promise-Handling entkoppelt
+    resultPatchAsync.catch((e) => {
+      console.error("[send-to-all] Background result patch error:", e);
+    });
 
-    if (patchRes2.status === 'fulfilled' && !patchRes2.value.ok) {
-      console.error("RTDB attempt result patch failed:", await patchRes2.value.text());
-    }
-    timings.resultAndCleanup = Date.now();
+    // Cleanup fire-and-forget (nicht blockieren!)
+    const cleanupPromise = (async () => {
+      try {
+        const cutoff = Date.now() - FIVE_MIN;
+        const deleted = await deleteOldNotifications({ rtdbBase, cutoffMs: cutoff, keep: [messageId] });
+        if (deleted > 0) console.log(`[send-to-all] Background cleanup completed: ${deleted} notifications deleted`);
+        return deleted;
+      } catch (e) {
+        console.warn("[send-to-all] Background cleanup failed:", e);
+        return 0;
+      }
+    })();
+    
+    // Cleanup promise auch entkoppelt
+    cleanupPromise.catch((e) => {
+      console.warn("[send-to-all] Background cleanup error:", e);
+    });
+    
+    timings.backgroundTasksStarted = Date.now();
 
     // 7) Aufräumen (bereits oben parallel durchgeführt, entfernt den separaten Block)
 
