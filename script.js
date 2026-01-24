@@ -212,7 +212,7 @@ const COLOR_MAP = {
 import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
-import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp, endAt, startAt } from 'firebase/database';
+import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp, endAt, startAt, equalTo } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
@@ -3905,6 +3905,7 @@ async function goBack() {
 async function startTimer(duration_for_function) {
   await remove(ref(rtdb, "timer/duration"));
   await remove(ref(rtdb, "timer/startTime"));
+  await remove(ref(rtdb, "timer/lastLocationFor"));
   await remove(ref(rtdb, "timerMessage"));
 
   if (typeof countdown !== "undefined") {
@@ -4133,7 +4134,12 @@ function updateCountdown(startTime, duration) {
                 // Wiederholt nach Beschreibung fragen, bis eine vorhanden ist
                 // oder bis wirklich bereits ein Standort existiert.
                 while (true) {
-                  const description = await promptForDescription();
+                  const description = await promptForDescription(makeExpirationKey(startTime, duration));
+                  if (description === null) {
+                    // auto-closed because another device shared
+                    notifyAlreadyHandled();
+                    break;
+                  }
                   if (!description) {
                     // Prüfen, ob bereits jemand einen Standort für diese Expiration geschrieben hat
                     try {
@@ -4543,6 +4549,21 @@ async function showLocationDialog(messageText, expectedTimer = null) {
           }
           try { off(timerRef, 'value', onTimerChange); } catch (e) {}
           resolve(null); // signalisiert automatisches Schließen
+          return;
+        }
+
+        // 4) Wenn ein anderes Gerät bereits einen Standort für diese Expiration geschrieben hat -> Dialog schließen
+        if (expectedTimer) {
+          const expKey = makeExpirationKey(expectedTimer.startTime, expectedTimer.duration);
+          if (d.lastLocationFor === expKey) {
+            if (document.body.contains(modal)) {
+              try { document.body.removeChild(modal); } catch (e) {}
+            }
+            try { off(timerRef, 'value', onTimerChange); } catch (e) {}
+            showToast('Standort wurde bereits von einem anderen Gerät geteilt.', { type: 'info' });
+            resolve(null);
+            return;
+          }
         }
       } catch (e) {
         // ignore
@@ -4601,12 +4622,34 @@ function markAlertHandledForDevice(expKey) {
 // Prüft, ob bereits ein Standort für die gegebene Expiration existiert
 async function existingLocationForTimer(startTime, duration, windowMs = 60000) {
   try {
+    const expKey = makeExpirationKey(startTime, duration);
+
+    // Fast-path: if timer marks lastLocationFor this expKey, consider it handled
+    try {
+      const tSnap = await get(ref(rtdb, 'timer'));
+      const tVal = tSnap.exists() ? tSnap.val() : null;
+      if (tVal && tVal.lastLocationFor === expKey) return true;
+    } catch {}
+
+    // Preferred: query locations by expKey (these are automatic location-share entries)
+    try {
+      const q1 = query(ref(rtdb, 'locations'), orderByChild('expKey'), equalTo(expKey), limitToLast(1));
+      const s1 = await get(q1);
+      if (s1.exists()) return true;
+    } catch {}
+
+    // Fallback: time-window scan (covers older clients or manual entries without expKey)
+    // Only check locations created AFTER this timer started (avoids false positives from previous timers)
     const expTs = startTime + duration * 1000;
-    const q = query(ref(rtdb, 'locations'), orderByChild('timestamp'), startAt(Math.max(0, startTime - 5000)), endAt(expTs + windowMs));
-    const snap = await get(q);
-    if (!snap.exists()) return false;
-    const vals = snap.val();
-    return Object.keys(vals || {}).length > 0;
+    const q2 = query(
+      ref(rtdb, 'locations'),
+      orderByChild('timestamp'),
+      startAt(startTime),
+      endAt(expTs + windowMs),
+      limitToLast(1)
+    );
+    const s2 = await get(q2);
+    return s2.exists();
   } catch (e) {
     log('existingLocationForTimer failed', e);
     // Auf Nummer sicher: wenn die Prüfung fehlschlägt, antworte mit false, damit die Aktion nicht fälschlich unterdrückt wird
@@ -4751,6 +4794,8 @@ async function doOncePerExpiration(rtdb, actionIfWinner) {
   try {
     if (await secondLookAbort()) {
       log('doOncePerExpiration: timer no longer expired - aborting action for', expKey);
+      // Release claim so another device can attempt later
+      try { await set(claimRef, null); } catch (e) {}
       return false;
     }
   } catch (e) {
@@ -4758,6 +4803,16 @@ async function doOncePerExpiration(rtdb, actionIfWinner) {
   }
 
   await actionIfWinner(data);
+  // If after action there is still no location for this expiration, release claim to avoid blocking others
+  try {
+    const wrote = await existingLocationForTimer(startTime, duration);
+    if (!wrote) {
+      try { await set(claimRef, null); } catch (e) {}
+    }
+  } catch (e) {
+    // On error, be lenient and release claim
+    try { await set(claimRef, null); } catch (e2) {}
+  }
     try {
     await gcOldTimerClaims(rtdb, 5 * 60 * 1000);
   } catch (e) {
@@ -4970,7 +5025,13 @@ async function askManualAndWrite(durationInput2) {
 
   // Wiederholt nach Beschreibung fragen, bis vorhanden oder bereits Location existiert
   while (true) {
-    const description = await promptForDescription();
+    const description = await promptForDescription(expKey);
+    if (description === null) {
+      // auto-closed (another device handled it)
+      notifyAlreadyHandled();
+      stopLocationWarmUp();
+      return false;
+    }
     if (!description) {
       // Prüfen, ob diese Expiration bereits einen Standort hat
       try {
@@ -5150,7 +5211,7 @@ async function getLocation({
 }
 
 
-async function promptForDescription() {
+async function promptForDescription(expKey = null) {
   return new Promise((resolve) => {
     const modal = document.createElement("div");
     modal.style.position = "fixed";
@@ -5200,6 +5261,25 @@ async function promptForDescription() {
     // Initial state
     updateState();
 
+    // Close automatically when another device writes for this expiration
+    let unsub = null;
+    if (expKey) {
+      const tRef = ref(rtdb, 'timer');
+      const handler = (snap) => {
+        try {
+          const d = snap.exists() ? snap.val() : null;
+          if (d && d.lastLocationFor === expKey) {
+            try { if (document.body.contains(modal)) document.body.removeChild(modal); } catch (e) {}
+            if (unsub) { try { off(tRef, 'value', handler); } catch (e) {} }
+            showToast('Standort wurde bereits von einem anderen Gerät geteilt.', { type: 'info' });
+            resolve(null);
+          }
+        } catch (e) {}
+      };
+      onValue(tRef, handler);
+      unsub = () => off(tRef, 'value', handler);
+    }
+
     okBtn.onclick = () => {
       const val = inputEl.value.trim();
       if (!val) {
@@ -5207,6 +5287,9 @@ async function promptForDescription() {
         return; // keep modal open
       }
       document.body.removeChild(modal);
+      if (typeof unsub === 'function') {
+        try { unsub(); } catch (e) {}
+      }
       resolve(val);
     };
   });
