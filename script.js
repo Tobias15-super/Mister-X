@@ -45,6 +45,10 @@ let prefetchWatchId = null;    // Watch-ID für kontinuierliche Standort-Abfrage
 let prefetchTimeoutId = null;  // Timer für Ablauf der Vorwärmung (30 Sekunden)
 const PREFETCH_WARM_UP_DURATION_MS = 30000; // 30 Sekunden GPS "warmhalten"
 let warmupLatestPosition = null; // Letzte Position aus dem Warm-Up (flüchtig)
+let warmupLastLogTs = 0;
+let warmupLastLogAcc = null;
+let warmupCountdownExpKey = null;
+let warmupCountdownTriggered = false;
 
 const LS_SHOW_HEADER = "showNotifHeader";
 const LS_KEY = "currentTeamId"
@@ -208,7 +212,7 @@ const COLOR_MAP = {
 import { app } from './firebase.js'
 import { deleteToken, getMessaging, getToken, onMessage, isSupported } from 'firebase/messaging';
 import { rtdb, storage } from './firebase.js';
-import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp, endAt } from 'firebase/database';
+import { ref, child, set, get, onValue, remove, runTransaction, push, update, getDatabase, query, orderByChild, limitToLast, off, serverTimestamp, endAt, startAt } from 'firebase/database';
 import * as supabase from '@supabase/supabase-js';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 
@@ -4026,6 +4030,11 @@ function listenToTimer() {
 function updateCountdown(startTime, duration) {
   clearInterval(countdown);
   let ticking = false;
+  const countdownKey = makeExpirationKey(startTime, duration);
+  if (warmupCountdownExpKey !== countdownKey) {
+    warmupCountdownExpKey = countdownKey;
+    warmupCountdownTriggered = false;
+  }
   countdown = setInterval(async() => {
     if (ticking) return;
     ticking = true;
@@ -4072,6 +4081,11 @@ function updateCountdown(startTime, duration) {
         setTimerStyle(agentTimer);
       }
 
+      if (!warmupCountdownTriggered && remaining > 0 && remaining <= 10 && localStorage.getItem("activeView") === "misterx") {
+        warmupCountdownTriggered = true;
+        warmUpLocationTracking().catch(e => log('Standort-Vorwärmung (Timer):', e));
+      }
+
       if (remaining <= 0) {
         [misterxTimer, agentTimer, settingsTimer].forEach(elem => {
           if (elem) {
@@ -4116,37 +4130,48 @@ function updateCountdown(startTime, duration) {
               }
 
               if (dialogResult === "desc") {
-                // Beschreibung abfragen (wenn Abbrechen -> nichts weiter tun, kein Claim)
-                const description = await promptForDescription();
-                if (!description) {
-                  // Nutzer hat abgebrochen – weder geschrieben noch geclaimed. Beim nächsten Lauf wird erneut gefragt.
-                } else {
+                // Wiederholt nach Beschreibung fragen, bis eine vorhanden ist
+                // oder bis wirklich bereits ein Standort existiert.
+                while (true) {
+                  const description = await promptForDescription();
+                  if (!description) {
+                    // Prüfen, ob bereits jemand einen Standort für diese Expiration geschrieben hat
+                    try {
+                      const already = await existingLocationForTimer(startTime, duration);
+                      if (already) {
+                        notifyAlreadyHandled();
+                        break;
+                      }
+                    } catch (e) { /* still prompt again */ }
+                    // Weiter erneut fragen
+                    continue;
+                  }
+
                   // Claim erst kurz vor dem tatsächlichen Schreiben
                   const won = await doOncePerExpiration(rtdb, async (freshData) => {
                     const di1 = freshData?.durationInput;
                     const di2 = freshData?.durationInput2;
                     const locationPhase = (duration === di1 && (di2 ?? 0) > 0);
-
                     if (!locationPhase) return;
 
-                    // Standort versuchen zu holen
+                    // Standort versuchen zu holen (optional)
                     try {
                       const position = await getCurrentPositionPromise();
                       const { latitude: lat, longitude: lon, accuracy } = position.coords;
                       const timestamp = Date.now();
 
-                      // Bevor wir schreiben: prüfen, ob der Timer noch expired ist
-                    try {
-                      if (await secondLookAbort()) {
-                        log('showLocationDialog: timer no longer expired - abort write');
-                        notifyAlreadyHandled();
-                        return;
+                      // Zweiter Blick: ist Timer noch abgelaufen?
+                      try {
+                        if (await secondLookAbort()) {
+                          log('showLocationDialog: timer no longer expired - abort write');
+                          notifyAlreadyHandled();
+                          return;
+                        }
+                      } catch (e) {
+                        log('showLocationDialog: secondLookAbort failed - proceeding with write attempt', e);
                       }
-                    } catch (e) {
-                      log('showLocationDialog: secondLookAbort failed - proceeding with write attempt', e);
-                    }
 
-                    const payload = (accuracy <= 100) ? {
+                      const payload = (accuracy <= 100) ? {
                         title: "Automatischer Standort",
                         lat,
                         lon,
@@ -4160,7 +4185,6 @@ function updateCountdown(startTime, duration) {
 
                       const wrote = await safePushLocationForExpiration(freshData, payload);
                       if (!wrote) {
-                        // jemand war schneller oder Claim verloren
                         log('showLocationDialog: write skipped because existing entry detected or claim lost');
                         notifyAlreadyHandled();
                       }
@@ -4174,18 +4198,26 @@ function updateCountdown(startTime, duration) {
                     }
 
                     postWriteSideEffects(di2);
+                    stopLocationWarmUp();
                   });
 
-                  // Markieren, dass die Alert/Expiration verarbeitet wurde (egal ob gewonnen oder verloren)
+                  // Markieren, dass die Alert/Expiration verarbeitet wurde
                   markAlertHandledForDevice(expKey);
-                  if (!won) notifyAlreadyHandled();
+                  if (!won) {
+                    notifyAlreadyHandled();
+                    stopLocationWarmUp();
+                  }
+                  break;
                 }
               } else {
                 // OK gedrückt: getLocation übernimmt Claim kurz vor dem tatsächlichen Schreiben
                 const handled = await getLocation();
                 // handled==true => eigener Write; handled==false => entweder Abbruch oder ein anderes Gerät hat geschrieben
                 markAlertHandledForDevice(expKey);
-                if (!handled) notifyAlreadyHandled();
+                if (!handled) {
+                  notifyAlreadyHandled();
+                  stopLocationWarmUp();
+                }
               }
             } else {
               // Live-Standortphase: Nur Alert anzeigen, keine Beschreibung
@@ -4793,32 +4825,21 @@ document.head.appendChild(style);
 async function warmUpLocationTracking() {
   // Starte Warm-Up nur, wenn Geolocation-Berechtigung bereits erteilt ist
   try {
-    if (!navigator.permissions) {
-      log("Standort-Vorwärmung: Permissions API nicht verfügbar, übersprungen.");
-      return;
-    }
+    if (!navigator.permissions) return;
     const perm = await navigator.permissions.query({ name: 'geolocation' });
-    if (perm.state !== 'granted') {
-      log("Standort-Vorwärmung: Geolocation nicht freigegeben, Warm-Up übersprungen.");
-      return;
-    }
+    if (perm.state !== 'granted') return;
   } catch (e) {
-    log("Standort-Vorwärmung: Berechtigungsprüfung fehlgeschlagen, Warm-Up übersprungen.");
     return;
   }
 
   // Wenn bereits eine Vorwärmung läuft, erneuere nur den Timer
   if (prefetchWatchId !== null) {
     clearTimeout(prefetchTimeoutId);
-    log("Standort-Vorwärmung: Erneuert (GPS läuft bereits)");
     setPrefetchTimeout();
     return;
   }
 
-  log("Standort-Vorwärmung: Startet (30 Sekunden GPS kontinuierlich aufwärmen)...");
-
   if (!navigator.geolocation) {
-    log("Standort-Vorwärmung: Geolocation nicht verfügbar.");
     return;
   }
 
@@ -4829,19 +4850,31 @@ async function warmUpLocationTracking() {
   };
 
   try {
-    // Starte kontinuierliche Watch-Position (wie Karte-folgt-mir)
+    warmupLastLogTs = 0;
+    warmupLastLogAcc = null;
     prefetchWatchId = navigator.geolocation.watchPosition(
       (position) => {
-        // Nur protokollieren, keine Speicherung/Weiterverwendung
         const accuracy = position.coords.accuracy;
-        log(`Standort-Vorwärmung: GPS aktiv (Genauigkeit: ±${Math.round(accuracy)} m)`);
+        const nowTs = Date.now();
+        warmupLatestPosition = { ts: nowTs, accuracy };
+
+        const shouldLog = !warmupLastLogTs
+          || (nowTs - warmupLastLogTs >= 10000)
+          || (warmupLastLogAcc !== null && Math.abs(accuracy - warmupLastLogAcc) >= 15);
+
+        if (shouldLog) {
+          warmupLastLogTs = nowTs;
+          warmupLastLogAcc = accuracy;
+          log(`Standort-Vorwärmung aktiv (±${Math.round(accuracy)} m)`);
+        }
       },
       (error) => {
-        log(`Standort-Vorwärmung: GPS-Fehler - ${error.message}`);
+        log(`Standort-Vorwärmung: ${error.message}`);
       },
       options
     );
 
+    log("Standort-Vorwärmung gestartet (30s)");
     setPrefetchTimeout();
   } catch (error) {
     log("Standort-Vorwärmung: Fehler beim Starten -", error.message);
@@ -4857,7 +4890,6 @@ function setPrefetchTimeout() {
   }
 
   prefetchTimeoutId = setTimeout(() => {
-    log("Standort-Vorwärmung: 30 Sekunden abgelaufen, Tracking beendet");
     stopLocationWarmUp();
   }, PREFETCH_WARM_UP_DURATION_MS);
 }
@@ -4875,7 +4907,10 @@ function stopLocationWarmUp() {
   if (prefetchWatchId !== null) {
     navigator.geolocation.clearWatch(prefetchWatchId);
     prefetchWatchId = null;
-    log("Standort-Vorwärmung: Tracking beendet");
+    warmupLatestPosition = null;
+    warmupLastLogAcc = null;
+    warmupLastLogTs = 0;
+    log("Standort-Vorwärmung beendet");
   }
 }
 
@@ -4928,42 +4963,52 @@ function postWriteSideEffects(durationInput2) {
 
 // --- Helper: Manuellen Standort abfragen + speichern ---
 async function askManualAndWrite(durationInput2) {
-  const text =
-    prompt(
-      "Bitte den Standort beschreiben (bzw. wenn U-Bahn, dann gemäß Regelwerk angeben):"
-    ) || "";
-  const description = text.trim();
-
-  if (!description) {
-    // Nutzer hat abgebrochen oder leer – nichts schreiben
-    return false;
-  }
-
-  // Claim erst kurz vor dem Schreiben
+  // Aktuelle Expiration ermitteln
   const snap = await get(ref(rtdb, "timer"));
   const data = snap.val() || {};
   const expKey = makeExpirationKey(data.startTime, data.duration);
 
-  const won = await doOncePerExpiration(rtdb, async (freshData) => {
-    const di2 = freshData?.durationInput2;
-    const locationPhase = (data?.duration === freshData?.durationInput && (di2 ?? 0) > 0);
-    if (!locationPhase) return;
+  // Wiederholt nach Beschreibung fragen, bis vorhanden oder bereits Location existiert
+  while (true) {
+    const description = await promptForDescription();
+    if (!description) {
+      // Prüfen, ob diese Expiration bereits einen Standort hat
+      try {
+        const already = await existingLocationForTimer(data.startTime, data.duration);
+        if (already) {
+          notifyAlreadyHandled();
+          // Nur in diesem Fall als handled markieren
+          markAlertHandledForDevice(expKey);
+          stopLocationWarmUp();
+          return false;
+        }
+      } catch (e) { /* continue prompting */ }
+      continue; // weiter erneut fragen
+    }
 
-    if (await secondLookAbort()) return;
+    const won = await doOncePerExpiration(rtdb, async (freshData) => {
+      const di2 = freshData?.durationInput2;
+      const locationPhase = (data?.duration === freshData?.durationInput && (di2 ?? 0) > 0);
+      if (!locationPhase) return;
 
-    const wrote = await safePushLocationForExpiration(data, { description, timestamp: Date.now() });
-    if (!wrote) log('askManualAndWrite: write skipped because existing entry detected or claim lost');
+      if (await secondLookAbort()) return;
 
-    postWriteSideEffects(di2);
-  });
+      const wrote = await safePushLocationForExpiration(data, { description, timestamp: Date.now() });
+      if (!wrote) log('askManualAndWrite: write skipped because existing entry detected or claim lost');
 
-  // Markieren, dass die Alert/Expiration verarbeitet wurde (egal ob gewonnen oder verloren)
-  markAlertHandledForDevice(expKey);
-  if (!won) {
-    notifyAlreadyHandled();
+      postWriteSideEffects(di2);
+      stopLocationWarmUp();
+    });
+
+    // Mark only when we attempted handling this expiration
+    markAlertHandledForDevice(expKey);
+    if (!won) {
+      notifyAlreadyHandled();
+      stopLocationWarmUp();
+    }
+
+    return won;
   }
-
-  return won;
 }
 
 
@@ -5001,6 +5046,7 @@ async function getLocation({
     const manual = await askManualAndWrite(durationInput2);
     // markiere, dass die Alert/Expiration verarbeitet wurde (unabhängig vom Ergebnis)
     markAlertHandledForDevice(expKey);
+    stopLocationWarmUp();
     return !!manual;
   }
 
@@ -5016,7 +5062,10 @@ async function getLocation({
 
   return await new Promise((resolve) => {
     const success = async (position) => {
-      if (await secondLookAbort()) return resolve(false);
+      if (await secondLookAbort()) {
+        stopLocationWarmUp();
+        return resolve(false);
+      }
 
       const { latitude: lat, longitude: lon, accuracy } = position.coords;
       const timestamp = Date.now();
@@ -5025,7 +5074,7 @@ async function getLocation({
         document.getElementById("status").innerText =
           "⚠️ Standort ungenau (±" + Math.round(accuracy) + " m). Bitte Standortbeschreibung manuell eingeben.";
         const manualResult = await askManualAndWrite(durationInput2);
-        markAlertHandledForDevice(expKey);
+        // askManualAndWrite übernimmt Handled-Markierung und Warmup-Stop
         return resolve(!!manualResult);
       }
 
@@ -5048,10 +5097,12 @@ async function getLocation({
         if (!wrote) log('getLocation: write skipped because existing entry detected or claim lost');
 
         postWriteSideEffects(di2);
+        stopLocationWarmUp();
       });
 
       // Markieren, dass die Alert/Expiration verarbeitet wurde (egal ob gewonnen oder verloren)
       markAlertHandledForDevice(expKey);
+      if (!won) stopLocationWarmUp();
       resolve(!!won);
     };
 
@@ -5082,13 +5133,14 @@ async function getLocation({
       if (!askedManualOnce) {
         askedManualOnce = true;
         const manualResult = await askManualAndWrite(durationInput2);
-        markAlertHandledForDevice(expKey);
+        // askManualAndWrite übernimmt Handled-Markierung und Warmup-Stop
         return resolve(!!manualResult);
       }
 
       if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
         retry();
       } else {
+        stopLocationWarmUp();
         resolve(false);
       }
     };
@@ -5124,20 +5176,38 @@ async function promptForDescription() {
         Bitte gib eine Beschreibung deines Standorts ein.
       </div>
       <textarea id="desc-input" rows="3" style="width:90%;"></textarea><br>
-      <button id="desc-cancel-btn" style="margin-top:1em;">Abbrechen</button>
-      <button id="desc-ok-btn" style="margin-top:1em; margin-left:1em;">OK</button>
+      <div id="desc-error" style="color:#900;display:none;margin-top:0.5em;">Die Beschreibung darf nicht leer sein.</div>
+      <button id="desc-ok-btn" style="margin-top:1em;" disabled>OK</button>
     `;
     modal.appendChild(box);
     document.body.appendChild(modal);
 
-    document.getElementById("desc-ok-btn").onclick = () => {
-      const val = document.getElementById("desc-input").value.trim();
-      document.body.removeChild(modal);
-      resolve(val || null);
+    const okBtn = document.getElementById("desc-ok-btn");
+    const inputEl = document.getElementById("desc-input");
+    const errEl = document.getElementById("desc-error");
+
+    const updateState = () => {
+      const v = inputEl.value.trim();
+      if (v.length === 0) {
+        okBtn.disabled = true;
+        if (errEl) { errEl.style.display = 'block'; }
+      } else {
+        okBtn.disabled = false;
+        if (errEl) { errEl.style.display = 'none'; }
+      }
     };
-    document.getElementById("desc-cancel-btn").onclick = () => {
+    inputEl.addEventListener('input', updateState);
+    // Initial state
+    updateState();
+
+    okBtn.onclick = () => {
+      const val = inputEl.value.trim();
+      if (!val) {
+        updateState();
+        return; // keep modal open
+      }
       document.body.removeChild(modal);
-      resolve(null);
+      resolve(val);
     };
   });
 }
