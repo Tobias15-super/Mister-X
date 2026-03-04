@@ -6592,7 +6592,7 @@ async function startScript() {
     const savedView = localStorage.getItem('activeView') || 'start';
 
     
-    if (savedView !=='start'){switchView(savedView);}
+    switchView(savedView);
     showLocationHistory();
     await ensurePostenLoadedOnce();
     listenToTimer();
